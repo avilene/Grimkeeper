@@ -1,0 +1,10 @@
+{
+  "name": "grimkeeper",
+  "private": true,
+  "packageManager": "pnpm@10",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter bot dev",
+    "test": "pnpm -r test"
+  }
+}
