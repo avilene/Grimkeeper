@@ -4,5 +4,44 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
+}
+
+model Game {
+  id        String      @id @default(cuid())
+  guildId   String
+  channelId String
+  phase     String      @default("lobby")
+  createdAt DateTime    @default(now())
+  events    GameEvent[]
+  players   Player[]
+
+  @@index([guildId])
+}
+
+model Player {
+  id            String  @id @default(cuid())
+  gameId        String
+  discordUserId String
+  displayName   String
+  seat          Int?
+  roleId        String?
+  alive         Boolean @default(true)
+  game          Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, discordUserId])
+  @@index([gameId])
+}
+
+model GameEvent {
+  id        String   @id @default(cuid())
+  gameId    String
+  type      String
+  payload   Json
+  seq       Int
+  createdAt DateTime @default(now())
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, seq])
+  @@index([gameId])
 }
