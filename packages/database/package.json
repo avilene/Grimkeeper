@@ -17,11 +17,11 @@
     "db:generate": "prisma generate"
   },
   "dependencies": {
-    "@prisma/client": "^6.11.1"
+    "@prisma/client": "^6.11.1",
+    "prisma": "^6.11.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.10",
-    "prisma": "^6.11.1",
     "typescript": "^5.8.3"
   }
 }

@@ -35,4 +35,7 @@ COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 VOLUME ["/app/data"]
 ENV DATABASE_URL=file:/app/data/grimkeeper.db
 
-CMD ["node", "apps/bot/dist/index.js"]
+COPY scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
+RUN chmod +x ./scripts/docker-entrypoint.sh
+
+CMD ["./scripts/docker-entrypoint.sh"]
