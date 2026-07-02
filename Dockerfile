@@ -22,9 +22,11 @@ RUN pnpm build
 FROM base AS runner
 ENV NODE_ENV=production
 WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/bot/node_modules ./apps/bot/node_modules
 COPY --from=build /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=build /app/packages/engine/node_modules ./packages/engine/node_modules
 COPY --from=build /app/apps/bot/dist ./apps/bot/dist
 COPY --from=build /app/apps/bot/package.json ./apps/bot/package.json
 COPY --from=build /app/packages/database/dist ./packages/database/dist
@@ -35,6 +37,7 @@ COPY --from=build /app/packages/engine/dist ./packages/engine/dist
 COPY --from=build /app/packages/engine/package.json ./packages/engine/package.json
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=build /app/pnpm-lock.yaml ./pnpm-lock.yaml
 
 VOLUME ["/app/data"]
 ENV DATABASE_URL=file:/app/data/grimkeeper.db
