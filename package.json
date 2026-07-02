@@ -1,15 +1,7 @@
 {
   "name": "grimkeeper",
   "private": true,
-  "packageManager": "pnpm@10.12.4",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@prisma/engines",
-      "better-sqlite3",
-      "esbuild",
-      "prisma"
-    ]
-  },
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm --filter bot dev",
