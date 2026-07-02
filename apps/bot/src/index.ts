@@ -11,7 +11,7 @@ if (existsSync(envPath)) {
 import "./bootstrap-logs.js";
 
 import "reflect-metadata";
-import { IntentsBitField } from "discord.js";
+import { Events, IntentsBitField } from "discord.js";
 import { Client } from "discordx";
 
 import { GameCommands } from "./commands/game.js";
@@ -33,7 +33,7 @@ const client = new Client({
   },
 });
 
-client.once("ready", async () => {
+client.once(Events.ClientReady, async () => {
   await client.initApplicationCommands();
   log("info", "bot.ready", { tag: client.user?.tag, id: client.user?.id });
 });
