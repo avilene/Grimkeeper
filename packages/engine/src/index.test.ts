@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { GameEngine, GameCommandKind, GameEventType, type GameEvent, DEV_MIN_PLAYERS } from "./index.js";
+import { GameEngine, GameCommandKind, GameEventType, type GameEvent, DEV_MIN_PLAYERS, resolveStandardScript, StandardEdition } from "./index.js";
 
 const gameId = "game-1";
+const script = resolveStandardScript(StandardEdition.TB);
 
 function baseEvents(): GameEvent[] {
   return [
@@ -11,6 +12,7 @@ function baseEvents(): GameEvent[] {
       guildId: "guild-1",
       channelId: "channel-1",
       storytellerId: "story-1",
+      script,
       timestamp: new Date().toISOString(),
     },
   ];
@@ -40,16 +42,40 @@ describe("GameEngine", () => {
     expect(state.phase).toBe("lobby");
     expect(state.players).toHaveLength(2);
     expect(state.players[0]?.seat).toBe(1);
+    expect(state.script?.name).toBe("Trouble Brewing");
   });
 
-  it("starts a game and deals roles", () => {
+  it("starts setup without dealing roles", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(5));
     const emitted = engine.handle({
       kind: GameCommandKind.StartGame,
       gameId,
+      minPlayers: 5,
+    });
+
+    for (const event of emitted) {
+      engine.apply(event);
+    }
+
+    const state = engine.getState();
+    expect(state.phase).toBe("setup");
+    expect(state.players.every((player) => !player.roleId)).toBe(true);
+  });
+
+  it("deals roles and begins night from setup", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.GameStarted,
+      gameId,
+      timestamp: new Date().toISOString(),
+    });
+
+    const emitted = engine.handle({
+      kind: GameCommandKind.DealRoles,
+      gameId,
       roleAssignments: engine.getState().players.map((player, index) => ({
         playerId: player.id,
-        roleId: index === 0 ? "imp" : "washerwoman",
+        roleId: ["imp", "washerwoman", "librarian", "investigator", "chef"][index]!,
       })),
     });
 
@@ -140,12 +166,29 @@ describe("GameEngine", () => {
       kind: GameCommandKind.StartGame,
       gameId,
       minPlayers: DEV_MIN_PLAYERS,
-      roleAssignments: engine.getState().players.map((player) => ({
-        playerId: player.id,
-        roleId: "imp",
-      })),
     });
-    expect(emitted).toHaveLength(2);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]?.type).toBe(GameEventType.GameStarted);
+  });
+
+  it("assigns roles manually during setup", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(3));
+    engine.apply({
+      type: GameEventType.GameStarted,
+      gameId,
+      timestamp: new Date().toISOString(),
+    });
+
+    const player = engine.getState().players[0]!;
+    const events = engine.handle({
+      kind: GameCommandKind.AssignRole,
+      gameId,
+      playerId: player.id,
+      roleId: "imp",
+    });
+    for (const event of events) engine.apply(event);
+
+    expect(engine.getState().players[0]?.roleId).toBe("imp");
   });
 
   it("promotes additional storytellers", () => {

@@ -1,0 +1,33 @@
+import type { RoleDefinition } from "../plugins/trouble-brewing/roles.js";
+
+/** Bad Moon Rising — official character IDs. */
+export const badMoonRisingRoles: RoleDefinition[] = [
+  { id: "grandparent", name: "Grandparent", type: "townsfolk", team: "good", ability: "Learn if your grandchild died today." },
+  { id: "sailor", name: "Sailor", type: "townsfolk", team: "good", ability: "Each night, choose an alive player: either you or they are drunk until dusk." },
+  { id: "chambermaid", name: "Chambermaid", type: "townsfolk", team: "good", ability: "Each night, choose two players: learn if either woke tonight." },
+  { id: "exorcist", name: "Exorcist", type: "townsfolk", team: "good", ability: "Each night, choose a player: if they are the Demon, they learn you chose them." },
+  { id: "innkeeper", name: "Innkeeper", type: "townsfolk", team: "good", ability: "Each night, choose two players: they are safe from the Demon tonight." },
+  { id: "gambler", name: "Gambler", type: "townsfolk", team: "good", ability: "Each night, guess a player's character; if correct, they die." },
+  { id: "gossip", name: "Gossip", type: "townsfolk", team: "good", ability: "Each day, you may make a public statement; if true, a player dies tonight." },
+  { id: "courtier", name: "Courtier", type: "townsfolk", team: "good", ability: "Once per game, at night, choose a character: they are drunk for 3 nights and 3 days." },
+  { id: "professor", name: "Professor", type: "townsfolk", team: "good", ability: "Once per game, at night, choose a dead player: they return to life." },
+  { id: "minstrel", name: "Minstrel", type: "townsfolk", team: "good", ability: "While you live, Minions cannot act." },
+  { id: "tea_lady", name: "Tea Lady", type: "townsfolk", team: "good", ability: "If both your alive neighbors are good, they cannot die." },
+  { id: "pacifist", name: "Pacifist", type: "townsfolk", team: "good", ability: "Executed players might not die." },
+  { id: "fool", name: "Fool", type: "townsfolk", team: "good", ability: "The first time you die, you do not." },
+  { id: "tinker", name: "Tinker", type: "townsfolk", team: "good", ability: "You might die at any time." },
+  { id: "moonchild", name: "Moonchild", type: "outsider", team: "good", ability: "When you learn you are the Moonchild, choose a player: if they die, you die too." },
+  { id: "goon", name: "Goon", type: "outsider", team: "good", ability: "Each night, the 1st player to choose you with their ability is drunk until dusk." },
+  { id: "lunatic", name: "Lunatic", type: "outsider", team: "good", ability: "You think you are the Demon, but you are not." },
+  { id: "drunk", name: "Drunk", type: "outsider", team: "good", ability: "You think you are a Townsfolk, but you are drunk." },
+  { id: "godfather", name: "Godfather", type: "minion", team: "evil", ability: "Outsiders register as Minions." },
+  { id: "devils_advocate", name: "Devil's Advocate", type: "minion", team: "evil", ability: "Each night, choose a living player: they cannot die by execution tomorrow." },
+  { id: "mastermind", name: "Mastermind", type: "minion", team: "evil", ability: "If the Demon dies by execution, play continues for one more day." },
+  { id: "assassin", name: "Assassin", type: "minion", team: "evil", ability: "Once per game, at night, choose a player: they die, even if protected." },
+  { id: "pockmarked_lady", name: "Pockmarked Lady", type: "minion", team: "evil", ability: "Setup: add 1 Outsider and remove 1 Townsfolk." },
+  { id: "cerenovus", name: "Cerenovus", type: "minion", team: "evil", ability: "Each night, choose a player: tomorrow, they must make a mad claim or be executed." },
+  { id: "shabaloth", name: "Shabaloth", type: "demon", team: "evil", ability: "Each night, choose 2 players: they die. A dead player might register as alive." },
+  { id: "po", name: "Po", type: "demon", team: "evil", ability: "Each night, choose a player: they die. Your 3rd victim each game dies even if protected." },
+  { id: "zombuul", name: "Zombuul", type: "demon", team: "evil", ability: "Each night, if no one died today, choose a player: they die." },
+  { id: "pukka", name: "Pukka", type: "demon", team: "evil", ability: "Each night, choose a player: they are poisoned. Poisoned players die after 2 nights." },
+];

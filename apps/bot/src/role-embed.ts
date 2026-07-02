@@ -1,15 +1,24 @@
 import { EmbedBuilder } from "discord.js";
 import {
-  formatRoleName,
+  formatScriptRoleName,
+  getOfficialRole,
   getRoleImageUrl,
   getRoleWikiUrl,
-  getTroubleBrewingRole,
+  type GameScript,
 } from "@grimkeeper/engine";
 
 const ART_ATTRIBUTION = "Character art © The Pandemonium Institute (Community Created Content)";
 
-export function buildRoleEmbed(roleId: string): EmbedBuilder | null {
-  const role = getTroubleBrewingRole(roleId);
+function resolveRole(roleId: string, script?: GameScript | null) {
+  if (script) {
+    const fromScript = script.roles.find((role) => role.id === roleId);
+    if (fromScript) return fromScript;
+  }
+  return getOfficialRole(roleId);
+}
+
+export function buildRoleEmbed(roleId: string, script?: GameScript | null): EmbedBuilder | null {
+  const role = resolveRole(roleId, script);
   if (!role) return null;
 
   const imageUrl = getRoleImageUrl(roleId);
@@ -31,10 +40,10 @@ export function buildRoleEmbed(roleId: string): EmbedBuilder | null {
   return embed;
 }
 
-export function buildRoleDmEmbed(roleId: string): EmbedBuilder {
-  const roleName = formatRoleName(roleId);
+export function buildRoleDmEmbed(roleId: string, script?: GameScript | null): EmbedBuilder {
+  const roleName = formatScriptRoleName(script ?? null, roleId);
   const embed =
-    buildRoleEmbed(roleId) ??
+    buildRoleEmbed(roleId, script) ??
     new EmbedBuilder()
       .setTitle(`Your role: ${roleName}`)
       .setDescription("Keep it secret until the Grim Reveal.");

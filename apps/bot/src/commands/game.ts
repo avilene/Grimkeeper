@@ -26,14 +26,18 @@ import {
   GameCommandKind,
   GameEngine,
   GameEngineError,
-  dealTroubleBrewingRoles,
+  StandardEdition,
+  dealRolesFromScript,
   fakePlayerId,
   fakePlayerName,
-  formatRoleName,
-  getTroubleBrewingComposition,
+  findScriptRole,
+  getScriptCompositionText,
   isFakePlayer,
+  parseScriptJson,
+  resolveStandardScript,
   troubleBrewingRoles,
   type GameEvent,
+  type GameScript,
 } from "@grimkeeper/engine";
 
 import { canUseBot } from "../access.js";
@@ -59,7 +63,24 @@ function resolveRoleQuery(query: string) {
 @SlashGroup("game")
 export class GameCommands {
   @Slash({ name: "create", description: "Create a new game in this channel" })
-  async create(interaction: CommandInteraction): Promise<void> {
+  async create(
+    @SlashOption({
+      name: "edition",
+      description: "Standard edition: TB, BMR, or SNV (default TB)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    edition: string | undefined,
+    @SlashOption({
+      name: "script",
+      description: "URL to a script JSON file (overrides edition)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    scriptUrl: string | undefined,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
     if (!(await requireCommandAccess(interaction))) return;
     if (!interaction.guildId || !interaction.channelId) {
       await interaction.reply({ content: "This command must be used in a server channel.", flags: MessageFlags.Ephemeral });
@@ -69,6 +90,15 @@ export class GameCommands {
     const existing = await getActiveGameForGuild(interaction.guildId);
     if (existing) {
       await interaction.reply({ content: "An active game already exists in this server.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    let script: GameScript;
+    try {
+      script = await loadScriptForCreate(edition, scriptUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load script.";
+      await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -94,6 +124,7 @@ export class GameCommands {
       guildId: interaction.guildId,
       channelId: interaction.channelId,
       storytellerId: interaction.user.id,
+      script,
     });
 
     await prisma.game.create({
@@ -120,7 +151,7 @@ export class GameCommands {
         new EmbedBuilder()
           .setTitle("Grimkeeper game created")
           .setDescription(
-            `Players can join with \`/game join\`. Storyteller can start once there are at least ${minPlayers()} players.${roleHint}${threadHint}${devHint}`,
+            `Script: **${script.name}** (${script.roles.length} characters).\nPlayers can join with \`/game join\`. Storyteller can start once there are at least ${minPlayers()} players, then set up the grimoire with \`/game grim-setup\`, \`/game deal\`, or \`/game assign\`.${roleHint}${threadHint}${devHint}`,
           )
           .addFields({ name: "Game ID", value: gameId }),
       ],
@@ -363,16 +394,16 @@ export class GameCommands {
     }
 
     const playerCount = engine.getState().players.length;
-    const composition = getTroubleBrewingComposition(playerCount, { devMode: isDevMode() });
-    const compositionText = Object.entries(composition)
-      .map(([type, count]) => `${type}: ${count}`)
-      .join(" · ");
+    const script = engine.getState().script;
+    const compositionText = getScriptCompositionText(playerCount, { devMode: isDevMode() });
 
     await interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setTitle("Dev setup ready")
-          .setDescription(`Lobby has ${playerCount} players. Run \`/game start\` to deal Trouble Brewing roles.`)
+          .setDescription(
+            `Lobby has ${playerCount} players on **${script?.name ?? "unknown script"}**. Run \`/game start\`, then set up the grimoire.`,
+          )
           .addFields(
             { name: "Composition", value: compositionText },
             {
@@ -612,7 +643,7 @@ export class GameCommands {
     });
   }
 
-  @Slash({ name: "start", description: "Deal roles and begin night 1" })
+  @Slash({ name: "start", description: "Move to grimoire setup once the lobby is ready" })
   async start(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     const game = await requireStorytellerGame(interaction);
@@ -620,54 +651,197 @@ export class GameCommands {
 
     try {
       const engine = await loadEngine(game.id);
-      const playerCount = engine.getState().players.length;
-      const roleIds = dealTroubleBrewingRoles(playerCount, { devMode: isDevMode() });
       const events = engine.handle({
         kind: GameCommandKind.StartGame,
         gameId: game.id,
-        roleAssignments: engine.getState().players.map((player, index) => ({
-          playerId: player.id,
-          roleId: roleIds[index]!,
-        })),
         minPlayers: minPlayers(),
       });
 
       await persistEvents(engine, events);
       await syncGameProjection(game.id, engine);
 
-      const roleLines: string[] = [];
-      for (const player of engine.getState().players) {
-        const roleId = player.roleId ?? "unknown";
-        const roleName = formatRoleName(roleId);
-        if (isFakePlayer(player.discordUserId) || isDevMode()) {
-          roleLines.push(`${player.displayName}: **${roleName}**${player.isFake ? " (fake)" : ""}`);
-          continue;
-        }
-        const playerThread = await createPersonalPlayerThread(
-          interaction,
-          game.id,
-          game.channelId,
-          player.discordUserId,
-          player.displayName,
-        );
-        if (playerThread) {
-          await playerThread
-            .send({
-              content: `Your role is ready, <@${player.discordUserId}>.`,
-              embeds: [buildRoleDmEmbed(roleId)],
-            })
-            .catch(() => undefined);
-          continue;
-        }
+      const script = engine.getState().script;
+      await interaction.reply({
+        content:
+          `Setup started for **${script?.name ?? "your script"}**. ` +
+          "Configure the grimoire with `/game grim-setup`, `/game deal`, or `/game assign` + `/game begin-night`.",
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
 
-        const member = await interaction.guild?.members.fetch(player.discordUserId).catch(() => null);
-        if (!member) continue;
-        await member.send({ embeds: [buildRoleDmEmbed(roleId)] }).catch(() => undefined);
+  @Slash({ name: "grim-setup", description: "Show script and composition for grimoire setup" })
+  async grimSetup(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    const engine = await loadEngine(game.id);
+    const state = engine.getState();
+    if (state.phase !== "setup") {
+      await interaction.reply({
+        content: "Run `/game start` first to enter grimoire setup.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const script = state.script;
+    if (!script) {
+      await interaction.reply({ content: "This game has no script configured.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const playerCount = state.players.length;
+    const compositionText = getScriptCompositionText(playerCount, { devMode: isDevMode() });
+    const roleList = script.roles.map((role) => `**${role.name}** (${role.type})`).join("\n");
+    const embed = new EmbedBuilder()
+      .setTitle(`Grimoire setup — ${script.name}`)
+      .setDescription(
+        `Assign **${playerCount}** roles from this script.\nComposition: ${compositionText}\n\nUse \`/game assign\` to place roles manually, \`/game deal\` to randomize, then \`/game begin-night\` when ready.`,
+      )
+      .addFields({ name: `Script roles (${script.roles.length})`, value: roleList.slice(0, 4000) });
+
+    const guild = interaction.guild;
+    if (guild) {
+      const thread = await getStorytellerThread(guild, game.channelId);
+      if (thread) {
+        await thread.send({ embeds: [embed] }).catch(() => undefined);
+      }
+    }
+
+    await interaction.reply({
+      content: "Posted grimoire setup details to the storyteller thread.",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({ name: "deal", description: "Randomly deal roles from the script and begin night 1" })
+  async deal(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const state = engine.getState();
+      const script = state.script;
+      if (!script) {
+        await interaction.reply({ content: "This game has no script configured.", flags: MessageFlags.Ephemeral });
+        return;
       }
 
+      const roleIds = dealRolesFromScript(script.roles, state.players.length, { devMode: isDevMode() });
+      const events = engine.handle({
+        kind: GameCommandKind.DealRoles,
+        gameId: game.id,
+        roleAssignments: state.players.map((player, index) => ({
+          playerId: player.id,
+          roleId: roleIds[index]!,
+        })),
+      });
+
+      await persistEvents(engine, events);
+      await syncGameProjection(game.id, engine);
+
+      const roleLines = await deliverRolesToPlayers(interaction, game, engine);
       const replyContent = isDevMode()
         ? "Roles dealt. Night 1 has begun.\n\n" + roleLines.join("\n")
         : "Roles dealt privately. Night 1 has begun.";
+
+      await interaction.reply({ content: replyContent, flags: MessageFlags.Ephemeral });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "assign", description: "Assign a script role to a player during setup" })
+  async assign(
+    @SlashOption({
+      name: "player",
+      description: "Player to assign a role to",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    player: User,
+    @SlashOption({
+      name: "role",
+      description: "Role name or id from the script",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    roleQuery: string,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const state = engine.getState();
+      const script = state.script;
+      if (!script) {
+        await interaction.reply({ content: "This game has no script configured.", flags: MessageFlags.Ephemeral });
+        return;
+      }
+
+      const targetPlayer = state.players.find((candidate) => candidate.discordUserId === player.id);
+      if (!targetPlayer) {
+        await interaction.reply({ content: "That user is not in this game.", flags: MessageFlags.Ephemeral });
+        return;
+      }
+
+      const role = findScriptRole(script, roleQuery);
+      if (!role) {
+        await interaction.reply({
+          content: `Could not find "${roleQuery}" on **${script.name}**.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const events = engine.handle({
+        kind: GameCommandKind.AssignRole,
+        gameId: game.id,
+        playerId: targetPlayer.id,
+        roleId: role.id,
+      });
+      await persistEvents(engine, events);
+      await syncGameProjection(game.id, engine);
+
+      await interaction.reply({
+        content: `Assigned **${role.name}** to ${targetPlayer.displayName}.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "begin-night", description: "Lock in manual grimoire assignments and start night 1" })
+  async beginNight(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const events = engine.handle({
+        kind: GameCommandKind.BeginNight,
+        gameId: game.id,
+      });
+
+      await persistEvents(engine, events);
+      await syncGameProjection(game.id, engine);
+
+      const roleLines = await deliverRolesToPlayers(interaction, game, engine);
+      const replyContent = isDevMode()
+        ? "Night 1 has begun.\n\n" + roleLines.join("\n")
+        : "Grimoire locked in. Roles sent privately. Night 1 has begun.";
 
       await interaction.reply({ content: replyContent, flags: MessageFlags.Ephemeral });
     } catch (error) {
@@ -783,6 +957,81 @@ export class GameCommands {
 
 function minPlayers(): number {
   return isDevMode() ? DEV_MIN_PLAYERS : DEFAULT_MIN_PLAYERS;
+}
+
+async function loadScriptForCreate(
+  edition: string | undefined,
+  scriptUrl: string | undefined,
+): Promise<GameScript> {
+  if (scriptUrl?.trim()) {
+    const response = await fetch(scriptUrl.trim());
+    if (!response.ok) {
+      throw new Error(`Could not fetch script JSON (HTTP ${response.status}).`);
+    }
+    const json: unknown = await response.json();
+    return parseScriptJson(json, { source: "custom", scriptUrl: scriptUrl.trim() });
+  }
+
+  return resolveStandardScript(parseEdition(edition));
+}
+
+function parseEdition(value: string | undefined): StandardEdition {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === "tb" || normalized === "trouble brewing") {
+    return StandardEdition.TB;
+  }
+  if (normalized === "bmr" || normalized === "bad moon rising") {
+    return StandardEdition.BMR;
+  }
+  if (
+    normalized === "snv" ||
+    normalized === "sects & violets" ||
+    normalized === "sects and violets"
+  ) {
+    return StandardEdition.SNV;
+  }
+  throw new Error("Edition must be TB, BMR, or SNV.");
+}
+
+async function deliverRolesToPlayers(
+  interaction: CommandInteraction,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+): Promise<string[]> {
+  const script = engine.getState().script;
+  const roleLines: string[] = [];
+
+  for (const player of engine.getState().players) {
+    const roleId = player.roleId ?? "unknown";
+    const roleName = script ? (findScriptRole(script, roleId)?.name ?? roleId) : roleId;
+    if (isFakePlayer(player.discordUserId) || isDevMode()) {
+      roleLines.push(`${player.displayName}: **${roleName}**${player.isFake ? " (fake)" : ""}`);
+      continue;
+    }
+
+    const playerThread = await createPersonalPlayerThread(
+      interaction,
+      game.id,
+      game.channelId,
+      player.discordUserId,
+      player.displayName,
+    );
+    if (playerThread) {
+      await playerThread
+        .send({
+          content: `Your role is ready, <@${player.discordUserId}>.`,
+          embeds: [buildRoleDmEmbed(roleId, script)],
+        })
+        .catch(() => undefined);
+      continue;
+    }
+
+    const member = await interaction.guild?.members.fetch(player.discordUserId).catch(() => null);
+    if (!member) continue;
+    await member.send({ embeds: [buildRoleDmEmbed(roleId, script)] }).catch(() => undefined);
+  }
+
+  return roleLines;
 }
 
 async function loadEngine(gameId: string): Promise<GameEngine> {

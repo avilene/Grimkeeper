@@ -1,8 +1,13 @@
-export type GamePhase = "lobby" | "night" | "day" | "ended";
+export type GamePhase = "lobby" | "setup" | "night" | "day" | "ended";
 
 import { GameCommandKind } from "./command-kinds.js";
 import { GameEventType } from "./event-types.js";
-import { formatRoleName } from "./plugins/index.js";
+import {
+  formatScriptRoleName,
+  resolveStandardScript,
+  StandardEdition,
+  type GameScript,
+} from "./scripts/index.js";
 
 export * from "./command-kinds.js";
 export * from "./event-types.js";
@@ -20,6 +25,17 @@ export interface GameCreatedEvent extends GameEventBase {
   guildId: string;
   channelId: string;
   storytellerId: string;
+  script: GameScript;
+}
+
+export interface GameStartedEvent extends GameEventBase {
+  type: typeof GameEventType.GameStarted;
+}
+
+export interface RoleAssignedEvent extends GameEventBase {
+  type: typeof GameEventType.RoleAssigned;
+  playerId: string;
+  roleId: string;
 }
 
 export interface PlayerAddedEvent extends GameEventBase {
@@ -77,6 +93,8 @@ export type GameEvent =
   | PlayerAddedEvent
   | PlayerRemovedEvent
   | StorytellerPromotedEvent
+  | GameStartedEvent
+  | RoleAssignedEvent
   | RolesDealtEvent
   | NightStartedEvent
   | DayStartedEvent
@@ -101,6 +119,7 @@ export interface GameState {
   phase: GamePhase;
   storytellerId: string | null;
   promotedStorytellerIds: string[];
+  script: GameScript | null;
   nightNumber: number;
   dayNumber: number;
   players: PlayerState[];
@@ -113,6 +132,25 @@ export interface CreateGameCommand {
   guildId: string;
   channelId: string;
   storytellerId: string;
+  script: GameScript;
+}
+
+export interface AssignRoleCommand {
+  kind: typeof GameCommandKind.AssignRole;
+  gameId: string;
+  playerId: string;
+  roleId: string;
+}
+
+export interface DealRolesCommand {
+  kind: typeof GameCommandKind.DealRoles;
+  gameId: string;
+  roleAssignments: Array<{ playerId: string; roleId: string }>;
+}
+
+export interface BeginNightCommand {
+  kind: typeof GameCommandKind.BeginNight;
+  gameId: string;
 }
 
 export interface AddPlayerCommand {
@@ -132,7 +170,6 @@ export interface RemovePlayerCommand {
 export interface StartGameCommand {
   kind: typeof GameCommandKind.StartGame;
   gameId: string;
-  roleAssignments: Array<{ playerId: string; roleId: string }>;
   minPlayers?: number;
 }
 
@@ -165,6 +202,9 @@ export type GameCommand =
   | AddPlayerCommand
   | RemovePlayerCommand
   | StartGameCommand
+  | AssignRoleCommand
+  | DealRolesCommand
+  | BeginNightCommand
   | ClearFakePlayersCommand
   | AdvancePhaseCommand
   | EndGameCommand
@@ -188,6 +228,7 @@ function emptyState(gameId: string): GameState {
     phase: "lobby",
     storytellerId: null,
     promotedStorytellerIds: [],
+    script: null,
     nightNumber: 0,
     dayNumber: 0,
     players: [],
@@ -264,17 +305,48 @@ export class GameEngine {
         if (this.state.players.length < minPlayers) {
           throw new GameEngineError(`At least ${minPlayers} players are required to start.`);
         }
-        if (command.roleAssignments.length !== this.state.players.length) {
-          throw new GameEngineError("Every player must receive a role.");
+        if (!this.state.script) {
+          throw new GameEngineError("Game has no script configured.");
         }
         break;
       }
+      case GameCommandKind.AssignRole:
+        this.assertPhase("setup", "Roles can only be assigned during setup.");
+        this.assertScriptRole(command.roleId);
+        if (!this.state.players.some((player) => player.id === command.playerId)) {
+          throw new GameEngineError("Player is not in this game.");
+        }
+        if (
+          this.state.players.some(
+            (player) => player.id !== command.playerId && player.roleId === command.roleId,
+          )
+        ) {
+          throw new GameEngineError("That role is already assigned to another player.");
+        }
+        break;
+      case GameCommandKind.DealRoles: {
+        this.assertPhase("setup", "Roles can only be dealt during setup.");
+        if (command.roleAssignments.length !== this.state.players.length) {
+          throw new GameEngineError("Every player must receive a role.");
+        }
+        this.assertRoleAssignments(command.roleAssignments);
+        break;
+      }
+      case GameCommandKind.BeginNight:
+        this.assertPhase("setup", "Night can only begin after setup.");
+        if (!this.state.players.every((player) => player.roleId)) {
+          throw new GameEngineError("Every player must have a role before night begins.");
+        }
+        break;
       case GameCommandKind.ClearFakePlayers:
         this.assertPhase("lobby", "Fake players can only be cleared during the lobby.");
         break;
       case GameCommandKind.AdvancePhase:
         if (this.state.phase === "ended") {
           throw new GameEngineError("Game has already ended.");
+        }
+        if (this.state.phase === "setup") {
+          throw new GameEngineError("Finish grimoire setup before advancing phases.");
         }
         if (command.targetPhase === "night" && this.state.phase !== "day" && this.state.phase !== "lobby") {
           throw new GameEngineError("Can only enter night from lobby or day.");
@@ -311,6 +383,7 @@ export class GameEngine {
             guildId: command.guildId,
             channelId: command.channelId,
             storytellerId: command.storytellerId,
+            script: command.script,
             timestamp: new Date().toISOString(),
           },
         ];
@@ -337,9 +410,45 @@ export class GameEngine {
       case GameCommandKind.StartGame:
         return [
           {
+            type: GameEventType.GameStarted,
+            gameId: command.gameId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.AssignRole:
+        return [
+          {
+            type: GameEventType.RoleAssigned,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            roleId: command.roleId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.DealRoles:
+        return [
+          {
             type: GameEventType.RolesDealt,
             gameId: command.gameId,
             assignments: command.roleAssignments,
+            timestamp: new Date().toISOString(),
+          },
+          {
+            type: GameEventType.NightStarted,
+            gameId: command.gameId,
+            nightNumber: 1,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.BeginNight:
+        return [
+          {
+            type: GameEventType.RolesDealt,
+            gameId: command.gameId,
+            assignments: this.state.players.map((player) => ({
+              playerId: player.id,
+              roleId: player.roleId!,
+            })),
             timestamp: new Date().toISOString(),
           },
           {
@@ -406,6 +515,7 @@ export class GameEngine {
         this.state.guildId = event.guildId;
         this.state.channelId = event.channelId;
         this.state.storytellerId = event.storytellerId;
+        this.state.script = event.script ?? resolveStandardScript(StandardEdition.TB);
         this.state.phase = "lobby";
         break;
       case GameEventType.PlayerAdded:
@@ -429,6 +539,16 @@ export class GameEngine {
           this.state.promotedStorytellerIds.push(event.discordUserId);
         }
         break;
+      case GameEventType.GameStarted:
+        this.state.phase = "setup";
+        break;
+      case GameEventType.RoleAssigned: {
+        const player = this.state.players.find((candidate) => candidate.id === event.playerId);
+        if (player) {
+          player.roleId = event.roleId;
+        }
+        break;
+      }
       case GameEventType.RolesDealt:
         for (const assignment of event.assignments) {
           const player = this.state.players.find((p) => p.id === assignment.playerId);
@@ -462,7 +582,9 @@ export class GameEngine {
   getGrimReveal(): string[] {
     const lines: string[] = [];
     for (const player of this.state.players) {
-      const role = player.roleId ? formatRoleName(player.roleId) : "unknown";
+      const role = player.roleId
+        ? formatScriptRoleName(this.state.script, player.roleId)
+        : "unknown";
       const status = player.alive ? "alive" : "dead";
       const fakeTag = player.isFake ? " [dev]" : "";
       lines.push(`${player.displayName}${fakeTag} — ${role} (${status})`);
@@ -473,6 +595,27 @@ export class GameEngine {
     return lines;
   }
 
+  private assertScriptRole(roleId: string): void {
+    if (!this.state.script?.roles.some((role) => role.id === roleId)) {
+      throw new GameEngineError("That role is not on this game's script.");
+    }
+  }
+
+  private assertRoleAssignments(assignments: Array<{ playerId: string; roleId: string }>): void {
+    const playerIds = new Set(this.state.players.map((player) => player.id));
+    const roleIds = new Set<string>();
+    for (const assignment of assignments) {
+      if (!playerIds.has(assignment.playerId)) {
+        throw new GameEngineError("Role assignment includes an unknown player.");
+      }
+      this.assertScriptRole(assignment.roleId);
+      if (roleIds.has(assignment.roleId)) {
+        throw new GameEngineError("Each role can only be assigned once.");
+      }
+      roleIds.add(assignment.roleId);
+    }
+  }
+
   private assertPhase(expected: GamePhase, message: string): void {
     if (this.state.phase !== expected) {
       throw new GameEngineError(message);
@@ -481,3 +624,4 @@ export class GameEngine {
 }
 
 export * from "./plugins/index.js";
+export * from "./scripts/index.js";

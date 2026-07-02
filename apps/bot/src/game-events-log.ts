@@ -21,7 +21,15 @@ function stateFields(state: GameState): Record<string, unknown> {
 function eventFields(event: GameEvent): Record<string, unknown> {
   switch (event.type) {
     case GameEventType.GameCreated:
-      return { storytellerId: event.storytellerId };
+      return {
+        storytellerId: event.storytellerId,
+        scriptName: event.script.name,
+        scriptSource: event.script.source,
+      };
+    case GameEventType.GameStarted:
+      return {};
+    case GameEventType.RoleAssigned:
+      return { playerId: event.playerId };
     case GameEventType.PlayerAdded:
       return { playerId: event.playerId, displayName: event.displayName };
     case GameEventType.PlayerRemoved:
