@@ -3,6 +3,7 @@ import {
   ApplicationCommandOptionType,
   CommandInteraction,
   EmbedBuilder,
+  ThreadAutoArchiveDuration,
 } from "discord.js";
 import { Discord, Slash, SlashGroup, SlashOption } from "discordx";
 import {
@@ -83,16 +84,20 @@ export class GameCommands {
       await appendGameEvent(gameId, event.type, toJson(event));
     }
 
+    const storytellerThread = await createStorytellerThread(interaction, gameId);
     const devHint = isDevMode()
       ? " Dev mode: use `/game dev-fill` to add fake players."
       : "";
+    const threadHint = storytellerThread
+      ? ` Storyteller thread created: ${storytellerThread}.`
+      : " I could not create a storyteller thread (missing permissions or unsupported channel type).";
 
     await interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setTitle("Grimkeeper game created")
           .setDescription(
-            `Players can join with \`/game join\`. Storyteller can start once there are at least ${minPlayers()} players.${devHint}`,
+            `Players can join with \`/game join\`. Storyteller can start once there are at least ${minPlayers()} players.${threadHint}${devHint}`,
           )
           .addFields({ name: "Game ID", value: gameId }),
       ],
@@ -568,6 +573,32 @@ async function requireCommandAccess(interaction: CommandInteraction): Promise<bo
     await interaction.reply({ content: message, ephemeral: true });
   }
   return false;
+}
+
+async function createStorytellerThread(
+  interaction: CommandInteraction,
+  gameId: string,
+): Promise<string | null> {
+  const channel = interaction.channel;
+  if (!channel || !("threads" in channel)) {
+    return null;
+  }
+
+  try {
+    const thread = await channel.threads.create({
+      name: `grimkeeper-${gameId.slice(0, 8)}-storyteller`,
+      autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+      reason: `Storyteller thread for game ${gameId}`,
+    });
+
+    await thread.members.add(interaction.user.id).catch(() => undefined);
+    await thread.send(
+      "Storyteller thread ready. Use this space for private narration and spectator discussion.",
+    );
+    return `<#${thread.id}>`;
+  } catch {
+    return null;
+  }
 }
 
 async function replyEngineError(interaction: CommandInteraction, error: unknown): Promise<void> {
