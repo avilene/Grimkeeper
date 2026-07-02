@@ -147,7 +147,6 @@ export class GameCommands {
 
   @Slash({ name: "dev-fill", description: "[Dev] Add fake players to the lobby" })
   async devFill(
-    interaction: CommandInteraction,
     @SlashOption({
       name: "count",
       description: "How many fake players to add (default: fill to min players)",
@@ -157,7 +156,9 @@ export class GameCommands {
       maxValue: 15,
     })
     count?: number,
+    interaction?: CommandInteraction,
   ): Promise<void> {
+    if (!interaction) return;
     if (!(await requireCommandAccess(interaction))) return;
     try {
       requireDevMode();
@@ -313,7 +314,6 @@ export class GameCommands {
 
   @Slash({ name: "role", description: "Show a Trouble Brewing role with official art" })
   async role(
-    interaction: CommandInteraction,
     @SlashOption({
       name: "name",
       description: "Role name (e.g. Washerwoman, Fortune Teller, Imp)",
@@ -321,7 +321,9 @@ export class GameCommands {
       required: true,
     })
     roleQuery: string,
+    interaction?: CommandInteraction,
   ): Promise<void> {
+    if (!interaction) return;
     if (!(await requireCommandAccess(interaction))) return;
 
     const role = resolveRoleQuery(roleQuery);
@@ -502,7 +504,6 @@ export class GameCommands {
 
   @Slash({ name: "end", description: "End the game and record the winner" })
   async end(
-    interaction: CommandInteraction,
     @SlashOption({
       name: "winner",
       description: "Which team won",
@@ -517,7 +518,9 @@ export class GameCommands {
       required: true,
     })
     reason: string,
+    interaction?: CommandInteraction,
   ): Promise<void> {
+    if (!interaction) return;
     if (!(await requireCommandAccess(interaction))) return;
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
