@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GameEngine, type GameEvent } from "./index.js";
+import { GameEngine, type GameEvent, DEV_MIN_PLAYERS } from "./index.js";
 
 const gameId = "game-1";
 
@@ -63,7 +63,7 @@ describe("GameEngine", () => {
     expect(state.players.every((player) => player.roleId)).toBe(true);
   });
 
-  it("builds grim reveal lines", () => {
+  it("builds grim reveal lines with role names", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(2));
     engine.apply({
       type: "RolesDealt",
@@ -83,7 +83,49 @@ describe("GameEngine", () => {
     });
 
     const reveal = engine.getGrimReveal();
-    expect(reveal.some((line) => line.includes("washerwoman"))).toBe(true);
+    expect(reveal.some((line) => line.includes("Washerwoman"))).toBe(true);
     expect(reveal.some((line) => line.includes("Winner: good"))).toBe(true);
+  });
+
+  it("clears fake players in the lobby", () => {
+    const engine = GameEngine.fromEvents(gameId, [
+      ...baseEvents(),
+      {
+        type: "PlayerAdded",
+        gameId,
+        playerId: "fake-1",
+        discordUserId: "dev:game-1:1",
+        displayName: "Dev Player 1",
+        timestamp: new Date().toISOString(),
+      },
+      {
+        type: "PlayerAdded",
+        gameId,
+        playerId: "real-1",
+        discordUserId: "user-1",
+        displayName: "Real Player",
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+
+    const events = engine.handle({ kind: "ClearFakePlayers", gameId });
+    for (const event of events) engine.apply(event);
+
+    expect(engine.getState().players).toHaveLength(1);
+    expect(engine.getState().players[0]?.isFake).toBe(false);
+  });
+
+  it("allows dev min players when starting", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(3));
+    const emitted = engine.handle({
+      kind: "StartGame",
+      gameId,
+      minPlayers: DEV_MIN_PLAYERS,
+      roleAssignments: engine.getState().players.map((player) => ({
+        playerId: player.id,
+        roleId: "imp",
+      })),
+    });
+    expect(emitted).toHaveLength(2);
   });
 });

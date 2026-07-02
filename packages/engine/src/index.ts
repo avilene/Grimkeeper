@@ -1,5 +1,7 @@
 export type GamePhase = "lobby" | "night" | "day" | "ended";
 
+import { formatRoleName } from "./plugins/index.js";
+
 export type Team = "good" | "evil" | "traveler";
 
 export interface GameEventBase {
@@ -55,9 +57,15 @@ export interface GameEndedEvent extends GameEventBase {
   reason: string;
 }
 
+export interface PlayerRemovedEvent extends GameEventBase {
+  type: "PlayerRemoved";
+  playerId: string;
+}
+
 export type GameEvent =
   | GameCreatedEvent
   | PlayerAddedEvent
+  | PlayerRemovedEvent
   | RolesDealtEvent
   | NightStartedEvent
   | DayStartedEvent
@@ -72,6 +80,7 @@ export interface PlayerState {
   seat: number | null;
   roleId: string | null;
   alive: boolean;
+  isFake: boolean;
 }
 
 export interface GameState {
@@ -106,6 +115,12 @@ export interface StartGameCommand {
   kind: "StartGame";
   gameId: string;
   roleAssignments: Array<{ playerId: string; roleId: string }>;
+  minPlayers?: number;
+}
+
+export interface ClearFakePlayersCommand {
+  kind: "ClearFakePlayers";
+  gameId: string;
 }
 
 export interface AdvancePhaseCommand {
@@ -125,8 +140,12 @@ export type GameCommand =
   | CreateGameCommand
   | AddPlayerCommand
   | StartGameCommand
+  | ClearFakePlayersCommand
   | AdvancePhaseCommand
   | EndGameCommand;
+
+export const DEFAULT_MIN_PLAYERS = 5;
+export const DEV_MIN_PLAYERS = 3;
 
 export class GameEngineError extends Error {
   constructor(message: string) {
@@ -181,14 +200,19 @@ export class GameEngine {
           throw new GameEngineError("Player already joined.");
         }
         break;
-      case "StartGame":
+      case "StartGame": {
         this.assertPhase("lobby", "Game can only start from the lobby.");
-        if (this.state.players.length < 5) {
-          throw new GameEngineError("At least 5 players are required to start.");
+        const minPlayers = command.minPlayers ?? DEFAULT_MIN_PLAYERS;
+        if (this.state.players.length < minPlayers) {
+          throw new GameEngineError(`At least ${minPlayers} players are required to start.`);
         }
         if (command.roleAssignments.length !== this.state.players.length) {
           throw new GameEngineError("Every player must receive a role.");
         }
+        break;
+      }
+      case "ClearFakePlayers":
+        this.assertPhase("lobby", "Fake players can only be cleared during the lobby.");
         break;
       case "AdvancePhase":
         if (this.state.phase === "ended") {
@@ -250,6 +274,15 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
+      case "ClearFakePlayers":
+        return this.state.players
+          .filter((player) => player.isFake)
+          .map((player) => ({
+            type: "PlayerRemoved" as const,
+            gameId: command.gameId,
+            playerId: player.id,
+            timestamp: new Date().toISOString(),
+          }));
       case "AdvancePhase":
         if (command.targetPhase === "night") {
           return [
@@ -299,7 +332,13 @@ export class GameEngine {
           seat: this.state.players.length + 1,
           roleId: null,
           alive: true,
+          isFake: event.discordUserId.startsWith("dev:"),
         });
+        break;
+      case "PlayerRemoved":
+        this.state.players = this.state.players
+          .filter((player) => player.id !== event.playerId)
+          .map((player, index) => ({ ...player, seat: index + 1 }));
         break;
       case "RolesDealt":
         for (const assignment of event.assignments) {
@@ -334,9 +373,10 @@ export class GameEngine {
   getGrimReveal(): string[] {
     const lines: string[] = [];
     for (const player of this.state.players) {
-      const role = player.roleId ?? "unknown";
+      const role = player.roleId ? formatRoleName(player.roleId) : "unknown";
       const status = player.alive ? "alive" : "dead";
-      lines.push(`${player.displayName} — ${role} (${status})`);
+      const fakeTag = player.isFake ? " [dev]" : "";
+      lines.push(`${player.displayName}${fakeTag} — ${role} (${status})`);
     }
     if (this.state.winner) {
       lines.push(`Winner: ${this.state.winner}`);
