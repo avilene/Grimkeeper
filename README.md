@@ -27,6 +27,9 @@ Discord -> Adapter -> Engine -> Events -> Projections -> Persistence
 3. Create a [Discord application](https://discord.com/developers/applications), add a bot, and set:
    - `DISCORD_TOKEN` — bot token
    - `DISCORD_CLIENT_ID` — application ID
+   - optional access control:
+     - `ALLOWED_USER_IDS` — comma-separated Discord user IDs allowed to use commands
+     - `ALLOWED_ROLE_IDS` — comma-separated Discord role IDs allowed to use commands
 
 4. Push the database schema:
    ```bash
@@ -39,6 +42,8 @@ Discord -> Adapter -> Engine -> Events -> Projections -> Persistence
    ```
 
 6. Invite the bot to your server with the `applications.commands` scope.
+
+If both `ALLOWED_USER_IDS` and `ALLOWED_ROLE_IDS` are empty, everyone in the guild can use bot commands.
 
 ## Storyteller commands
 

@@ -27,6 +27,8 @@ export function formatRoleName(roleId: string): string {
   return getRoleById(roleId)?.name ?? roleId;
 }
 
+export { getRoleImageUrl, getRoleWikiUrl } from "./trouble-brewing/images.js";
+
 export function dealRoles(playerCount: number): string[] {
   return dealTroubleBrewingRoles(playerCount);
 }

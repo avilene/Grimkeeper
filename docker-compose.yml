@@ -6,6 +6,7 @@ services:
       - .env
     environment:
       DATABASE_URL: file:/app/data/grimkeeper.db
+      DEV_MODE: ${DEV_MODE:-false}
     volumes:
       - grimkeeper-data:/app/data
 
