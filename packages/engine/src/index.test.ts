@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { GameEngine, type GameEvent, DEV_MIN_PLAYERS } from "./index.js";
+import { GameEngine, GameCommandKind, GameEventType, type GameEvent, DEV_MIN_PLAYERS } from "./index.js";
 
 const gameId = "game-1";
 
 function baseEvents(): GameEvent[] {
   return [
     {
-      type: "GameCreated",
+      type: GameEventType.GameCreated,
       gameId,
       guildId: "guild-1",
       channelId: "channel-1",
@@ -20,7 +20,7 @@ function withPlayers(count: number): GameEvent[] {
   const events = baseEvents();
   for (let i = 0; i < count; i++) {
     events.push({
-      type: "PlayerAdded",
+      type: GameEventType.PlayerAdded,
       gameId,
       playerId: `player-${i + 1}`,
       discordUserId: `user-${i + 1}`,
@@ -45,7 +45,7 @@ describe("GameEngine", () => {
   it("starts a game and deals roles", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(5));
     const emitted = engine.handle({
-      kind: "StartGame",
+      kind: GameCommandKind.StartGame,
       gameId,
       roleAssignments: engine.getState().players.map((player, index) => ({
         playerId: player.id,
@@ -66,7 +66,7 @@ describe("GameEngine", () => {
   it("builds grim reveal lines with role names", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(2));
     engine.apply({
-      type: "RolesDealt",
+      type: GameEventType.RolesDealt,
       gameId,
       assignments: engine.getState().players.map((player) => ({
         playerId: player.id,
@@ -75,7 +75,7 @@ describe("GameEngine", () => {
       timestamp: new Date().toISOString(),
     });
     engine.apply({
-      type: "GameEnded",
+      type: GameEventType.GameEnded,
       gameId,
       winner: "good",
       reason: "Demon executed",
@@ -91,7 +91,7 @@ describe("GameEngine", () => {
     const engine = GameEngine.fromEvents(gameId, [
       ...baseEvents(),
       {
-        type: "PlayerAdded",
+        type: GameEventType.PlayerAdded,
         gameId,
         playerId: "fake-1",
         discordUserId: "dev:game-1:1",
@@ -99,7 +99,7 @@ describe("GameEngine", () => {
         timestamp: new Date().toISOString(),
       },
       {
-        type: "PlayerAdded",
+        type: GameEventType.PlayerAdded,
         gameId,
         playerId: "real-1",
         discordUserId: "user-1",
@@ -108,7 +108,7 @@ describe("GameEngine", () => {
       },
     ]);
 
-    const events = engine.handle({ kind: "ClearFakePlayers", gameId });
+    const events = engine.handle({ kind: GameCommandKind.ClearFakePlayers, gameId });
     for (const event of events) engine.apply(event);
 
     expect(engine.getState().players).toHaveLength(1);
@@ -119,7 +119,7 @@ describe("GameEngine", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(3));
     const leavingPlayer = engine.getState().players[1]!;
     const emitted = engine.handle({
-      kind: "RemovePlayer",
+      kind: GameCommandKind.RemovePlayer,
       gameId,
       playerId: leavingPlayer.id,
     });
@@ -137,7 +137,7 @@ describe("GameEngine", () => {
   it("allows dev min players when starting", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(3));
     const emitted = engine.handle({
-      kind: "StartGame",
+      kind: GameCommandKind.StartGame,
       gameId,
       minPlayers: DEV_MIN_PLAYERS,
       roleAssignments: engine.getState().players.map((player) => ({
@@ -146,5 +146,34 @@ describe("GameEngine", () => {
       })),
     });
     expect(emitted).toHaveLength(2);
+  });
+
+  it("promotes additional storytellers", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(2));
+    expect(engine.isStoryteller("story-1")).toBe(true);
+    expect(engine.isStoryteller("user-2")).toBe(false);
+
+    const events = engine.handle({
+      kind: GameCommandKind.PromoteStoryteller,
+      gameId,
+      discordUserId: "user-2",
+    });
+    for (const event of events) {
+      engine.apply(event);
+    }
+
+    expect(engine.getStorytellerDiscordIds()).toEqual(["story-1", "user-2"]);
+    expect(engine.isStoryteller("user-2")).toBe(true);
+  });
+
+  it("rejects promoting an existing storyteller", () => {
+    const engine = GameEngine.fromEvents(gameId, baseEvents());
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.PromoteStoryteller,
+        gameId,
+        discordUserId: "story-1",
+      }),
+    ).toThrow("already a storyteller");
   });
 });

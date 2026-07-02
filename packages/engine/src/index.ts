@@ -1,71 +1,82 @@
 export type GamePhase = "lobby" | "night" | "day" | "ended";
 
+import { GameCommandKind } from "./command-kinds.js";
+import { GameEventType } from "./event-types.js";
 import { formatRoleName } from "./plugins/index.js";
+
+export * from "./command-kinds.js";
+export * from "./event-types.js";
 
 export type Team = "good" | "evil" | "traveler";
 
 export interface GameEventBase {
-  type: string;
+  type: GameEventType;
   gameId: string;
   timestamp: string;
 }
 
 export interface GameCreatedEvent extends GameEventBase {
-  type: "GameCreated";
+  type: typeof GameEventType.GameCreated;
   guildId: string;
   channelId: string;
   storytellerId: string;
 }
 
 export interface PlayerAddedEvent extends GameEventBase {
-  type: "PlayerAdded";
+  type: typeof GameEventType.PlayerAdded;
   playerId: string;
   discordUserId: string;
   displayName: string;
 }
 
 export interface RolesDealtEvent extends GameEventBase {
-  type: "RolesDealt";
+  type: typeof GameEventType.RolesDealt;
   assignments: Array<{ playerId: string; roleId: string }>;
 }
 
 export interface NightStartedEvent extends GameEventBase {
-  type: "NightStarted";
+  type: typeof GameEventType.NightStarted;
   nightNumber: number;
 }
 
 export interface DayStartedEvent extends GameEventBase {
-  type: "DayStarted";
+  type: typeof GameEventType.DayStarted;
   dayNumber: number;
 }
 
 export interface PlayerDiedEvent extends GameEventBase {
-  type: "PlayerDied";
+  type: typeof GameEventType.PlayerDied;
   playerId: string;
   cause: string;
 }
 
 export interface NominationMadeEvent extends GameEventBase {
-  type: "NominationMade";
+  type: typeof GameEventType.NominationMade;
   nominatorId: string;
   nomineeId: string;
 }
 
 export interface GameEndedEvent extends GameEventBase {
-  type: "GameEnded";
+  type: typeof GameEventType.GameEnded;
   winner: "good" | "evil";
   reason: string;
 }
 
 export interface PlayerRemovedEvent extends GameEventBase {
-  type: "PlayerRemoved";
+  type: typeof GameEventType.PlayerRemoved;
   playerId: string;
+}
+
+export interface StorytellerPromotedEvent extends GameEventBase {
+  type: typeof GameEventType.StorytellerPromoted;
+  discordUserId: string;
 }
 
 export type GameEvent =
   | GameCreatedEvent
   | PlayerAddedEvent
   | PlayerRemovedEvent
+  | StorytellerPromotedEvent
   | RolesDealtEvent
   | NightStartedEvent
   | DayStartedEvent
@@ -89,6 +100,7 @@ export interface GameState {
   channelId: string;
   phase: GamePhase;
   storytellerId: string | null;
+  promotedStorytellerIds: string[];
   nightNumber: number;
   dayNumber: number;
   players: PlayerState[];
@@ -96,7 +108,7 @@ export interface GameState {
 }
 
 export interface CreateGameCommand {
-  kind: "CreateGame";
+  kind: typeof GameCommandKind.CreateGame;
   gameId: string;
   guildId: string;
   channelId: string;
@@ -104,7 +116,7 @@ export interface CreateGameCommand {
 }
 
 export interface AddPlayerCommand {
-  kind: "AddPlayer";
+  kind: typeof GameCommandKind.AddPlayer;
   gameId: string;
   playerId: string;
   discordUserId: string;
@@ -112,34 +124,40 @@ export interface AddPlayerCommand {
 }
 
 export interface RemovePlayerCommand {
-  kind: "RemovePlayer";
+  kind: typeof GameCommandKind.RemovePlayer;
   gameId: string;
   playerId: string;
 }
 
 export interface StartGameCommand {
-  kind: "StartGame";
+  kind: typeof GameCommandKind.StartGame;
   gameId: string;
   roleAssignments: Array<{ playerId: string; roleId: string }>;
   minPlayers?: number;
 }
 
 export interface ClearFakePlayersCommand {
-  kind: "ClearFakePlayers";
+  kind: typeof GameCommandKind.ClearFakePlayers;
   gameId: string;
 }
 
 export interface AdvancePhaseCommand {
-  kind: "AdvancePhase";
+  kind: typeof GameCommandKind.AdvancePhase;
   gameId: string;
   targetPhase: "night" | "day";
 }
 
 export interface EndGameCommand {
-  kind: "EndGame";
+  kind: typeof GameCommandKind.EndGame;
   gameId: string;
   winner: "good" | "evil";
   reason: string;
+}
+
+export interface PromoteStorytellerCommand {
+  kind: typeof GameCommandKind.PromoteStoryteller;
+  gameId: string;
+  discordUserId: string;
 }
 
 export type GameCommand =
@@ -149,7 +167,8 @@ export type GameCommand =
   | StartGameCommand
   | ClearFakePlayersCommand
   | AdvancePhaseCommand
-  | EndGameCommand;
+  | EndGameCommand
+  | PromoteStorytellerCommand;
 
 export const DEFAULT_MIN_PLAYERS = 5;
 export const DEV_MIN_PLAYERS = 3;
@@ -168,11 +187,29 @@ function emptyState(gameId: string): GameState {
     channelId: "",
     phase: "lobby",
     storytellerId: null,
+    promotedStorytellerIds: [],
     nightNumber: 0,
     dayNumber: 0,
     players: [],
     winner: null,
   };
+}
+
+export function getStorytellerDiscordIds(state: GameState): string[] {
+  const ids: string[] = [];
+  if (state.storytellerId) {
+    ids.push(state.storytellerId);
+  }
+  for (const discordUserId of state.promotedStorytellerIds) {
+    if (!ids.includes(discordUserId)) {
+      ids.push(discordUserId);
+    }
+  }
+  return ids;
+}
+
+export function isStoryteller(state: GameState, discordUserId: string): boolean {
+  return getStorytellerDiscordIds(state).includes(discordUserId);
 }
 
 export class GameEngine {
@@ -186,6 +223,14 @@ export class GameEngine {
     return structuredClone(this.state);
   }
 
+  getStorytellerDiscordIds(): string[] {
+    return getStorytellerDiscordIds(this.state);
+  }
+
+  isStoryteller(discordUserId: string): boolean {
+    return isStoryteller(this.state, discordUserId);
+  }
+
   static fromEvents(gameId: string, events: GameEvent[]): GameEngine {
     const engine = new GameEngine(gameId);
     for (const event of events) {
@@ -196,24 +241,24 @@ export class GameEngine {
 
   validate(command: GameCommand): void {
     switch (command.kind) {
-      case "CreateGame":
+      case GameCommandKind.CreateGame:
         if (this.state.storytellerId) {
           throw new GameEngineError("Game already exists.");
         }
         break;
-      case "AddPlayer":
+      case GameCommandKind.AddPlayer:
         this.assertPhase("lobby", "Players can only join during the lobby.");
         if (this.state.players.some((p) => p.discordUserId === command.discordUserId)) {
           throw new GameEngineError("Player already joined.");
         }
         break;
-      case "RemovePlayer":
+      case GameCommandKind.RemovePlayer:
         this.assertPhase("lobby", "Players can only leave during the lobby.");
         if (!this.state.players.some((p) => p.id === command.playerId)) {
           throw new GameEngineError("Player is not in this game.");
         }
         break;
-      case "StartGame": {
+      case GameCommandKind.StartGame: {
         this.assertPhase("lobby", "Game can only start from the lobby.");
         const minPlayers = command.minPlayers ?? DEFAULT_MIN_PLAYERS;
         if (this.state.players.length < minPlayers) {
@@ -224,10 +269,10 @@ export class GameEngine {
         }
         break;
       }
-      case "ClearFakePlayers":
+      case GameCommandKind.ClearFakePlayers:
         this.assertPhase("lobby", "Fake players can only be cleared during the lobby.");
         break;
-      case "AdvancePhase":
+      case GameCommandKind.AdvancePhase:
         if (this.state.phase === "ended") {
           throw new GameEngineError("Game has already ended.");
         }
@@ -238,9 +283,17 @@ export class GameEngine {
           throw new GameEngineError("Can only enter day from night.");
         }
         break;
-      case "EndGame":
+      case GameCommandKind.EndGame:
         if (this.state.phase === "ended") {
           throw new GameEngineError("Game has already ended.");
+        }
+        break;
+      case GameCommandKind.PromoteStoryteller:
+        if (this.state.phase === "ended") {
+          throw new GameEngineError("Cannot promote storytellers after the game has ended.");
+        }
+        if (isStoryteller(this.state, command.discordUserId)) {
+          throw new GameEngineError("That user is already a storyteller.");
         }
         break;
     }
@@ -250,10 +303,10 @@ export class GameEngine {
     this.validate(command);
 
     switch (command.kind) {
-      case "CreateGame":
+      case GameCommandKind.CreateGame:
         return [
           {
-            type: "GameCreated",
+            type: GameEventType.GameCreated,
             gameId: command.gameId,
             guildId: command.guildId,
             channelId: command.channelId,
@@ -261,10 +314,10 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
-      case "AddPlayer":
+      case GameCommandKind.AddPlayer:
         return [
           {
-            type: "PlayerAdded",
+            type: GameEventType.PlayerAdded,
             gameId: command.gameId,
             playerId: command.playerId,
             discordUserId: command.discordUserId,
@@ -272,44 +325,44 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
-      case "RemovePlayer":
+      case GameCommandKind.RemovePlayer:
         return [
           {
-            type: "PlayerRemoved",
+            type: GameEventType.PlayerRemoved,
             gameId: command.gameId,
             playerId: command.playerId,
             timestamp: new Date().toISOString(),
           },
         ];
-      case "StartGame":
+      case GameCommandKind.StartGame:
         return [
           {
-            type: "RolesDealt",
+            type: GameEventType.RolesDealt,
             gameId: command.gameId,
             assignments: command.roleAssignments,
             timestamp: new Date().toISOString(),
           },
           {
-            type: "NightStarted",
+            type: GameEventType.NightStarted,
             gameId: command.gameId,
             nightNumber: 1,
             timestamp: new Date().toISOString(),
           },
         ];
-      case "ClearFakePlayers":
+      case GameCommandKind.ClearFakePlayers:
         return this.state.players
           .filter((player) => player.isFake)
           .map((player) => ({
-            type: "PlayerRemoved" as const,
+            type: GameEventType.PlayerRemoved,
             gameId: command.gameId,
             playerId: player.id,
             timestamp: new Date().toISOString(),
           }));
-      case "AdvancePhase":
+      case GameCommandKind.AdvancePhase:
         if (command.targetPhase === "night") {
           return [
             {
-              type: "NightStarted",
+              type: GameEventType.NightStarted,
               gameId: command.gameId,
               nightNumber: this.state.nightNumber + 1,
               timestamp: new Date().toISOString(),
@@ -318,19 +371,28 @@ export class GameEngine {
         }
         return [
           {
-            type: "DayStarted",
+            type: GameEventType.DayStarted,
             gameId: command.gameId,
             dayNumber: this.state.dayNumber + 1,
             timestamp: new Date().toISOString(),
           },
         ];
-      case "EndGame":
+      case GameCommandKind.EndGame:
         return [
           {
-            type: "GameEnded",
+            type: GameEventType.GameEnded,
             gameId: command.gameId,
             winner: command.winner,
             reason: command.reason,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.PromoteStoryteller:
+        return [
+          {
+            type: GameEventType.StorytellerPromoted,
+            gameId: command.gameId,
+            discordUserId: command.discordUserId,
             timestamp: new Date().toISOString(),
           },
         ];
@@ -339,14 +401,14 @@ export class GameEngine {
 
   apply(event: GameEvent): void {
     switch (event.type) {
-      case "GameCreated":
+      case GameEventType.GameCreated:
         this.state.gameId = event.gameId;
         this.state.guildId = event.guildId;
         this.state.channelId = event.channelId;
         this.state.storytellerId = event.storytellerId;
         this.state.phase = "lobby";
         break;
-      case "PlayerAdded":
+      case GameEventType.PlayerAdded:
         this.state.players.push({
           id: event.playerId,
           discordUserId: event.discordUserId,
@@ -357,12 +419,17 @@ export class GameEngine {
           isFake: event.discordUserId.startsWith("dev:"),
         });
         break;
-      case "PlayerRemoved":
+      case GameEventType.PlayerRemoved:
         this.state.players = this.state.players
           .filter((player) => player.id !== event.playerId)
           .map((player, index) => ({ ...player, seat: index + 1 }));
         break;
-      case "RolesDealt":
+      case GameEventType.StorytellerPromoted:
+        if (!this.state.promotedStorytellerIds.includes(event.discordUserId)) {
+          this.state.promotedStorytellerIds.push(event.discordUserId);
+        }
+        break;
+      case GameEventType.RolesDealt:
         for (const assignment of event.assignments) {
           const player = this.state.players.find((p) => p.id === assignment.playerId);
           if (player) {
@@ -370,22 +437,22 @@ export class GameEngine {
           }
         }
         break;
-      case "NightStarted":
+      case GameEventType.NightStarted:
         this.state.phase = "night";
         this.state.nightNumber = event.nightNumber;
         break;
-      case "DayStarted":
+      case GameEventType.DayStarted:
         this.state.phase = "day";
         this.state.dayNumber = event.dayNumber;
         break;
-      case "PlayerDied": {
+      case GameEventType.PlayerDied: {
         const player = this.state.players.find((p) => p.id === event.playerId);
         if (player) {
           player.alive = false;
         }
         break;
       }
-      case "GameEnded":
+      case GameEventType.GameEnded:
         this.state.phase = "ended";
         this.state.winner = event.winner;
         break;

@@ -13,6 +13,7 @@ import { IntentsBitField } from "discord.js";
 import { Client } from "discordx";
 
 import { GameCommands } from "./commands/game.js";
+import { log } from "./logger.js";
 
 void GameCommands;
 
@@ -32,7 +33,7 @@ const client = new Client({
 
 client.once("ready", async () => {
   await client.initApplicationCommands();
-  console.log(`Grimkeeper logged in as ${client.user?.tag}`);
+  log("info", "bot.ready", { tag: client.user?.tag, id: client.user?.id });
 });
 
 client.on("interactionCreate", (interaction) => {

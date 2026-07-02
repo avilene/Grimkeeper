@@ -21,6 +21,7 @@ import {
 import {
   DEV_MIN_PLAYERS,
   DEFAULT_MIN_PLAYERS,
+  GameCommandKind,
   GameEngine,
   GameEngineError,
   dealTroubleBrewingRoles,
@@ -35,7 +36,10 @@ import {
 
 import { canUseBot } from "../access.js";
 import { isDevMode, requireDevMode } from "../dev.js";
+import { logGameEvent } from "../game-events-log.js";
 import { buildRoleDmEmbed, buildRoleEmbed } from "../role-embed.js";
+
+const GAME_DISCORD_ROLES_ENABLED = false;
 
 function resolveRoleQuery(query: string) {
   const normalized = query.trim().toLowerCase();
@@ -66,19 +70,23 @@ export class GameCommands {
     }
 
     const gameId = randomUUID();
-    const gameRoles = await ensureGameRoles(interaction.guild, interaction.channelId);
-    if (!gameRoles) {
-      await interaction.reply({
-        content: "I couldn't create game roles. Check bot permissions (`Manage Roles`).",
-        ephemeral: true,
-      });
-      return;
+    let roleHint = "";
+    if (GAME_DISCORD_ROLES_ENABLED) {
+      const gameRoles = await ensureGameRoles(interaction.guild, interaction.channelId);
+      if (!gameRoles) {
+        await interaction.reply({
+          content: "I couldn't create game roles. Check bot permissions (`Manage Roles`).",
+          ephemeral: true,
+        });
+        return;
+      }
+      await addRoleToUser(interaction.guild, interaction.user.id, gameRoles.stRole.id);
+      roleHint = ` Roles created: <@&${gameRoles.stRole.id}> and <@&${gameRoles.playersRole.id}>.`;
     }
-    await addRoleToUser(interaction.guild, interaction.user.id, gameRoles.stRole.id);
 
     const engine = new GameEngine(gameId);
     const events = engine.handle({
-      kind: "CreateGame",
+      kind: GameCommandKind.CreateGame,
       gameId,
       guildId: interaction.guildId,
       channelId: interaction.channelId,
@@ -94,10 +102,7 @@ export class GameCommands {
       },
     });
 
-    for (const event of events) {
-      engine.apply(event);
-      await appendGameEvent(gameId, event.type, toJson(event));
-    }
+    await persistEvents(engine, events);
 
     const storytellerThread = await createStorytellerThread(interaction, gameId);
     const devHint = isDevMode()
@@ -106,7 +111,6 @@ export class GameCommands {
     const threadHint = storytellerThread
       ? ` Storyteller thread created: ${storytellerThread}.`
       : " I could not create a storyteller thread (missing permissions or unsupported channel type).";
-    const roleHint = ` Roles created: <@&${gameRoles.stRole.id}> and <@&${gameRoles.playersRole.id}>.`;
 
     await interaction.reply({
       embeds: [
@@ -137,7 +141,7 @@ export class GameCommands {
     const engine = await loadEngine(game.id);
     const playerId = randomUUID();
     const events = engine.handle({
-      kind: "AddPlayer",
+      kind: GameCommandKind.AddPlayer,
       gameId: game.id,
       playerId,
       discordUserId: interaction.user.id,
@@ -154,9 +158,11 @@ export class GameCommands {
         seat: engine.getState().players.find((p) => p.id === playerId)?.seat ?? null,
       },
     });
-    const gameRoles = await getGameRoles(interaction.guild, game.channelId);
-    if (gameRoles) {
-      await addRoleToUser(interaction.guild, interaction.user.id, gameRoles.playersRole.id);
+    if (GAME_DISCORD_ROLES_ENABLED) {
+      const gameRoles = await getGameRoles(interaction.guild, game.channelId);
+      if (gameRoles) {
+        await addRoleToUser(interaction.guild, interaction.user.id, gameRoles.playersRole.id);
+      }
     }
     await interaction.reply({
       content: `Joined the game. ${engine.getState().players.length} player(s) in lobby.`,
@@ -189,7 +195,7 @@ export class GameCommands {
 
     try {
       const events = engine.handle({
-        kind: "RemovePlayer",
+        kind: GameCommandKind.RemovePlayer,
         gameId: game.id,
         playerId: player.id,
       });
@@ -197,9 +203,11 @@ export class GameCommands {
       await prisma.player.deleteMany({
         where: { id: player.id, gameId: game.id },
       });
-      const gameRoles = await getGameRoles(interaction.guild, game.channelId);
-      if (gameRoles) {
-        await removeRoleFromUser(interaction.guild, interaction.user.id, gameRoles.playersRole.id);
+      if (GAME_DISCORD_ROLES_ENABLED) {
+        const gameRoles = await getGameRoles(interaction.guild, game.channelId);
+        if (gameRoles) {
+          await removeRoleFromUser(interaction.guild, interaction.user.id, gameRoles.playersRole.id);
+        }
       }
       await interaction.reply({
         content: `You left the lobby. ${engine.getState().players.length} player(s) remain.`,
@@ -249,7 +257,7 @@ export class GameCommands {
       const index = existingFakeCount + i + 1;
       const playerId = randomUUID();
       const events = engine.handle({
-        kind: "AddPlayer",
+        kind: GameCommandKind.AddPlayer,
         gameId: game.id,
         playerId,
         discordUserId: fakePlayerId(game.id, index),
@@ -299,7 +307,7 @@ export class GameCommands {
       return;
     }
 
-    const events = engine.handle({ kind: "ClearFakePlayers", gameId: game.id });
+    const events = engine.handle({ kind: GameCommandKind.ClearFakePlayers, gameId: game.id });
     await persistEvents(engine, events);
     await prisma.player.deleteMany({
       where: { gameId: game.id, discordUserId: { startsWith: "dev:" } },
@@ -332,7 +340,7 @@ export class GameCommands {
         const index = existingFakeCount + i + 1;
         const playerId = randomUUID();
         const events = engine.handle({
-          kind: "AddPlayer",
+          kind: GameCommandKind.AddPlayer,
           gameId: game.id,
           playerId,
           discordUserId: fakePlayerId(game.id, index),
@@ -517,17 +525,35 @@ export class GameCommands {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
 
-    const gameRoles = await getGameRoles(interaction.guild, game.channelId);
-    if (!gameRoles) {
-      await interaction.reply({ content: "Could not find game roles.", ephemeral: true });
-      return;
-    }
+    try {
+      const engine = await loadEngine(game.id);
+      const events = engine.handle({
+        kind: GameCommandKind.PromoteStoryteller,
+        gameId: game.id,
+        discordUserId: user.id,
+      });
+      await persistEvents(engine, events);
 
-    await addRoleToUser(interaction.guild, user.id, gameRoles.stRole.id);
-    await interaction.reply({
-      content: `Promoted <@${user.id}> to <@&${gameRoles.stRole.id}>.`,
-      ephemeral: true,
-    });
+      const thread = await getStorytellerThread(interaction, game.channelId);
+      if (thread) {
+        await thread.members.add(user.id).catch(() => undefined);
+      }
+
+      if (GAME_DISCORD_ROLES_ENABLED) {
+        const gameRoles = await getGameRoles(interaction.guild, game.channelId);
+        if (gameRoles) {
+          await addRoleToUser(interaction.guild, user.id, gameRoles.stRole.id);
+        }
+      }
+
+      const threadHint = thread ? " Added to the storyteller thread." : "";
+      await interaction.reply({
+        content: `Promoted <@${user.id}> to storyteller.${threadHint}`,
+        ephemeral: true,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
   }
 
   @Slash({ name: "ping-players", description: "Ping all players for this game" })
@@ -536,13 +562,23 @@ export class GameCommands {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
 
-    const gameRoles = await getGameRoles(interaction.guild, game.channelId);
-    if (!gameRoles) {
-      await interaction.reply({ content: "Could not find game roles.", ephemeral: true });
+    if (GAME_DISCORD_ROLES_ENABLED) {
+      const gameRoles = await getGameRoles(interaction.guild, game.channelId);
+      if (!gameRoles) {
+        await interaction.reply({ content: "Could not find game roles.", ephemeral: true });
+        return;
+      }
+      await interaction.reply({ content: `<@&${gameRoles.playersRole.id}>` });
       return;
     }
 
-    await interaction.reply({ content: `<@&${gameRoles.playersRole.id}>` });
+    const engine = await loadEngine(game.id);
+    const mentions = engine
+      .getState()
+      .players.filter((player) => !player.isFake)
+      .map((player) => `<@${player.discordUserId}>`)
+      .join(" ");
+    await interaction.reply({ content: mentions || "No players to ping." });
   }
 
   @Slash({ name: "ping-st", description: "Ping storytellers for this game" })
@@ -559,13 +595,14 @@ export class GameCommands {
       return;
     }
 
-    const gameRoles = await getGameRoles(interaction.guild, game.channelId);
-    if (!gameRoles) {
-      await interaction.reply({ content: "Could not find game roles.", ephemeral: true });
-      return;
-    }
-
-    await interaction.reply({ content: `<@&${gameRoles.stRole.id}>` });
+    const engine = await loadEngine(game.id);
+    const mentions = engine
+      .getStorytellerDiscordIds()
+      .map((discordUserId) => `<@${discordUserId}>`)
+      .join(" ");
+    await interaction.reply({
+      content: mentions || "No storytellers found.",
+    });
   }
 
   @Slash({ name: "start", description: "Deal roles and begin night 1" })
@@ -579,7 +616,7 @@ export class GameCommands {
       const playerCount = engine.getState().players.length;
       const roleIds = dealTroubleBrewingRoles(playerCount, { devMode: isDevMode() });
       const events = engine.handle({
-        kind: "StartGame",
+        kind: GameCommandKind.StartGame,
         gameId: game.id,
         roleAssignments: engine.getState().players.map((player, index) => ({
           playerId: player.id,
@@ -639,7 +676,7 @@ export class GameCommands {
 
     try {
       const engine = await loadEngine(game.id);
-      const events = engine.handle({ kind: "AdvancePhase", gameId: game.id, targetPhase: "night" });
+      const events = engine.handle({ kind: GameCommandKind.AdvancePhase, gameId: game.id, targetPhase: "night" });
       await persistEvents(engine, events);
       await syncGameProjection(game.id, engine);
       await interaction.reply({ content: `Night ${engine.getState().nightNumber} started.`, ephemeral: true });
@@ -656,7 +693,7 @@ export class GameCommands {
 
     try {
       const engine = await loadEngine(game.id);
-      const events = engine.handle({ kind: "AdvancePhase", gameId: game.id, targetPhase: "day" });
+      const events = engine.handle({ kind: GameCommandKind.AdvancePhase, gameId: game.id, targetPhase: "day" });
       await persistEvents(engine, events);
       await syncGameProjection(game.id, engine);
       await interaction.reply({ content: `Day ${engine.getState().dayNumber} started.`, ephemeral: true });
@@ -707,11 +744,14 @@ export class GameCommands {
 
     try {
       const engine = await loadEngine(game.id);
-      const events = engine.handle({ kind: "EndGame", gameId: game.id, winner, reason });
+      const events = engine.handle({ kind: GameCommandKind.EndGame, gameId: game.id, winner, reason });
       await persistEvents(engine, events);
       await syncGameProjection(game.id, engine);
-      await cleanupGameRoles(interaction.guild, game.channelId);
-      await interaction.reply({ content: `Game ended. ${winner} wins: ${reason} (game roles cleaned up).` });
+      if (GAME_DISCORD_ROLES_ENABLED) {
+        await cleanupGameRoles(interaction.guild, game.channelId);
+      }
+      const cleanupHint = GAME_DISCORD_ROLES_ENABLED ? " (game roles cleaned up)" : "";
+      await interaction.reply({ content: `Game ended. ${winner} wins: ${reason}${cleanupHint}.` });
     } catch (error) {
       await replyEngineError(interaction, error);
     }
@@ -736,6 +776,7 @@ async function persistEvents(engine: GameEngine, events: ReturnType<GameEngine["
   for (const event of events) {
     engine.apply(event);
     await appendGameEvent(engine.getState().gameId, event.type, toJson(event));
+    logGameEvent(engine, event);
   }
 }
 
@@ -771,10 +812,7 @@ async function requireStorytellerGame(interaction: CommandInteraction) {
   }
 
   const engine = await loadEngine(game.id);
-  const isCreator = engine.getState().storytellerId === interaction.user.id;
-  const gameRoles = await getGameRoles(interaction.guild, game.channelId);
-  const isPromotedSt = await userHasRole(interaction.guild, interaction.user.id, gameRoles?.stRole.id);
-  if (!isCreator && !isPromotedSt) {
+  if (!engine.isStoryteller(interaction.user.id)) {
     await interaction.reply({ content: "Only storytellers can run this command.", ephemeral: true });
     return null;
   }
@@ -862,17 +900,6 @@ async function removeRoleFromUser(guild: Guild | null, userId: string, roleId: s
   const member = await guild.members.fetch(userId).catch(() => null);
   if (!member) return;
   await member.roles.remove(roleId).catch(() => undefined);
-}
-
-async function userHasRole(
-  guild: Guild | null,
-  userId: string,
-  roleId?: string,
-): Promise<boolean> {
-  if (!guild || !roleId) return false;
-  const member = await guild.members.fetch(userId).catch(() => null);
-  if (!member) return false;
-  return member.roles.cache.has(roleId);
 }
 
 async function cleanupGameRoles(guild: Guild | null, channelId: string): Promise<void> {
