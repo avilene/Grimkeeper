@@ -26,7 +26,7 @@ if (!token) {
 
 const client = new Client({
   botId: process.env.DISCORD_CLIENT_ID,
-  intents: [IntentsBitField.Flags.Guilds],
+  intents: [IntentsBitField.Flags.Guilds, IntentsBitField.Flags.GuildMembers],
   silent: false,
   simpleCommand: {
     prefix: "!",

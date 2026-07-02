@@ -7,6 +7,7 @@ import {
   EmbedBuilder,
   Guild,
   MessageFlags,
+  PermissionFlagsBits,
   Role,
   ThreadAutoArchiveDuration,
   User,
@@ -41,6 +42,7 @@ import { logGameEvent } from "../game-events-log.js";
 import { buildRoleDmEmbed, buildRoleEmbed } from "../role-embed.js";
 
 const GAME_DISCORD_ROLES_ENABLED = false;
+const STORYTELLER_THREAD_NAME = "ST and the gang";
 
 function resolveRoleQuery(query: string) {
   const normalized = query.trim().toLowerCase();
@@ -493,8 +495,10 @@ export class GameCommands {
 
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
 
-    const thread = await getStorytellerThread(interaction, game.channelId);
+    const thread = await getStorytellerThread(guild, game.channelId);
     if (!thread) {
       await interaction.reply({
         content: "Could not find a storyteller thread for this game channel.",
@@ -525,6 +529,8 @@ export class GameCommands {
     if (!(await requireCommandAccess(interaction))) return;
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
 
     try {
       const engine = await loadEngine(game.id);
@@ -535,15 +541,15 @@ export class GameCommands {
       });
       await persistEvents(engine, events);
 
-      const thread = await getStorytellerThread(interaction, game.channelId);
+      const thread = await getStorytellerThread(guild, game.channelId);
       if (thread) {
         await thread.members.add(user.id).catch(() => undefined);
       }
 
       if (GAME_DISCORD_ROLES_ENABLED) {
-        const gameRoles = await getGameRoles(interaction.guild, game.channelId);
+        const gameRoles = await getGameRoles(guild, game.channelId);
         if (gameRoles) {
-          await addRoleToUser(interaction.guild, user.id, gameRoles.stRole.id);
+          await addRoleToUser(guild, user.id, gameRoles.stRole.id);
         }
       }
 
@@ -742,6 +748,8 @@ export class GameCommands {
     if (!(await requireCommandAccess(interaction))) return;
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
 
     try {
       const engine = await loadEngine(game.id);
@@ -749,10 +757,24 @@ export class GameCommands {
       await persistEvents(engine, events);
       await syncGameProjection(game.id, engine);
       if (GAME_DISCORD_ROLES_ENABLED) {
-        await cleanupGameRoles(interaction.guild, game.channelId);
+        await cleanupGameRoles(guild, game.channelId);
       }
+      const thread = await openStorytellerThread(
+        guild,
+        game.channelId,
+        [
+          ...engine.getStorytellerDiscordIds(),
+          ...engine
+            .getState()
+            .players.filter((player) => !player.isFake)
+            .map((player) => player.discordUserId),
+        ],
+      );
       const cleanupHint = GAME_DISCORD_ROLES_ENABLED ? " (game roles cleaned up)" : "";
-      await interaction.reply({ content: `Game ended. ${winner} wins: ${reason}${cleanupHint}.` });
+      const threadHint = thread ? ` Post-game discussion: <#${thread.id}>.` : "";
+      await interaction.reply({
+        content: `Game ended. ${winner} wins: ${reason}${cleanupHint}.${threadHint}`,
+      });
     } catch (error) {
       await replyEngineError(interaction, error);
     }
@@ -927,7 +949,7 @@ async function createStorytellerThread(
 
   try {
     const thread = await channel.threads.create({
-      name: "ST and the gang",
+      name: STORYTELLER_THREAD_NAME,
       autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
       reason: `Storyteller thread for game ${gameId}`,
       // discord.js typings can omit these on some channel manager variants.
@@ -989,22 +1011,71 @@ async function createPersonalPlayerThread(
   }
 }
 
+function isStorytellerThread(candidate: AnyThreadChannel, parentChannelId: string): boolean {
+  return candidate.parentId === parentChannelId && candidate.name === STORYTELLER_THREAD_NAME;
+}
+
 async function getStorytellerThread(
-  interaction: CommandInteraction,
+  guild: Guild,
   parentChannelId: string,
 ): Promise<AnyThreadChannel | null> {
-  const guild = interaction.guild;
-  if (!guild) return null;
-
-  const channels = await guild.channels.fetchActiveThreads().catch(() => null);
-  if (!channels) return null;
-
-  const thread = channels.threads.find(
-    (candidate) =>
-      candidate.parentId === parentChannelId &&
-      candidate.name === "ST and the gang",
+  const active = await guild.channels.fetchActiveThreads().catch(() => null);
+  const activeThread = active?.threads.find((candidate) =>
+    isStorytellerThread(candidate, parentChannelId),
   );
-  return thread ?? null;
+  if (activeThread) return activeThread;
+
+  const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
+  if (
+    !parent ||
+    (parent.type !== ChannelType.GuildText && parent.type !== ChannelType.GuildAnnouncement)
+  ) {
+    return null;
+  }
+
+  const archived = await parent.threads.fetchArchived({ type: "private" }).catch(() => null);
+  return archived?.threads.find((candidate) => isStorytellerThread(candidate, parentChannelId)) ?? null;
+}
+
+async function openStorytellerThread(
+  guild: Guild,
+  parentChannelId: string,
+  extraMemberIds: Iterable<string>,
+): Promise<AnyThreadChannel | null> {
+  const thread = await getStorytellerThread(guild, parentChannelId);
+  if (!thread) return null;
+
+  await thread
+    .edit({
+      archived: false,
+      locked: false,
+      invitable: true,
+      reason: "Game ended; opening storyteller thread for post-game discussion.",
+    })
+    .catch(() => undefined);
+
+  const memberIds = new Set(extraMemberIds);
+  const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
+  if (parent) {
+    const members = await guild.members.fetch().catch(() => null);
+    if (members) {
+      for (const member of members.values()) {
+        if (member.user.bot) continue;
+        if (parent.permissionsFor(member)?.has(PermissionFlagsBits.ViewChannel)) {
+          memberIds.add(member.id);
+        }
+      }
+    }
+  }
+
+  for (const userId of memberIds) {
+    await thread.members.add(userId).catch(() => undefined);
+  }
+
+  await thread
+    .send("Game ended — this thread is now open for post-game discussion.")
+    .catch(() => undefined);
+  return thread;
 }
 
 async function replyEngineError(interaction: CommandInteraction, error: unknown): Promise<void> {
