@@ -112,6 +112,11 @@ export interface PlayerState {
   isFake: boolean;
 }
 
+export interface NominationState {
+  nominatorId: string;
+  nomineeId: string;
+}
+
 export interface GameState {
   gameId: string;
   guildId: string;
@@ -123,6 +128,7 @@ export interface GameState {
   nightNumber: number;
   dayNumber: number;
   players: PlayerState[];
+  nominations: NominationState[];
   winner: "good" | "evil" | null;
 }
 
@@ -184,6 +190,13 @@ export interface AdvancePhaseCommand {
   targetPhase: "night" | "day";
 }
 
+export interface MakeNominationCommand {
+  kind: typeof GameCommandKind.MakeNomination;
+  gameId: string;
+  nominatorId: string;
+  nomineeId: string;
+}
+
 export interface EndGameCommand {
   kind: typeof GameCommandKind.EndGame;
   gameId: string;
@@ -207,6 +220,7 @@ export type GameCommand =
   | BeginNightCommand
   | ClearFakePlayersCommand
   | AdvancePhaseCommand
+  | MakeNominationCommand
   | EndGameCommand
   | PromoteStorytellerCommand;
 
@@ -232,6 +246,7 @@ function emptyState(gameId: string): GameState {
     nightNumber: 0,
     dayNumber: 0,
     players: [],
+    nominations: [],
     winner: null,
   };
 }
@@ -270,6 +285,14 @@ export class GameEngine {
 
   isStoryteller(discordUserId: string): boolean {
     return isStoryteller(this.state, discordUserId);
+  }
+
+  getPlayerByDiscordId(discordUserId: string): PlayerState | undefined {
+    return this.state.players.find((player) => player.discordUserId === discordUserId);
+  }
+
+  getPlayerById(playerId: string): PlayerState | undefined {
+    return this.state.players.find((player) => player.id === playerId);
   }
 
   static fromEvents(gameId: string, events: GameEvent[]): GameEngine {
@@ -366,6 +389,22 @@ export class GameEngine {
         }
         if (isStoryteller(this.state, command.discordUserId)) {
           throw new GameEngineError("That user is already a storyteller.");
+        }
+        break;
+      case GameCommandKind.MakeNomination:
+        this.assertPhase("day", "Nominations can only be made during the day.");
+        this.assertAlivePlayer(command.nominatorId, "Only alive players can nominate.");
+        this.assertAlivePlayer(command.nomineeId, "You can only nominate alive players.");
+        if (command.nominatorId === command.nomineeId) {
+          throw new GameEngineError("You cannot nominate yourself.");
+        }
+        if (
+          this.state.nominations.some((nomination) => nomination.nominatorId === command.nominatorId)
+        ) {
+          throw new GameEngineError("You have already made a nomination today.");
+        }
+        if (this.state.nominations.some((nomination) => nomination.nomineeId === command.nomineeId)) {
+          throw new GameEngineError("That player has already been nominated today.");
         }
         break;
     }
@@ -505,6 +544,16 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
+      case GameCommandKind.MakeNomination:
+        return [
+          {
+            type: GameEventType.NominationMade,
+            gameId: command.gameId,
+            nominatorId: command.nominatorId,
+            nomineeId: command.nomineeId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
     }
   }
 
@@ -564,6 +613,13 @@ export class GameEngine {
       case GameEventType.DayStarted:
         this.state.phase = "day";
         this.state.dayNumber = event.dayNumber;
+        this.state.nominations = [];
+        break;
+      case GameEventType.NominationMade:
+        this.state.nominations.push({
+          nominatorId: event.nominatorId,
+          nomineeId: event.nomineeId,
+        });
         break;
       case GameEventType.PlayerDied: {
         const player = this.state.players.find((p) => p.id === event.playerId);
@@ -613,6 +669,22 @@ export class GameEngine {
         throw new GameEngineError("Each role can only be assigned once.");
       }
       roleIds.add(assignment.roleId);
+    }
+  }
+
+  formatNomination(nomination: NominationState): string {
+    const nominator = this.getPlayerById(nomination.nominatorId);
+    const nominee = this.getPlayerById(nomination.nomineeId);
+    return `${nominator?.displayName ?? "Unknown"} nominates ${nominee?.displayName ?? "Unknown"}`;
+  }
+
+  private assertAlivePlayer(playerId: string, message: string): void {
+    const player = this.getPlayerById(playerId);
+    if (!player) {
+      throw new GameEngineError("Player is not in this game.");
+    }
+    if (!player.alive) {
+      throw new GameEngineError(message);
     }
   }
 

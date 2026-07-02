@@ -877,10 +877,104 @@ export class GameCommands {
       const events = engine.handle({ kind: GameCommandKind.AdvancePhase, gameId: game.id, targetPhase: "day" });
       await persistEvents(engine, events);
       await syncGameProjection(game.id, engine);
-      await interaction.reply({ content: `Day ${engine.getState().dayNumber} started.`, flags: MessageFlags.Ephemeral });
+      await interaction.reply({
+        content: `Day ${engine.getState().dayNumber} started. Players can nominate with \`/game nominate\`.`,
+        flags: MessageFlags.Ephemeral,
+      });
     } catch (error) {
       await replyEngineError(interaction, error);
     }
+  }
+
+  @Slash({ name: "nominate", description: "Nominate another player for execution" })
+  async nominate(
+    @SlashOption({
+      name: "player",
+      description: "Player to nominate",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    nominee: User,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+
+    const context = await requireActivePlayerGame(interaction);
+    if (!context) return;
+
+    const { game, engine, player: nominator } = context;
+    const target = engine.getPlayerByDiscordId(nominee.id);
+    if (!target) {
+      await interaction.reply({
+        content: "That user is not in this game.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      const events = engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId: game.id,
+        nominatorId: nominator.id,
+        nomineeId: target.id,
+      });
+      await persistEvents(engine, events);
+
+      await interaction.reply({
+        content: `<@${nominator.discordUserId}> nominates <@${target.discordUserId}> for execution.`,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "nominations", description: "List nominations for the current day" })
+  async nominations(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    if (!interaction.guildId) {
+      await interaction.reply({ content: "This command must be used in a server.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const game = await getActiveGameForGuild(interaction.guildId);
+    if (!game) {
+      await interaction.reply({ content: "No active game found.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const engine = await loadEngine(game.id);
+    const state = engine.getState();
+    if (state.phase !== "day") {
+      await interaction.reply({
+        content: "There is no open nomination phase right now.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (state.nominations.length === 0) {
+      await interaction.reply({
+        content: `Day ${state.dayNumber}: no nominations yet.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const lines = state.nominations.map((nomination) => {
+      const nominator = engine.getPlayerById(nomination.nominatorId);
+      const nominee = engine.getPlayerById(nomination.nomineeId);
+      return `<@${nominator?.discordUserId ?? "unknown"}> → <@${nominee?.discordUserId ?? "unknown"}>`;
+    });
+
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle(`Day ${state.dayNumber} nominations`)
+          .setDescription(lines.join("\n")),
+      ],
+    });
   }
 
   @Slash({ name: "grim-reveal", description: "Show end-of-game role reveal" })
@@ -1090,6 +1184,28 @@ async function requireStorytellerGame(interaction: CommandInteraction) {
   }
 
   return game;
+}
+
+async function requireActivePlayerGame(interaction: CommandInteraction) {
+  if (!interaction.guildId) {
+    await interaction.reply({ content: "This command must be used in a server.", flags: MessageFlags.Ephemeral });
+    return null;
+  }
+
+  const game = await getActiveGameForGuild(interaction.guildId);
+  if (!game) {
+    await interaction.reply({ content: "No active game found.", flags: MessageFlags.Ephemeral });
+    return null;
+  }
+
+  const engine = await loadEngine(game.id);
+  const player = engine.getPlayerByDiscordId(interaction.user.id);
+  if (!player) {
+    await interaction.reply({ content: "You are not in this game.", flags: MessageFlags.Ephemeral });
+    return null;
+  }
+
+  return { game, engine, player };
 }
 
 async function requireCommandAccess(interaction: CommandInteraction): Promise<boolean> {

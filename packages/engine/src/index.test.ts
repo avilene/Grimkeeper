@@ -219,4 +219,88 @@ describe("GameEngine", () => {
       }),
     ).toThrow("already a storyteller");
   });
+
+  it("records nominations during the day", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const [nominator, nominee] = engine.getState().players;
+    const events = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: nominator!.id,
+      nomineeId: nominee!.id,
+    });
+    for (const event of events) engine.apply(event);
+
+    expect(engine.getState().nominations).toHaveLength(1);
+    expect(engine.formatNomination(engine.getState().nominations[0]!)).toContain("nominates");
+  });
+
+  it("clears nominations when a new day starts", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const [nominator, nominee] = engine.getState().players;
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: nominator!.id,
+      nomineeId: nominee!.id,
+    });
+    for (const event of nominationEvents) engine.apply(event);
+
+    engine.apply({
+      type: GameEventType.NightStarted,
+      gameId,
+      nightNumber: 2,
+      timestamp: new Date().toISOString(),
+    });
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 2,
+      timestamp: new Date().toISOString(),
+    });
+
+    expect(engine.getState().nominations).toHaveLength(0);
+  });
+
+  it("rejects duplicate nominations", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const players = engine.getState().players;
+    const first = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+    });
+    for (const event of first) engine.apply(event);
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId,
+        nominatorId: players[2]!.id,
+        nomineeId: players[1]!.id,
+      }),
+    ).toThrow("already been nominated");
+  });
 });
