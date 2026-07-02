@@ -9,6 +9,9 @@ export const GameCommandKind = {
   ClearFakePlayers: "ClearFakePlayers",
   AdvancePhase: "AdvancePhase",
   MakeNomination: "MakeNomination",
+  OpenSeats: "OpenSeats",
+  CloseSeats: "CloseSeats",
+  PickSeat: "PickSeat",
   EndGame: "EndGame",
   PromoteStoryteller: "PromoteStoryteller",
 } as const;

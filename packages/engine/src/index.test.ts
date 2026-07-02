@@ -276,6 +276,63 @@ describe("GameEngine", () => {
     expect(engine.getState().nominations).toHaveLength(0);
   });
 
+  it("clears seats when the game starts", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    expect(engine.getState().players.every((player) => player.seat !== null)).toBe(true);
+
+    const events = engine.handle({ kind: GameCommandKind.StartGame, gameId, minPlayers: 5 });
+    for (const event of events) engine.apply(event);
+
+    expect(engine.getState().phase).toBe("setup");
+    expect(engine.getState().players.every((player) => player.seat === null)).toBe(true);
+    expect(engine.getState().seatsOpen).toBe(false);
+  });
+
+  it("lets players pick seats when the storyteller opens selection", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.GameStarted,
+      gameId,
+      timestamp: new Date().toISOString(),
+    });
+    engine.apply({
+      type: GameEventType.SeatsOpened,
+      gameId,
+      timestamp: new Date().toISOString(),
+    });
+
+    const player = engine.getState().players[0]!;
+    const events = engine.handle({
+      kind: GameCommandKind.PickSeat,
+      gameId,
+      playerId: player.id,
+      seat: 3,
+    });
+    for (const event of events) engine.apply(event);
+
+    expect(engine.getState().players[0]?.seat).toBe(3);
+    expect(engine.getSeatingChart()[2]).toContain(player.displayName);
+  });
+
+  it("rejects picking a seat when selection is closed", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.GameStarted,
+      gameId,
+      timestamp: new Date().toISOString(),
+    });
+
+    const player = engine.getState().players[0]!;
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.PickSeat,
+        gameId,
+        playerId: player.id,
+        seat: 1,
+      }),
+    ).toThrow("not open");
+  });
+
   it("rejects duplicate nominations", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(5));
     engine.apply({

@@ -49,6 +49,12 @@ function eventFields(event: GameEvent): Record<string, unknown> {
       return { playerId: event.playerId, cause: event.cause };
     case GameEventType.NominationMade:
       return { nominatorId: event.nominatorId, nomineeId: event.nomineeId };
+    case GameEventType.SeatsOpened:
+      return {};
+    case GameEventType.SeatsClosed:
+      return {};
+    case GameEventType.SeatPicked:
+      return { playerId: event.playerId, seat: event.seat };
   }
 }
 

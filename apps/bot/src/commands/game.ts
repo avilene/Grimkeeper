@@ -661,10 +661,23 @@ export class GameCommands {
       await syncGameProjection(game.id, engine);
 
       const script = engine.getState().script;
+      const guild = interaction.guild;
+      const threadSummary =
+        guild ? await ensureGameThreads(interaction, guild, game, engine) : null;
+
+      const threadHint = threadSummary
+        ? ` ST thread: ${threadSummary.stThread ? `<#${threadSummary.stThread.id}>` : "unavailable"}. Player threads: ${threadSummary.playerThreadsCreated} created${threadSummary.playerThreadsFailed > 0 ? `, ${threadSummary.playerThreadsFailed} failed` : ""}.`
+        : "";
+
+      if (guild && threadSummary?.stThread) {
+        await postSetupChecklist(threadSummary.stThread, engine.getState().players.length);
+      }
+
       await interaction.reply({
         content:
-          `Setup started for **${script?.name ?? "your script"}**. ` +
-          "Configure the grimoire with `/game grim-setup`, `/game deal`, or `/game assign` + `/game begin-night`.",
+          `Setup started for **${script?.name ?? "your script"}**.` +
+          threadHint +
+          " See the storyteller thread for setup steps. Open seat selection with `/game open-seats` when ready.",
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -715,6 +728,158 @@ export class GameCommands {
     await interaction.reply({
       content: "Posted grimoire setup details to the storyteller thread.",
       flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({ name: "open-seats", description: "Open seat selection for players (storyteller)" })
+  async openSeats(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const events = engine.handle({ kind: GameCommandKind.OpenSeats, gameId: game.id });
+      await persistEvents(engine, events);
+
+      const playerCount = engine.getState().players.length;
+      const stEmbed = new EmbedBuilder()
+        .setTitle("Seat selection open")
+        .setDescription(
+          `Players can now run \`/game seat\` to claim seats **1–${playerCount}**.\n\nWhen everyone is seated, run \`/game close-seats\` to lock seating and announce it in town.`,
+        )
+        .addFields({ name: "Current seating", value: engine.getSeatingChart().join("\n") });
+
+      const townEmbed = new EmbedBuilder()
+        .setTitle("Pick your seat")
+        .setDescription(
+          `The storyteller has opened seat selection. Players, use \`/game seat\` to choose a seat **(1–${playerCount})** in this channel.`,
+        );
+
+      await postToStorytellerThread(guild, game.channelId, { embeds: [stEmbed] });
+      await postToTownChannel(guild, game.channelId, { embeds: [townEmbed] });
+
+      await interaction.reply({
+        content: "Seat selection is open. Players have been notified in town.",
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "close-seats", description: "Close seat selection and announce seating in town" })
+  async closeSeats(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const events = engine.handle({ kind: GameCommandKind.CloseSeats, gameId: game.id });
+      await persistEvents(engine, events);
+      await syncGameProjection(game.id, engine);
+
+      const seatingLines = engine.getSeatingChart();
+      const allSeated = engine.allPlayersSeated();
+      const townEmbed = new EmbedBuilder()
+        .setTitle("Seating")
+        .setDescription(seatingLines.join("\n"))
+        .setFooter({
+          text: allSeated
+            ? "Seat selection is closed."
+            : "Seat selection is closed. Some players are still unseated.",
+        });
+
+      await postToStorytellerThread(guild, game.channelId, { embeds: [townEmbed] });
+      await postToTownChannel(guild, game.channelId, { embeds: [townEmbed] });
+
+      await interaction.reply({
+        content: allSeated
+          ? "Seat selection closed. Seating announced in town."
+          : "Seat selection closed, but some players are still unseated.",
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "seat", description: "Pick your seat during setup" })
+  async seat(
+    @SlashOption({
+      name: "number",
+      description: "Seat number to take",
+      type: ApplicationCommandOptionType.Integer,
+      required: true,
+      minValue: 1,
+      maxValue: 15,
+    })
+    seatNumber: number,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+
+    const context = await requireActivePlayerGame(interaction);
+    if (!context) return;
+
+    const { game, engine, player } = context;
+
+    try {
+      const events = engine.handle({
+        kind: GameCommandKind.PickSeat,
+        gameId: game.id,
+        playerId: player.id,
+        seat: seatNumber,
+      });
+      await persistEvents(engine, events);
+      await syncGameProjection(game.id, engine);
+
+      await interaction.reply({
+        content: `You are seated at **seat ${seatNumber}**.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "seats", description: "Show the current seating chart" })
+  async seats(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    if (!interaction.guildId) {
+      await interaction.reply({ content: "This command must be used in a server.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const game = await getActiveGameForGuild(interaction.guildId);
+    if (!game) {
+      await interaction.reply({ content: "No active game found.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const engine = await loadEngine(game.id);
+    const state = engine.getState();
+    if (state.phase === "lobby") {
+      await interaction.reply({
+        content: "Seating opens after `/game start`.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const status = state.seatsOpen ? "Seat selection is **open**." : "Seat selection is **closed**.";
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("Seating")
+          .setDescription(`${status}\n\n${engine.getSeatingChart().join("\n")}`),
+      ],
     });
   }
 
@@ -1103,7 +1268,7 @@ async function deliverRolesToPlayers(
       continue;
     }
 
-    const playerThread = await createPersonalPlayerThread(
+    const playerThread = await getOrCreatePersonalPlayerThread(
       interaction,
       game.id,
       game.channelId,
@@ -1300,38 +1465,191 @@ async function cleanupGameRoles(guild: Guild | null, channelId: string): Promise
   await roles.stRole.delete("Grimkeeper game ended; cleanup game roles.").catch(() => undefined);
 }
 
+async function postToTownChannel(
+  guild: Guild,
+  channelId: string,
+  payload: { content?: string; embeds?: EmbedBuilder[] },
+): Promise<void> {
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel?.isTextBased()) return;
+  await channel.send(payload).catch(() => undefined);
+}
+
+async function postToStorytellerThread(
+  guild: Guild,
+  parentChannelId: string,
+  payload: { content?: string; embeds?: EmbedBuilder[] },
+): Promise<void> {
+  const thread = await getStorytellerThread(guild, parentChannelId);
+  if (!thread) return;
+  await thread.send(payload).catch(() => undefined);
+}
+
+async function postSetupChecklist(
+  stThread: AnyThreadChannel,
+  playerCount: number,
+): Promise<void> {
+  await stThread
+    .send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("Setup checklist")
+          .setDescription(
+            [
+              `1. \`/game open-seats\` — players pick seats 1–${playerCount} (announced in town)`,
+              "2. `/game close-seats` — lock seating and post the chart in town",
+              "3. `/game grim-setup` — review script and composition",
+              "4. `/game deal` or `/game assign` + `/game begin-night` — grimoire and night 1",
+            ].join("\n"),
+          ),
+      ],
+    })
+    .catch(() => undefined);
+}
+
+async function ensureGameThreads(
+  interaction: CommandInteraction,
+  guild: Guild,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+): Promise<{
+  stThread: AnyThreadChannel | null;
+  playerThreadsCreated: number;
+  playerThreadsFailed: number;
+}> {
+  const stThread = await ensureStorytellerThread(
+    guild,
+    game.channelId,
+    game.id,
+    engine.getStorytellerDiscordIds(),
+  );
+
+  let playerThreadsCreated = 0;
+  let playerThreadsFailed = 0;
+  for (const player of engine.getState().players) {
+    if (isFakePlayer(player.discordUserId)) continue;
+    const thread = await getOrCreatePersonalPlayerThread(
+      interaction,
+      game.id,
+      game.channelId,
+      player.discordUserId,
+      player.displayName,
+    );
+    if (thread) playerThreadsCreated++;
+    else playerThreadsFailed++;
+  }
+
+  return { stThread, playerThreadsCreated, playerThreadsFailed };
+}
+
+function personalPlayerThreadName(gameId: string, displayName: string): string {
+  const sanitized = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const shortGameId = gameId.slice(0, 6);
+  return `player-${sanitized || "member"}-${shortGameId}`.slice(0, 100);
+}
+
+function isGameTextChannel(
+  channel: { type: ChannelType } | null,
+): channel is { type: ChannelType.GuildText | ChannelType.GuildAnnouncement; threads: { create: (...args: never[]) => Promise<AnyThreadChannel> } } {
+  return (
+    channel !== null &&
+    (channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement)
+  );
+}
+
+async function findPersonalPlayerThread(
+  guild: Guild,
+  parentChannelId: string,
+  gameId: string,
+  displayName: string,
+): Promise<AnyThreadChannel | null> {
+  const threadName = personalPlayerThreadName(gameId, displayName);
+  const active = await guild.channels.fetchActiveThreads().catch(() => null);
+  const activeThread = active?.threads.find(
+    (candidate) => candidate.parentId === parentChannelId && candidate.name === threadName,
+  );
+  if (activeThread) return activeThread;
+
+  const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
+  if (!isGameTextChannel(parent)) return null;
+
+  const archived = await parent.threads.fetchArchived({ type: "private" }).catch(() => null);
+  return archived?.threads.find((candidate) => candidate.name === threadName) ?? null;
+}
+
+async function ensureStorytellerThread(
+  guild: Guild,
+  parentChannelId: string,
+  gameId: string,
+  storytellerDiscordIds: string[],
+): Promise<AnyThreadChannel | null> {
+  let thread = await getStorytellerThread(guild, parentChannelId);
+  if (!thread) {
+    const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
+    if (!isGameTextChannel(parent)) return null;
+
+    try {
+      thread = await parent.threads.create({
+        name: STORYTELLER_THREAD_NAME,
+        autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+        reason: `Storyteller thread for game ${gameId}`,
+        ...( {
+          type: ChannelType.PrivateThread,
+          invitable: false,
+        } as Record<string, unknown>),
+      });
+      await thread
+        .send(
+          "Storyteller thread ready. Use this space for private narration and spectator discussion.",
+        )
+        .catch(() => undefined);
+    } catch {
+      return null;
+    }
+  }
+
+  if (thread.archived) {
+    await thread.setArchived(false, "Game started; reopening storyteller thread.").catch(() => undefined);
+  }
+
+  for (const discordUserId of storytellerDiscordIds) {
+    await thread.members.add(discordUserId).catch(() => undefined);
+  }
+
+  return thread;
+}
+
+async function getOrCreatePersonalPlayerThread(
+  interaction: CommandInteraction,
+  gameId: string,
+  parentChannelId: string,
+  userId: string,
+  displayName: string,
+): Promise<AnyThreadChannel | null> {
+  const guild = interaction.guild;
+  if (!guild) return null;
+
+  const existing = await findPersonalPlayerThread(guild, parentChannelId, gameId, displayName);
+  if (existing) {
+    if (existing.archived) {
+      await existing.setArchived(false, "Game in progress; reopening player thread.").catch(() => undefined);
+    }
+    await existing.members.add(userId).catch(() => undefined);
+    return existing;
+  }
+
+  return createPersonalPlayerThread(interaction, gameId, parentChannelId, userId, displayName);
+}
 async function createStorytellerThread(
   interaction: CommandInteraction,
   gameId: string,
 ): Promise<string | null> {
-  const channel = interaction.channel;
-  if (
-    !channel ||
-    (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)
-  ) {
-    return null;
-  }
+  const guild = interaction.guild;
+  const channelId = interaction.channelId;
+  if (!guild || !channelId) return null;
 
-  try {
-    const thread = await channel.threads.create({
-      name: STORYTELLER_THREAD_NAME,
-      autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
-      reason: `Storyteller thread for game ${gameId}`,
-      // discord.js typings can omit these on some channel manager variants.
-      ...( {
-        type: ChannelType.PrivateThread,
-        invitable: false,
-      } as Record<string, unknown>),
-    });
-
-    await thread.members.add(interaction.user.id).catch(() => undefined);
-    await thread.send(
-      "Storyteller thread ready. Use this space for private narration and spectator discussion.",
-    );
-    return `<#${thread.id}>`;
-  } catch {
-    return null;
-  }
+  const thread = await ensureStorytellerThread(guild, channelId, gameId, [interaction.user.id]);
+  return thread ? `<#${thread.id}>` : null;
 }
 
 async function createPersonalPlayerThread(
@@ -1351,9 +1669,7 @@ async function createPersonalPlayerThread(
     return null;
   }
 
-  const sanitized = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const shortGameId = gameId.slice(0, 6);
-  const threadName = `player-${sanitized || "member"}-${shortGameId}`.slice(0, 100);
+  const threadName = personalPlayerThreadName(gameId, displayName);
 
   try {
     const thread = await parent.threads.create({

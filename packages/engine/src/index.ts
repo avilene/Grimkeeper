@@ -72,6 +72,20 @@ export interface NominationMadeEvent extends GameEventBase {
   nomineeId: string;
 }
 
+export interface SeatPickedEvent extends GameEventBase {
+  type: typeof GameEventType.SeatPicked;
+  playerId: string;
+  seat: number;
+}
+
+export interface SeatsOpenedEvent extends GameEventBase {
+  type: typeof GameEventType.SeatsOpened;
+}
+
+export interface SeatsClosedEvent extends GameEventBase {
+  type: typeof GameEventType.SeatsClosed;
+}
+
 export interface GameEndedEvent extends GameEventBase {
   type: typeof GameEventType.GameEnded;
   winner: "good" | "evil";
@@ -100,6 +114,9 @@ export type GameEvent =
   | DayStartedEvent
   | PlayerDiedEvent
   | NominationMadeEvent
+  | SeatsOpenedEvent
+  | SeatsClosedEvent
+  | SeatPickedEvent
   | GameEndedEvent;
 
 export interface PlayerState {
@@ -129,6 +146,7 @@ export interface GameState {
   dayNumber: number;
   players: PlayerState[];
   nominations: NominationState[];
+  seatsOpen: boolean;
   winner: "good" | "evil" | null;
 }
 
@@ -197,6 +215,23 @@ export interface MakeNominationCommand {
   nomineeId: string;
 }
 
+export interface PickSeatCommand {
+  kind: typeof GameCommandKind.PickSeat;
+  gameId: string;
+  playerId: string;
+  seat: number;
+}
+
+export interface OpenSeatsCommand {
+  kind: typeof GameCommandKind.OpenSeats;
+  gameId: string;
+}
+
+export interface CloseSeatsCommand {
+  kind: typeof GameCommandKind.CloseSeats;
+  gameId: string;
+}
+
 export interface EndGameCommand {
   kind: typeof GameCommandKind.EndGame;
   gameId: string;
@@ -221,6 +256,9 @@ export type GameCommand =
   | ClearFakePlayersCommand
   | AdvancePhaseCommand
   | MakeNominationCommand
+  | OpenSeatsCommand
+  | CloseSeatsCommand
+  | PickSeatCommand
   | EndGameCommand
   | PromoteStorytellerCommand;
 
@@ -247,6 +285,7 @@ function emptyState(gameId: string): GameState {
     dayNumber: 0,
     players: [],
     nominations: [],
+    seatsOpen: false,
     winner: null,
   };
 }
@@ -407,6 +446,35 @@ export class GameEngine {
           throw new GameEngineError("That player has already been nominated today.");
         }
         break;
+      case GameCommandKind.OpenSeats:
+        this.assertPhase("setup", "Seats can only be opened during setup.");
+        if (this.state.seatsOpen) {
+          throw new GameEngineError("Seat selection is already open.");
+        }
+        break;
+      case GameCommandKind.CloseSeats:
+        this.assertPhase("setup", "Seats can only be closed during setup.");
+        if (!this.state.seatsOpen) {
+          throw new GameEngineError("Seat selection is not open.");
+        }
+        break;
+      case GameCommandKind.PickSeat:
+        this.assertPhase("setup", "Seats can only be picked during setup.");
+        if (!this.state.seatsOpen) {
+          throw new GameEngineError("Seat selection is not open yet. Wait for the storyteller.");
+        }
+        if (!this.state.players.some((player) => player.id === command.playerId)) {
+          throw new GameEngineError("Player is not in this game.");
+        }
+        this.assertValidSeatNumber(command.seat);
+        if (
+          this.state.players.some(
+            (player) => player.id !== command.playerId && player.seat === command.seat,
+          )
+        ) {
+          throw new GameEngineError("That seat is already taken.");
+        }
+        break;
     }
   }
 
@@ -554,6 +622,32 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
+      case GameCommandKind.OpenSeats:
+        return [
+          {
+            type: GameEventType.SeatsOpened,
+            gameId: command.gameId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.CloseSeats:
+        return [
+          {
+            type: GameEventType.SeatsClosed,
+            gameId: command.gameId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.PickSeat:
+        return [
+          {
+            type: GameEventType.SeatPicked,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            seat: command.seat,
+            timestamp: new Date().toISOString(),
+          },
+        ];
     }
   }
 
@@ -581,7 +675,10 @@ export class GameEngine {
       case GameEventType.PlayerRemoved:
         this.state.players = this.state.players
           .filter((player) => player.id !== event.playerId)
-          .map((player, index) => ({ ...player, seat: index + 1 }));
+          .map((player, index) => ({
+            ...player,
+            seat: this.state.phase === "lobby" ? index + 1 : player.seat,
+          }));
         break;
       case GameEventType.StorytellerPromoted:
         if (!this.state.promotedStorytellerIds.includes(event.discordUserId)) {
@@ -590,6 +687,10 @@ export class GameEngine {
         break;
       case GameEventType.GameStarted:
         this.state.phase = "setup";
+        this.state.seatsOpen = false;
+        for (const player of this.state.players) {
+          player.seat = null;
+        }
         break;
       case GameEventType.RoleAssigned: {
         const player = this.state.players.find((candidate) => candidate.id === event.playerId);
@@ -621,6 +722,19 @@ export class GameEngine {
           nomineeId: event.nomineeId,
         });
         break;
+      case GameEventType.SeatsOpened:
+        this.state.seatsOpen = true;
+        break;
+      case GameEventType.SeatsClosed:
+        this.state.seatsOpen = false;
+        break;
+      case GameEventType.SeatPicked: {
+        const player = this.state.players.find((candidate) => candidate.id === event.playerId);
+        if (player) {
+          player.seat = event.seat;
+        }
+        break;
+      }
       case GameEventType.PlayerDied: {
         const player = this.state.players.find((p) => p.id === event.playerId);
         if (player) {
@@ -676,6 +790,34 @@ export class GameEngine {
     const nominator = this.getPlayerById(nomination.nominatorId);
     const nominee = this.getPlayerById(nomination.nomineeId);
     return `${nominator?.displayName ?? "Unknown"} nominates ${nominee?.displayName ?? "Unknown"}`;
+  }
+
+  getSeatingChart(): string[] {
+    const seatCount = this.state.players.length;
+    const lines: string[] = [];
+
+    for (let seat = 1; seat <= seatCount; seat++) {
+      const occupant = this.state.players.find((player) => player.seat === seat);
+      lines.push(`Seat ${seat}: ${occupant?.displayName ?? "—"}`);
+    }
+
+    const unseated = this.state.players.filter((player) => player.seat === null);
+    if (unseated.length > 0) {
+      lines.push(`Unseated: ${unseated.map((player) => player.displayName).join(", ")}`);
+    }
+
+    return lines;
+  }
+
+  allPlayersSeated(): boolean {
+    return this.state.players.every((player) => player.seat !== null);
+  }
+
+  private assertValidSeatNumber(seat: number): void {
+    const seatCount = this.state.players.length;
+    if (!Number.isInteger(seat) || seat < 1 || seat > seatCount) {
+      throw new GameEngineError(`Seat must be between 1 and ${seatCount}.`);
+    }
   }
 
   private assertAlivePlayer(playerId: string, message: string): void {

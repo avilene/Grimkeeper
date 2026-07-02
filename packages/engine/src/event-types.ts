@@ -10,6 +10,9 @@ export const GameEventType = {
   DayStarted: "DayStarted",
   PlayerDied: "PlayerDied",
   NominationMade: "NominationMade",
+  SeatsOpened: "SeatsOpened",
+  SeatsClosed: "SeatsClosed",
+  SeatPicked: "SeatPicked",
   GameEnded: "GameEnded",
 } as const;
 
