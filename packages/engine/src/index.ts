@@ -111,6 +111,12 @@ export interface AddPlayerCommand {
   displayName: string;
 }
 
+export interface RemovePlayerCommand {
+  kind: "RemovePlayer";
+  gameId: string;
+  playerId: string;
+}
+
 export interface StartGameCommand {
   kind: "StartGame";
   gameId: string;
@@ -139,6 +145,7 @@ export interface EndGameCommand {
 export type GameCommand =
   | CreateGameCommand
   | AddPlayerCommand
+  | RemovePlayerCommand
   | StartGameCommand
   | ClearFakePlayersCommand
   | AdvancePhaseCommand
@@ -200,6 +207,12 @@ export class GameEngine {
           throw new GameEngineError("Player already joined.");
         }
         break;
+      case "RemovePlayer":
+        this.assertPhase("lobby", "Players can only leave during the lobby.");
+        if (!this.state.players.some((p) => p.id === command.playerId)) {
+          throw new GameEngineError("Player is not in this game.");
+        }
+        break;
       case "StartGame": {
         this.assertPhase("lobby", "Game can only start from the lobby.");
         const minPlayers = command.minPlayers ?? DEFAULT_MIN_PLAYERS;
@@ -256,6 +269,15 @@ export class GameEngine {
             playerId: command.playerId,
             discordUserId: command.discordUserId,
             displayName: command.displayName,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case "RemovePlayer":
+        return [
+          {
+            type: "PlayerRemoved",
+            gameId: command.gameId,
+            playerId: command.playerId,
             timestamp: new Date().toISOString(),
           },
         ];

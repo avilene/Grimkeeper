@@ -115,6 +115,25 @@ describe("GameEngine", () => {
     expect(engine.getState().players[0]?.isFake).toBe(false);
   });
 
+  it("allows a player to leave the lobby", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(3));
+    const leavingPlayer = engine.getState().players[1]!;
+    const emitted = engine.handle({
+      kind: "RemovePlayer",
+      gameId,
+      playerId: leavingPlayer.id,
+    });
+    for (const event of emitted) {
+      engine.apply(event);
+    }
+
+    const state = engine.getState();
+    expect(state.players).toHaveLength(2);
+    expect(state.players.some((player) => player.id === leavingPlayer.id)).toBe(false);
+    expect(state.players[0]?.seat).toBe(1);
+    expect(state.players[1]?.seat).toBe(2);
+  });
+
   it("allows dev min players when starting", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(3));
     const emitted = engine.handle({

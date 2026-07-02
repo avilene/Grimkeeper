@@ -5,6 +5,8 @@ import {
   ChannelType,
   CommandInteraction,
   EmbedBuilder,
+  Guild,
+  Role,
   ThreadAutoArchiveDuration,
   User,
 } from "discord.js";
@@ -64,6 +66,16 @@ export class GameCommands {
     }
 
     const gameId = randomUUID();
+    const gameRoles = await ensureGameRoles(interaction.guild, interaction.channelId);
+    if (!gameRoles) {
+      await interaction.reply({
+        content: "I couldn't create game roles. Check bot permissions (`Manage Roles`).",
+        ephemeral: true,
+      });
+      return;
+    }
+    await addRoleToUser(interaction.guild, interaction.user.id, gameRoles.stRole.id);
+
     const engine = new GameEngine(gameId);
     const events = engine.handle({
       kind: "CreateGame",
@@ -94,13 +106,14 @@ export class GameCommands {
     const threadHint = storytellerThread
       ? ` Storyteller thread created: ${storytellerThread}.`
       : " I could not create a storyteller thread (missing permissions or unsupported channel type).";
+    const roleHint = ` Roles created: <@&${gameRoles.stRole.id}> and <@&${gameRoles.playersRole.id}>.`;
 
     await interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setTitle("Grimkeeper game created")
           .setDescription(
-            `Players can join with \`/game join\`. Storyteller can start once there are at least ${minPlayers()} players.${threadHint}${devHint}`,
+            `Players can join with \`/game join\`. Storyteller can start once there are at least ${minPlayers()} players.${roleHint}${threadHint}${devHint}`,
           )
           .addFields({ name: "Game ID", value: gameId }),
       ],
@@ -141,11 +154,60 @@ export class GameCommands {
         seat: engine.getState().players.find((p) => p.id === playerId)?.seat ?? null,
       },
     });
-
+    const gameRoles = await getGameRoles(interaction.guild, game.channelId);
+    if (gameRoles) {
+      await addRoleToUser(interaction.guild, interaction.user.id, gameRoles.playersRole.id);
+    }
     await interaction.reply({
       content: `Joined the game. ${engine.getState().players.length} player(s) in lobby.`,
       ephemeral: true,
     });
+  }
+
+  @Slash({ name: "leave", description: "Leave the active game lobby" })
+  async leave(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    if (!interaction.guildId) {
+      await interaction.reply({ content: "This command must be used in a server.", ephemeral: true });
+      return;
+    }
+
+    const game = await getActiveGameForGuild(interaction.guildId);
+    if (!game) {
+      await interaction.reply({ content: "No active game found.", ephemeral: true });
+      return;
+    }
+
+    const engine = await loadEngine(game.id);
+    const player = engine
+      .getState()
+      .players.find((candidate) => candidate.discordUserId === interaction.user.id);
+    if (!player) {
+      await interaction.reply({ content: "You are not currently in this game's lobby.", ephemeral: true });
+      return;
+    }
+
+    try {
+      const events = engine.handle({
+        kind: "RemovePlayer",
+        gameId: game.id,
+        playerId: player.id,
+      });
+      await persistEvents(engine, events);
+      await prisma.player.deleteMany({
+        where: { id: player.id, gameId: game.id },
+      });
+      const gameRoles = await getGameRoles(interaction.guild, game.channelId);
+      if (gameRoles) {
+        await removeRoleFromUser(interaction.guild, interaction.user.id, gameRoles.playersRole.id);
+      }
+      await interaction.reply({
+        content: `You left the lobby. ${engine.getState().players.length} player(s) remain.`,
+        ephemeral: true,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
   }
 
   @Slash({ name: "dev-fill", description: "[Dev] Add fake players to the lobby" })
@@ -439,6 +501,73 @@ export class GameCommands {
     });
   }
 
+  @Slash({ name: "promote-st", description: "Promote a user to storyteller for this game" })
+  async promoteSt(
+    @SlashOption({
+      name: "user",
+      description: "User to promote",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    user: User,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    const gameRoles = await getGameRoles(interaction.guild, game.channelId);
+    if (!gameRoles) {
+      await interaction.reply({ content: "Could not find game roles.", ephemeral: true });
+      return;
+    }
+
+    await addRoleToUser(interaction.guild, user.id, gameRoles.stRole.id);
+    await interaction.reply({
+      content: `Promoted <@${user.id}> to <@&${gameRoles.stRole.id}>.`,
+      ephemeral: true,
+    });
+  }
+
+  @Slash({ name: "ping-players", description: "Ping all players for this game" })
+  async pingPlayers(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    const gameRoles = await getGameRoles(interaction.guild, game.channelId);
+    if (!gameRoles) {
+      await interaction.reply({ content: "Could not find game roles.", ephemeral: true });
+      return;
+    }
+
+    await interaction.reply({ content: `<@&${gameRoles.playersRole.id}>` });
+  }
+
+  @Slash({ name: "ping-st", description: "Ping the storytellers for this game" })
+  async pingSt(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    if (!interaction.guildId) {
+      await interaction.reply({ content: "This command must be used in a server.", ephemeral: true });
+      return;
+    }
+
+    const game = await getActiveGameForGuild(interaction.guildId);
+    if (!game) {
+      await interaction.reply({ content: "No active game found.", ephemeral: true });
+      return;
+    }
+
+    const gameRoles = await getGameRoles(interaction.guild, game.channelId);
+    if (!gameRoles) {
+      await interaction.reply({ content: "Could not find game roles.", ephemeral: true });
+      return;
+    }
+
+    await interaction.reply({ content: `<@&${gameRoles.stRole.id}>` });
+  }
+
   @Slash({ name: "start", description: "Deal roles and begin night 1" })
   async start(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
@@ -470,11 +599,26 @@ export class GameCommands {
           roleLines.push(`${player.displayName}: **${roleName}**${player.isFake ? " (fake)" : ""}`);
           continue;
         }
+        const playerThread = await createPersonalPlayerThread(
+          interaction,
+          game.id,
+          game.channelId,
+          player.discordUserId,
+          player.displayName,
+        );
+        if (playerThread) {
+          await playerThread
+            .send({
+              content: `Your role is ready, <@${player.discordUserId}>.`,
+              embeds: [buildRoleDmEmbed(roleId)],
+            })
+            .catch(() => undefined);
+          continue;
+        }
+
         const member = await interaction.guild?.members.fetch(player.discordUserId).catch(() => null);
         if (!member) continue;
-        await member
-          .send({ embeds: [buildRoleDmEmbed(roleId)] })
-          .catch(() => undefined);
+        await member.send({ embeds: [buildRoleDmEmbed(roleId)] }).catch(() => undefined);
       }
 
       const replyContent = isDevMode()
@@ -566,7 +710,8 @@ export class GameCommands {
       const events = engine.handle({ kind: "EndGame", gameId: game.id, winner, reason });
       await persistEvents(engine, events);
       await syncGameProjection(game.id, engine);
-      await interaction.reply({ content: `Game ended. ${winner} wins: ${reason}` });
+      await cleanupGameRoles(interaction.guild, game.channelId);
+      await interaction.reply({ content: `Game ended. ${winner} wins: ${reason} (game roles cleaned up).` });
     } catch (error) {
       await replyEngineError(interaction, error);
     }
@@ -626,8 +771,11 @@ async function requireStorytellerGame(interaction: CommandInteraction) {
   }
 
   const engine = await loadEngine(game.id);
-  if (engine.getState().storytellerId !== interaction.user.id) {
-    await interaction.reply({ content: "Only the storyteller can run this command.", ephemeral: true });
+  const isCreator = engine.getState().storytellerId === interaction.user.id;
+  const gameRoles = await getGameRoles(interaction.guild, game.channelId);
+  const isPromotedSt = await userHasRole(interaction.guild, interaction.user.id, gameRoles?.stRole.id);
+  if (!isCreator && !isPromotedSt) {
+    await interaction.reply({ content: "Only storytellers can run this command.", ephemeral: true });
     return null;
   }
 
@@ -648,6 +796,93 @@ async function requireCommandAccess(interaction: CommandInteraction): Promise<bo
     await interaction.reply({ content: message, ephemeral: true });
   }
   return false;
+}
+
+type GameRoles = {
+  stRole: Role;
+  playersRole: Role;
+};
+
+function roleSlugFromChannelName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "game";
+}
+
+async function ensureGameRoles(guild: Guild | null, channelId: string): Promise<GameRoles | null> {
+  if (!guild) return null;
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel) return null;
+  const slug = roleSlugFromChannelName(channel.name);
+  const stName = `st-${slug}`;
+  const playersName = `p-${slug}`;
+
+  const existing = await getGameRolesByName(guild, stName, playersName);
+  if (existing) return existing;
+
+  try {
+    const stRole = await guild.roles.create({ name: stName, mentionable: true });
+    const playersRole = await guild.roles.create({ name: playersName, mentionable: true });
+    return { stRole, playersRole };
+  } catch {
+    return null;
+  }
+}
+
+async function getGameRoles(guild: Guild | null, channelId: string): Promise<GameRoles | null> {
+  if (!guild) return null;
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel) return null;
+  const slug = roleSlugFromChannelName(channel.name);
+  return getGameRolesByName(guild, `st-${slug}`, `p-${slug}`);
+}
+
+async function getGameRolesByName(
+  guild: Guild,
+  stName: string,
+  playersName: string,
+): Promise<GameRoles | null> {
+  await guild.roles.fetch();
+  const stRole = guild.roles.cache.find((role) => role.name === stName);
+  const playersRole = guild.roles.cache.find((role) => role.name === playersName);
+  if (!stRole || !playersRole) return null;
+  return { stRole, playersRole };
+}
+
+async function addRoleToUser(guild: Guild | null, userId: string, roleId: string): Promise<void> {
+  if (!guild) return;
+  const member = await guild.members.fetch(userId).catch(() => null);
+  if (!member) return;
+  await member.roles.add(roleId).catch(() => undefined);
+}
+
+async function removeRoleFromUser(guild: Guild | null, userId: string, roleId: string): Promise<void> {
+  if (!guild) return;
+  const member = await guild.members.fetch(userId).catch(() => null);
+  if (!member) return;
+  await member.roles.remove(roleId).catch(() => undefined);
+}
+
+async function userHasRole(
+  guild: Guild | null,
+  userId: string,
+  roleId?: string,
+): Promise<boolean> {
+  if (!guild || !roleId) return false;
+  const member = await guild.members.fetch(userId).catch(() => null);
+  if (!member) return false;
+  return member.roles.cache.has(roleId);
+}
+
+async function cleanupGameRoles(guild: Guild | null, channelId: string): Promise<void> {
+  if (!guild) return;
+  const roles = await getGameRoles(guild, channelId);
+  if (!roles) return;
+
+  // Deleting a role removes it from all members automatically.
+  await roles.playersRole.delete("Grimkeeper game ended; cleanup game roles.").catch(() => undefined);
+  await roles.stRole.delete("Grimkeeper game ended; cleanup game roles.").catch(() => undefined);
 }
 
 async function createStorytellerThread(
@@ -679,6 +914,48 @@ async function createStorytellerThread(
       "Storyteller thread ready. Use this space for private narration and spectator discussion.",
     );
     return `<#${thread.id}>`;
+  } catch {
+    return null;
+  }
+}
+
+async function createPersonalPlayerThread(
+  interaction: CommandInteraction,
+  gameId: string,
+  parentChannelId: string,
+  userId: string,
+  displayName: string,
+): Promise<AnyThreadChannel | null> {
+  const guild = interaction.guild;
+  if (!guild) return null;
+  const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
+  if (
+    !parent ||
+    (parent.type !== ChannelType.GuildText && parent.type !== ChannelType.GuildAnnouncement)
+  ) {
+    return null;
+  }
+
+  const sanitized = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const shortGameId = gameId.slice(0, 6);
+  const threadName = `player-${sanitized || "member"}-${shortGameId}`.slice(0, 100);
+
+  try {
+    const thread = await parent.threads.create({
+      name: threadName,
+      autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+      reason: `Private player thread for ${displayName} in game ${gameId}`,
+      ...( {
+        type: ChannelType.PrivateThread,
+        invitable: false,
+      } as Record<string, unknown>),
+    });
+
+    await thread.members.add(userId).catch(() => undefined);
+    await thread.send(
+      `Hi <@${userId}>! This is your private game thread for Grimkeeper.`,
+    );
+    return thread;
   } catch {
     return null;
   }
