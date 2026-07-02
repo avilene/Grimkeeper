@@ -83,19 +83,26 @@ Mount a volume at `/app/data` for SQLite persistence (configured in `docker-comp
 This repository includes a `promtail` service that ships container logs to Grafana Cloud Loki.
 
 1. Create a free Grafana Cloud account and Loki stack.
-2. In Grafana Cloud, copy:
-   - Loki push URL (looks like `https://logs-prod-xxx.grafana.net/loki/api/v1/push`)
-   - Loki username (instance ID)
-   - Access Policy token/API key with `logs:write`
-3. Set these in `.env`:
-   - `GRAFANA_CLOUD_LOKI_URL`
-   - `GRAFANA_CLOUD_LOKI_USERNAME`
-   - `GRAFANA_CLOUD_LOKI_API_KEY`
-4. Redeploy:
+2. Get the **Loki push URL and User** (not the stack/datasource name):
+   - In Grafana: **Connections** → **Data sources** → your **Loki** source → **Send logs**
+   - Copy **URL** → `GRAFANA_CLOUD_LOKI_URL` (must end with `/loki/api/v1/push`)
+   - Copy **User** → `GRAFANA_CLOUD_LOKI_USERNAME` (usually a **numeric** ID like `1265432`, **not** `grafanacloud-…-logs`)
+3. Create an **Access Policy token** with `logs:write`:
+   - At [grafana.com](https://grafana.com): **Security** → **Access Policies** → create policy scoped to your stack with **logs:write**
+   - Create a token on that policy (starts with `glc_`) → `GRAFANA_CLOUD_LOKI_API_KEY`
+   - Do **not** use a Grafana Service Account token or stack API key here — Promtail needs basic auth with the Loki User + access policy token.
+4. Set all three in `.env`, then redeploy:
    ```bash
-   docker compose up -d --build
+   sh scripts/docker.sh redeploy
    ```
-5. In Grafana Explore, query:
+5. Verify auth (on the server, substitute your values):
+   ```bash
+   curl -u 'USER:glc_...' -H 'Content-Type: application/json' \
+     -X POST 'https://logs-prod-XXX.grafana.net/loki/api/v1/push' \
+     --data-raw '{"streams":[{"stream":{"app":"test"},"values":[["'$(date +%s)000000000'","hello"]]}]}'
+   ```
+   A silent `200` or empty body means success; `401` means wrong User or token.
+6. In Grafana **Explore**, query:
    ```
    {job="grimkeeper-bot"}
    ```
