@@ -12,6 +12,7 @@ COPY packages/engine/package.json ./packages/engine/
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
+ENV DATABASE_URL=file:./packages/database/prisma/dev.db
 COPY tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
