@@ -16,3 +16,5 @@ packages/database/prisma/*.db-journal
 
 # Logs
 *.log
+digitalocean
+digitalocean.pub
