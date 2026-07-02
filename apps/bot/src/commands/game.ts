@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import {
+  AnyThreadChannel,
   ApplicationCommandOptionType,
+  ChannelType,
   CommandInteraction,
   EmbedBuilder,
   ThreadAutoArchiveDuration,
+  User,
 } from "discord.js";
 import { Discord, Slash, SlashGroup, SlashOption } from "discordx";
 import {
@@ -403,6 +406,39 @@ export class GameCommands {
     });
   }
 
+  @Slash({ name: "add-spectator", description: "Add a user to the storyteller thread" })
+  async addSpectator(
+    @SlashOption({
+      name: "user",
+      description: "User to add to the storyteller thread",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    user: User,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    const thread = await getStorytellerThread(interaction, game.channelId);
+    if (!thread) {
+      await interaction.reply({
+        content: "Could not find a storyteller thread for this game channel.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await thread.members.add(user.id).catch(() => undefined);
+    await interaction.reply({
+      content: `Added <@${user.id}> to <#${thread.id}>.`,
+      ephemeral: true,
+    });
+  }
+
   @Slash({ name: "start", description: "Deal roles and begin night 1" })
   async start(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
@@ -619,7 +655,10 @@ async function createStorytellerThread(
   gameId: string,
 ): Promise<string | null> {
   const channel = interaction.channel;
-  if (!channel || !("threads" in channel)) {
+  if (
+    !channel ||
+    (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)
+  ) {
     return null;
   }
 
@@ -628,6 +667,11 @@ async function createStorytellerThread(
       name: "ST and the gang",
       autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
       reason: `Storyteller thread for game ${gameId}`,
+      // discord.js typings can omit these on some channel manager variants.
+      ...( {
+        type: ChannelType.PrivateThread,
+        invitable: false,
+      } as Record<string, unknown>),
     });
 
     await thread.members.add(interaction.user.id).catch(() => undefined);
@@ -638,6 +682,24 @@ async function createStorytellerThread(
   } catch {
     return null;
   }
+}
+
+async function getStorytellerThread(
+  interaction: CommandInteraction,
+  parentChannelId: string,
+): Promise<AnyThreadChannel | null> {
+  const guild = interaction.guild;
+  if (!guild) return null;
+
+  const channels = await guild.channels.fetchActiveThreads().catch(() => null);
+  if (!channels) return null;
+
+  const thread = channels.threads.find(
+    (candidate) =>
+      candidate.parentId === parentChannelId &&
+      candidate.name === "ST and the gang",
+  );
+  return thread ?? null;
 }
 
 async function replyEngineError(interaction: CommandInteraction, error: unknown): Promise<void> {
