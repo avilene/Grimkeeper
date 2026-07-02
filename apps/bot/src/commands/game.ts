@@ -365,6 +365,42 @@ export class GameCommands {
     });
   }
 
+  @Slash({ name: "list", description: "List active games in this server" })
+  async list(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    if (!interaction.guildId) {
+      await interaction.reply({ content: "This command must be used in a server.", ephemeral: true });
+      return;
+    }
+
+    const games = await prisma.game.findMany({
+      where: {
+        guildId: interaction.guildId,
+        phase: { not: "ended" },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+    });
+
+    if (games.length === 0) {
+      await interaction.reply({ content: "No active games found in this server.", ephemeral: true });
+      return;
+    }
+
+    const lines = games.map(
+      (game) => `- \`${game.id}\` in <#${game.channelId}> — phase: **${game.phase}**`,
+    );
+
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("Active Grimkeeper games")
+          .setDescription(lines.join("\n")),
+      ],
+      ephemeral: true,
+    });
+  }
+
   @Slash({ name: "start", description: "Deal roles and begin night 1" })
   async start(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
