@@ -1,4 +1,5 @@
-FROM node:22-alpine AS base
+FROM node:24-alpine AS base
+RUN apk add --no-cache python3 make g++
 RUN corepack enable && corepack prepare pnpm@10 --activate
 WORKDIR /app
 
@@ -6,6 +7,7 @@ FROM base AS deps
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY apps/bot/package.json ./apps/bot/
 COPY packages/database/package.json ./packages/database/
+COPY packages/database/prisma.config.ts ./packages/database/
 COPY packages/engine/package.json ./packages/engine/
 RUN pnpm install --frozen-lockfile
 
@@ -26,6 +28,7 @@ COPY --from=build /app/apps/bot/dist ./apps/bot/dist
 COPY --from=build /app/apps/bot/package.json ./apps/bot/package.json
 COPY --from=build /app/packages/database/dist ./packages/database/dist
 COPY --from=build /app/packages/database/package.json ./packages/database/package.json
+COPY --from=build /app/packages/database/prisma.config.ts ./packages/database/prisma.config.ts
 COPY --from=build /app/packages/database/prisma ./packages/database/prisma
 COPY --from=build /app/packages/engine/dist ./packages/engine/dist
 COPY --from=build /app/packages/engine/package.json ./packages/engine/package.json

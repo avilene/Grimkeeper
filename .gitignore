@@ -4,7 +4,7 @@ dist/
 .env.*
 !.env.example
 
-# Prisma / SQLite
+packages/database/src/generated/
 packages/database/prisma/*.db
 packages/database/prisma/*.db-journal
 *.db
