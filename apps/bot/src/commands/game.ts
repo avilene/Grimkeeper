@@ -586,7 +586,7 @@ async function createStorytellerThread(
 
   try {
     const thread = await channel.threads.create({
-      name: `grimkeeper-${gameId.slice(0, 8)}-storyteller`,
+      name: "ST and the gang",
       autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
       reason: `Storyteller thread for game ${gameId}`,
     });
