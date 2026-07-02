@@ -545,7 +545,7 @@ export class GameCommands {
     await interaction.reply({ content: `<@&${gameRoles.playersRole.id}>` });
   }
 
-  @Slash({ name: "ping-st", description: "Ping the storytellers for this game" })
+  @Slash({ name: "ping-st", description: "Ping storytellers for this game" })
   async pingSt(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     if (!interaction.guildId) {
