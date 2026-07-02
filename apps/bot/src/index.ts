@@ -14,10 +14,14 @@ import "reflect-metadata";
 import { Events, IntentsBitField } from "discord.js";
 import { Client } from "discordx";
 
+import { DevCommands } from "./commands/dev.js";
 import { GameCommands } from "./commands/game.js";
+import { StCommands } from "./commands/st.js";
 import { log, logError } from "./logger.js";
 
 void GameCommands;
+void StCommands;
+void DevCommands;
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -26,7 +30,7 @@ if (!token) {
 
 const client = new Client({
   botId: process.env.DISCORD_CLIENT_ID,
-  intents: [IntentsBitField.Flags.Guilds, IntentsBitField.Flags.GuildMembers],
+  intents: [IntentsBitField.Flags.Guilds],
   silent: false,
   simpleCommand: {
     prefix: "!",
@@ -34,7 +38,12 @@ const client = new Client({
 });
 
 client.once(Events.ClientReady, async () => {
-  await client.initApplicationCommands();
+  try {
+    await client.initApplicationCommands();
+  } catch (error) {
+    logError("error", "commands.register.failed", error);
+    throw error;
+  }
   log("info", "bot.ready", { tag: client.user?.tag, id: client.user?.id });
 });
 
