@@ -78,6 +78,28 @@ docker compose up --build
 
 Mount a volume at `/app/data` for SQLite persistence (configured in `docker-compose.yml`).
 
+## Grafana Cloud Logs (Free Tier)
+
+This repository includes a `promtail` service that ships container logs to Grafana Cloud Loki.
+
+1. Create a free Grafana Cloud account and Loki stack.
+2. In Grafana Cloud, copy:
+   - Loki push URL (looks like `https://logs-prod-xxx.grafana.net/loki/api/v1/push`)
+   - Loki username (instance ID)
+   - Access Policy token/API key with `logs:write`
+3. Set these in `.env`:
+   - `GRAFANA_CLOUD_LOKI_URL`
+   - `GRAFANA_CLOUD_LOKI_USERNAME`
+   - `GRAFANA_CLOUD_LOKI_API_KEY`
+4. Redeploy:
+   ```bash
+   docker compose up -d --build
+   ```
+5. In Grafana Explore, query:
+   ```
+   {job="grimkeeper-bot"}
+   ```
+
 ## Roadmap
 
 - Event-sourced game engine
