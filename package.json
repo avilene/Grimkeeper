@@ -6,6 +6,10 @@
     "build": "pnpm -r build",
     "dev": "pnpm --filter bot dev",
     "test": "pnpm --filter @grimkeeper/engine test",
-    "db:push": "pnpm --filter @grimkeeper/database db:push"
+    "db:push": "pnpm --filter @grimkeeper/database db:push",
+    "docker:redeploy": "sh scripts/docker.sh redeploy",
+    "docker:restart": "sh scripts/docker.sh restart",
+    "docker:logs": "sh scripts/docker.sh logs",
+    "docker:fresh": "sh scripts/docker.sh fresh"
   }
 }
