@@ -16,6 +16,7 @@ import { GameEngine, GameEngineError, dealRoles, type GameEvent } from "@grimkee
 
 @Discord()
 @SlashGroup({ name: "game", description: "Blood on the Clocktower storyteller commands" })
+@SlashGroup("game")
 export class GameCommands {
   @Slash({ name: "create", description: "Create a new game in this channel" })
   async create(interaction: CommandInteraction): Promise<void> {

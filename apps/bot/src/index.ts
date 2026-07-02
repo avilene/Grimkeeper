@@ -1,8 +1,12 @@
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
 
-config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env") });
+const envPath = resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env");
+if (existsSync(envPath)) {
+  config({ path: envPath });
+}
 
 import "reflect-metadata";
 import { IntentsBitField } from "discord.js";
