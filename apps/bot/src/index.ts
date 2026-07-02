@@ -15,7 +15,7 @@ import { Events, IntentsBitField } from "discord.js";
 import { Client } from "discordx";
 
 import { GameCommands } from "./commands/game.js";
-import { log } from "./logger.js";
+import { log, logError } from "./logger.js";
 
 void GameCommands;
 
@@ -39,7 +39,14 @@ client.once(Events.ClientReady, async () => {
 });
 
 client.on("interactionCreate", (interaction) => {
-  void client.executeInteraction(interaction);
+  void Promise.resolve(client.executeInteraction(interaction)).catch((error: unknown) => {
+    logError("error", "interaction.failed", error, {
+      command: interaction.isChatInputCommand() ? interaction.commandName : interaction.type,
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+      userId: interaction.user.id,
+    });
+  });
 });
 
 await client.login(token);

@@ -14,14 +14,25 @@ interface PrismaEventClient {
 export function bindPrismaLogging(client: PrismaClient, log: DbLogFn): void {
   const events = client as unknown as PrismaEventClient;
 
+  function enrichPrismaMessage(message: string): Record<string, unknown> {
+    if (!message.includes("\n")) {
+      return { message };
+    }
+    const lines = message.split("\n");
+    return {
+      message: lines[0] ?? message,
+      detailLines: lines.slice(1),
+    };
+  }
+
   events.$on("warn", (event) => {
-    log("warn", "prisma", { target: event.target, message: event.message });
+    log("warn", "prisma", { target: event.target, ...enrichPrismaMessage(event.message) });
   });
   events.$on("error", (event) => {
-    log("error", "prisma", { target: event.target, message: event.message });
+    log("error", "prisma", { target: event.target, ...enrichPrismaMessage(event.message) });
   });
   events.$on("info", (event) => {
-    log("info", "prisma", { target: event.target, message: event.message });
+    log("info", "prisma", { target: event.target, ...enrichPrismaMessage(event.message) });
   });
   events.$on("query", (event) => {
     log("debug", "prisma.query", {

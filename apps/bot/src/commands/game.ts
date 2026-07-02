@@ -42,6 +42,7 @@ import {
 
 import { canUseBot } from "../access.js";
 import { isDevMode, requireDevMode } from "../dev.js";
+import { logError } from "../logger.js";
 import { logGameEvent } from "../game-events-log.js";
 import { buildRoleDmEmbed, buildRoleEmbed } from "../role-embed.js";
 
@@ -1761,5 +1762,13 @@ async function openStorytellerThread(
 
 async function replyEngineError(interaction: CommandInteraction, error: unknown): Promise<void> {
   const message = error instanceof GameEngineError ? error.message : "Unexpected game engine error.";
+  if (!(error instanceof GameEngineError)) {
+    logError("error", "command.failed", error, {
+      command: interaction.commandName,
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+      userId: interaction.user.id,
+    });
+  }
   await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
 }
