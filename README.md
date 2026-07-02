@@ -107,6 +107,26 @@ This repository includes a `promtail` service that ships container logs to Grafa
    {job="grimkeeper-bot"}
    ```
 
+   Bot logs are JSON. After redeploying Promtail, filter by extracted labels:
+   ```
+   {job="grimkeeper-bot", msg="game.event"}
+   {job="grimkeeper-bot", level="error"}
+   ```
+
+   For fields not promoted to labels (e.g. `event`, `gameId`, `phase`), parse in the query:
+   ```
+   {job="grimkeeper-bot", msg="game.event"} | json | event="NightStarted"
+   {job="grimkeeper-bot"} | json | gameId="<uuid>"
+   ```
+
+   Third-party output (discordx boot, Prisma, Node warnings) is normalized as JSON with `msg` values like `external`, `prisma`, or `node.warning`:
+   ```
+   {job="grimkeeper-bot", msg="external"}
+   {job="grimkeeper-bot", msg="prisma"}
+   ```
+
+   Seeing the raw JSON in the log line column is normal — use **| json** or the label filters above to search by field.
+
 ## Roadmap
 
 - Event-sourced game engine

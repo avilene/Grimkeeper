@@ -1,13 +1,19 @@
 import { PrismaClient, type GameEvent, type Prisma } from "@prisma/client";
 
 export * from "@prisma/client";
+export { bindPrismaLogging, type DbLogFn, type DbLogLevel } from "./logging.js";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+
+const prismaLogLevels: Prisma.LogLevel[] =
+  process.env.NODE_ENV === "development"
+    ? ["warn", "error", "info", "query"]
+    : ["warn", "error"];
 
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+    log: prismaLogLevels.map((level) => ({ emit: "event", level })),
   });
 
 if (process.env.NODE_ENV !== "production") {

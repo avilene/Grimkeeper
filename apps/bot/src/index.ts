@@ -8,6 +8,8 @@ if (existsSync(envPath)) {
   config({ path: envPath });
 }
 
+import "./bootstrap-logs.js";
+
 import "reflect-metadata";
 import { IntentsBitField } from "discord.js";
 import { Client } from "discordx";

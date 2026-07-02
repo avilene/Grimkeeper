@@ -34,3 +34,20 @@ scrape_configs:
         target_label: __path__
     pipeline_stages:
       - docker: {}
+      # Only parse structured JSON log lines; plain text (if any) passes through unchanged.
+      - match:
+          selector: '{job=~".+"}'
+          stages:
+            - regex:
+                expression: '^\s*\{'
+            - json:
+                expressions:
+                  level: level
+                  msg: msg
+                  log_ts: ts
+            - labels:
+                level:
+                msg:
+            - timestamp:
+                source: log_ts
+                format: RFC3339Nano

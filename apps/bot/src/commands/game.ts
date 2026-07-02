@@ -6,6 +6,7 @@ import {
   CommandInteraction,
   EmbedBuilder,
   Guild,
+  MessageFlags,
   Role,
   ThreadAutoArchiveDuration,
   User,
@@ -59,13 +60,13 @@ export class GameCommands {
   async create(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     if (!interaction.guildId || !interaction.channelId) {
-      await interaction.reply({ content: "This command must be used in a server channel.", ephemeral: true });
+      await interaction.reply({ content: "This command must be used in a server channel.", flags: MessageFlags.Ephemeral });
       return;
     }
 
     const existing = await getActiveGameForGuild(interaction.guildId);
     if (existing) {
-      await interaction.reply({ content: "An active game already exists in this server.", ephemeral: true });
+      await interaction.reply({ content: "An active game already exists in this server.", flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -76,7 +77,7 @@ export class GameCommands {
       if (!gameRoles) {
         await interaction.reply({
           content: "I couldn't create game roles. Check bot permissions (`Manage Roles`).",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -128,13 +129,13 @@ export class GameCommands {
   async join(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     if (!interaction.guildId) {
-      await interaction.reply({ content: "This command must be used in a server.", ephemeral: true });
+      await interaction.reply({ content: "This command must be used in a server.", flags: MessageFlags.Ephemeral });
       return;
     }
 
     const game = await getActiveGameForGuild(interaction.guildId);
     if (!game) {
-      await interaction.reply({ content: "No active game found. Create one with `/game create`.", ephemeral: true });
+      await interaction.reply({ content: "No active game found. Create one with `/game create`.", flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -166,7 +167,7 @@ export class GameCommands {
     }
     await interaction.reply({
       content: `Joined the game. ${engine.getState().players.length} player(s) in lobby.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -174,13 +175,13 @@ export class GameCommands {
   async leave(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     if (!interaction.guildId) {
-      await interaction.reply({ content: "This command must be used in a server.", ephemeral: true });
+      await interaction.reply({ content: "This command must be used in a server.", flags: MessageFlags.Ephemeral });
       return;
     }
 
     const game = await getActiveGameForGuild(interaction.guildId);
     if (!game) {
-      await interaction.reply({ content: "No active game found.", ephemeral: true });
+      await interaction.reply({ content: "No active game found.", flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -189,7 +190,7 @@ export class GameCommands {
       .getState()
       .players.find((candidate) => candidate.discordUserId === interaction.user.id);
     if (!player) {
-      await interaction.reply({ content: "You are not currently in this game's lobby.", ephemeral: true });
+      await interaction.reply({ content: "You are not currently in this game's lobby.", flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -211,7 +212,7 @@ export class GameCommands {
       }
       await interaction.reply({
         content: `You left the lobby. ${engine.getState().players.length} player(s) remain.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       await replyEngineError(interaction, error);
@@ -236,7 +237,7 @@ export class GameCommands {
     try {
       requireDevMode();
     } catch {
-      await interaction.reply({ content: "Dev mode is disabled. Set `DEV_MODE=true` in your environment.", ephemeral: true });
+      await interaction.reply({ content: "Dev mode is disabled. Set `DEV_MODE=true` in your environment.", flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -246,7 +247,7 @@ export class GameCommands {
     const engine = await loadEngine(game.id);
     const target = count ?? Math.max(0, minPlayers() - engine.getState().players.length);
     if (target === 0) {
-      await interaction.reply({ content: `Lobby already has ${engine.getState().players.length} players (min ${minPlayers()}).`, ephemeral: true });
+      await interaction.reply({ content: `Lobby already has ${engine.getState().players.length} players (min ${minPlayers()}).`, flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -283,7 +284,7 @@ export class GameCommands {
           .setDescription(added.join("\n"))
           .addFields({ name: "Lobby size", value: `${engine.getState().players.length} / ${minPlayers()} min` }),
       ],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -293,7 +294,7 @@ export class GameCommands {
     try {
       requireDevMode();
     } catch {
-      await interaction.reply({ content: "Dev mode is disabled. Set `DEV_MODE=true` in your environment.", ephemeral: true });
+      await interaction.reply({ content: "Dev mode is disabled. Set `DEV_MODE=true` in your environment.", flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -303,7 +304,7 @@ export class GameCommands {
     const engine = await loadEngine(game.id);
     const fakeCount = engine.getState().players.filter((p) => p.isFake).length;
     if (fakeCount === 0) {
-      await interaction.reply({ content: "No fake players in the lobby.", ephemeral: true });
+      await interaction.reply({ content: "No fake players in the lobby.", flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -315,7 +316,7 @@ export class GameCommands {
 
     await interaction.reply({
       content: `Removed ${fakeCount} fake player(s). Lobby size: ${engine.getState().players.length}.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -325,7 +326,7 @@ export class GameCommands {
     try {
       requireDevMode();
     } catch {
-      await interaction.reply({ content: "Dev mode is disabled. Set `DEV_MODE=true` in your environment.", ephemeral: true });
+      await interaction.reply({ content: "Dev mode is disabled. Set `DEV_MODE=true` in your environment.", flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -381,7 +382,7 @@ export class GameCommands {
             },
           ),
       ],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -403,18 +404,18 @@ export class GameCommands {
     if (!role) {
       await interaction.reply({
         content: `Unknown role "${roleQuery}". Try names like Washerwoman, Fortune Teller, or Imp.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     const embed = buildRoleEmbed(role.id);
     if (!embed) {
-      await interaction.reply({ content: "Unknown role.", ephemeral: true });
+      await interaction.reply({ content: "Unknown role.", flags: MessageFlags.Ephemeral });
       return;
     }
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
   }
 
   @Slash({ name: "roles", description: "List Trouble Brewing roles on the script" })
@@ -436,7 +437,7 @@ export class GameCommands {
           .setDescription("Official script roles in Grimkeeper. Use `/game role` to view character art.")
           .addFields(fields),
       ],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -444,7 +445,7 @@ export class GameCommands {
   async list(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     if (!interaction.guildId) {
-      await interaction.reply({ content: "This command must be used in a server.", ephemeral: true });
+      await interaction.reply({ content: "This command must be used in a server.", flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -458,7 +459,7 @@ export class GameCommands {
     });
 
     if (games.length === 0) {
-      await interaction.reply({ content: "No active games found in this server.", ephemeral: true });
+      await interaction.reply({ content: "No active games found in this server.", flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -472,7 +473,7 @@ export class GameCommands {
           .setTitle("Active Grimkeeper games")
           .setDescription(lines.join("\n")),
       ],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -497,7 +498,7 @@ export class GameCommands {
     if (!thread) {
       await interaction.reply({
         content: "Could not find a storyteller thread for this game channel.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -505,7 +506,7 @@ export class GameCommands {
     await thread.members.add(user.id).catch(() => undefined);
     await interaction.reply({
       content: `Added <@${user.id}> to <#${thread.id}>.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -549,7 +550,7 @@ export class GameCommands {
       const threadHint = thread ? " Added to the storyteller thread." : "";
       await interaction.reply({
         content: `Promoted <@${user.id}> to storyteller.${threadHint}`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       await replyEngineError(interaction, error);
@@ -565,7 +566,7 @@ export class GameCommands {
     if (GAME_DISCORD_ROLES_ENABLED) {
       const gameRoles = await getGameRoles(interaction.guild, game.channelId);
       if (!gameRoles) {
-        await interaction.reply({ content: "Could not find game roles.", ephemeral: true });
+        await interaction.reply({ content: "Could not find game roles.", flags: MessageFlags.Ephemeral });
         return;
       }
       await interaction.reply({ content: `<@&${gameRoles.playersRole.id}>` });
@@ -585,13 +586,13 @@ export class GameCommands {
   async pingSt(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     if (!interaction.guildId) {
-      await interaction.reply({ content: "This command must be used in a server.", ephemeral: true });
+      await interaction.reply({ content: "This command must be used in a server.", flags: MessageFlags.Ephemeral });
       return;
     }
 
     const game = await getActiveGameForGuild(interaction.guildId);
     if (!game) {
-      await interaction.reply({ content: "No active game found.", ephemeral: true });
+      await interaction.reply({ content: "No active game found.", flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -662,7 +663,7 @@ export class GameCommands {
         ? "Roles dealt. Night 1 has begun.\n\n" + roleLines.join("\n")
         : "Roles dealt privately. Night 1 has begun.";
 
-      await interaction.reply({ content: replyContent, ephemeral: true });
+      await interaction.reply({ content: replyContent, flags: MessageFlags.Ephemeral });
     } catch (error) {
       await replyEngineError(interaction, error);
     }
@@ -679,7 +680,7 @@ export class GameCommands {
       const events = engine.handle({ kind: GameCommandKind.AdvancePhase, gameId: game.id, targetPhase: "night" });
       await persistEvents(engine, events);
       await syncGameProjection(game.id, engine);
-      await interaction.reply({ content: `Night ${engine.getState().nightNumber} started.`, ephemeral: true });
+      await interaction.reply({ content: `Night ${engine.getState().nightNumber} started.`, flags: MessageFlags.Ephemeral });
     } catch (error) {
       await replyEngineError(interaction, error);
     }
@@ -696,7 +697,7 @@ export class GameCommands {
       const events = engine.handle({ kind: GameCommandKind.AdvancePhase, gameId: game.id, targetPhase: "day" });
       await persistEvents(engine, events);
       await syncGameProjection(game.id, engine);
-      await interaction.reply({ content: `Day ${engine.getState().dayNumber} started.`, ephemeral: true });
+      await interaction.reply({ content: `Day ${engine.getState().dayNumber} started.`, flags: MessageFlags.Ephemeral });
     } catch (error) {
       await replyEngineError(interaction, error);
     }
@@ -801,19 +802,19 @@ async function syncGameProjection(gameId: string, engine: GameEngine): Promise<v
 
 async function requireStorytellerGame(interaction: CommandInteraction) {
   if (!interaction.guildId) {
-    await interaction.reply({ content: "This command must be used in a server.", ephemeral: true });
+    await interaction.reply({ content: "This command must be used in a server.", flags: MessageFlags.Ephemeral });
     return null;
   }
 
   const game = await getActiveGameForGuild(interaction.guildId);
   if (!game) {
-    await interaction.reply({ content: "No active game found.", ephemeral: true });
+    await interaction.reply({ content: "No active game found.", flags: MessageFlags.Ephemeral });
     return null;
   }
 
   const engine = await loadEngine(game.id);
   if (!engine.isStoryteller(interaction.user.id)) {
-    await interaction.reply({ content: "Only storytellers can run this command.", ephemeral: true });
+    await interaction.reply({ content: "Only storytellers can run this command.", flags: MessageFlags.Ephemeral });
     return null;
   }
 
@@ -829,9 +830,9 @@ async function requireCommandAccess(interaction: CommandInteraction): Promise<bo
     "to `ALLOWED_USER_IDS` or one of your role IDs to `ALLOWED_ROLE_IDS`.";
 
   if (interaction.deferred || interaction.replied) {
-    await interaction.followUp({ content: message, ephemeral: true });
+    await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
   } else {
-    await interaction.reply({ content: message, ephemeral: true });
+    await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
   }
   return false;
 }
@@ -1008,5 +1009,5 @@ async function getStorytellerThread(
 
 async function replyEngineError(interaction: CommandInteraction, error: unknown): Promise<void> {
   const message = error instanceof GameEngineError ? error.message : "Unexpected game engine error.";
-  await interaction.reply({ content: message, ephemeral: true });
+  await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
 }
