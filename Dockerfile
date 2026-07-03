@@ -1,15 +1,24 @@
-FROM node:24-alpine AS base
-RUN apk add --no-cache python3 make g++
+# syntax=docker/dockerfile:1
+
+# bookworm-slim: prebuilt better-sqlite3 binaries (alpine musl often compiles from source).
+FROM node:24-bookworm-slim AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
-WORKDIR /app
 
 FROM base AS deps
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY apps/bot/package.json ./apps/bot/
 COPY packages/database/package.json ./packages/database/
 COPY packages/database/prisma.config.ts ./packages/database/
 COPY packages/engine/package.json ./packages/engine/
-RUN pnpm install --frozen-lockfile
+# Cache the pnpm store across builds so install skips re-downloading and re-compiling when possible.
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+  pnpm install --frozen-lockfile --store-dir=/pnpm/store
 
 FROM deps AS build
 ENV DATABASE_URL=file:./packages/database/prisma/dev.db
@@ -18,10 +27,9 @@ COPY apps ./apps
 COPY packages ./packages
 RUN pnpm build
 
-FROM base AS runner
+FROM node:24-bookworm-slim AS runner
 ENV NODE_ENV=production
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/bot/node_modules ./apps/bot/node_modules
 COPY --from=build /app/packages/database/node_modules ./packages/database/node_modules
@@ -35,8 +43,6 @@ COPY --from=build /app/packages/database/prisma ./packages/database/prisma
 COPY --from=build /app/packages/engine/dist ./packages/engine/dist
 COPY --from=build /app/packages/engine/package.json ./packages/engine/package.json
 COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-COPY --from=build /app/pnpm-lock.yaml ./pnpm-lock.yaml
 
 VOLUME ["/app/data"]
 ENV DATABASE_URL=file:/app/data/grimkeeper.db

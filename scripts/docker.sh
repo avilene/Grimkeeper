@@ -25,6 +25,7 @@ cmd="${1:-redeploy}"
 
 case "$cmd" in
   redeploy|up)
+    export DOCKER_BUILDKIT=1
     docker compose up -d --build
     docker compose ps
     ;;
@@ -36,6 +37,7 @@ case "$cmd" in
     docker compose logs -f "${2:-bot}"
     ;;
   fresh)
+    export DOCKER_BUILDKIT=1
     docker compose down
     docker compose up -d --build
     docker compose ps
