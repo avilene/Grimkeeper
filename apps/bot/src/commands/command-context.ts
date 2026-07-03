@@ -343,12 +343,7 @@ export async function ensureGameThreads(
   playerThreadsCreated: number;
   playerThreadsFailed: number;
 }> {
-  const stThread = await ensureStorytellerThread(
-    guild,
-    game.channelId,
-    game.id,
-    engine.getStorytellerDiscordIds(),
-  );
+  const stThread = await ensureStorytellerThread(guild, game.channelId, game.id);
 
   let playerThreadsCreated = 0;
   let playerThreadsFailed = 0;
@@ -407,7 +402,6 @@ export async function ensureStorytellerThread(
   guild: Guild,
   parentChannelId: string,
   gameId: string,
-  storytellerDiscordIds: string[],
 ): Promise<AnyThreadChannel | null> {
   let thread = await getStorytellerThread(guild, parentChannelId);
   if (!thread) {
@@ -436,10 +430,6 @@ export async function ensureStorytellerThread(
 
   if (thread.archived) {
     await thread.setArchived(false, "Game started; reopening storyteller thread.").catch(() => undefined);
-  }
-
-  for (const discordUserId of storytellerDiscordIds) {
-    await thread.members.add(discordUserId).catch(() => undefined);
   }
 
   return thread;
@@ -474,7 +464,10 @@ export async function createStorytellerThread(
   const channelId = interaction.channelId;
   if (!guild || !channelId) return null;
 
-  const thread = await ensureStorytellerThread(guild, channelId, gameId, [interaction.user.id]);
+  const thread = await ensureStorytellerThread(guild, channelId, gameId);
+  if (thread) {
+    await thread.members.add(interaction.user.id).catch(() => undefined);
+  }
   return thread ? `<#${thread.id}>` : null;
 }
 
@@ -547,7 +540,6 @@ export async function getStorytellerThread(
 export async function openStorytellerThread(
   guild: Guild,
   parentChannelId: string,
-  extraMemberIds: Iterable<string>,
 ): Promise<AnyThreadChannel | null> {
   const thread = await getStorytellerThread(guild, parentChannelId);
   if (!thread) return null;
@@ -560,10 +552,6 @@ export async function openStorytellerThread(
       reason: "Game ended; opening storyteller thread for post-game discussion.",
     })
     .catch(() => undefined);
-
-  for (const userId of extraMemberIds) {
-    await thread.members.add(userId).catch(() => undefined);
-  }
 
   await thread
     .send("Game ended — this thread is now open for post-game discussion.")

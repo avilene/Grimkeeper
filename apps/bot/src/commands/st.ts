@@ -102,11 +102,6 @@ export class StCommands {
       });
       await persistEvents(engine, events);
 
-      const thread = await getStorytellerThread(guild, game.channelId);
-      if (thread) {
-        await thread.members.add(user.id).catch(() => undefined);
-      }
-
       if (GAME_DISCORD_ROLES_ENABLED) {
         const gameRoles = await getGameRoles(guild, game.channelId);
         if (gameRoles) {
@@ -114,9 +109,8 @@ export class StCommands {
         }
       }
 
-      const threadHint = thread ? " Added to the storyteller thread." : "";
       await interaction.reply({
-        content: `Promoted <@${user.id}> to storyteller.${threadHint}`,
+        content: `Promoted <@${user.id}> to storyteller. Use \`/st add-spectator\` to add them to the ST thread.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -557,17 +551,7 @@ export class StCommands {
       if (GAME_DISCORD_ROLES_ENABLED) {
         await cleanupGameRoles(guild, game.channelId);
       }
-      const thread = await openStorytellerThread(
-        guild,
-        game.channelId,
-        [
-          ...engine.getStorytellerDiscordIds(),
-          ...engine
-            .getState()
-            .players.filter((player) => !player.isFake)
-            .map((player) => player.discordUserId),
-        ],
-      );
+      const thread = await openStorytellerThread(guild, game.channelId);
       const cleanupHint = GAME_DISCORD_ROLES_ENABLED ? " (game roles cleaned up)" : "";
       const threadHint = thread ? ` Post-game discussion: <#${thread.id}>.` : "";
       if (thread) {
