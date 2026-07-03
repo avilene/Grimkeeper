@@ -18,12 +18,18 @@ COPY apps/bot/package.json ./apps/bot/
 COPY packages/database/package.json ./packages/database/
 COPY packages/database/prisma.config.ts ./packages/database/
 COPY packages/engine/package.json ./packages/engine/
-# Download packages into the cached store first, then link. Survives flaky registry better than one-shot install.
+# Download packages into the cached store first, then link. Only fetch native binaries for linux/x64.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
   pnpm config set store-dir /pnpm/store \
+  && pnpm config set supportedArchitectures.os linux \
+  && pnpm config set supportedArchitectures.cpu x64 \
+  && pnpm config set supportedArchitectures.libc glibc \
   && pnpm fetch --frozen-lockfile
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
   pnpm config set store-dir /pnpm/store \
+  && pnpm config set supportedArchitectures.os linux \
+  && pnpm config set supportedArchitectures.cpu x64 \
+  && pnpm config set supportedArchitectures.libc glibc \
   && pnpm install --frozen-lockfile --prefer-offline
 
 FROM deps AS build
