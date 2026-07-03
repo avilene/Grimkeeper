@@ -13,7 +13,8 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ops/docker.npmrc ./.npmrc
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY ops/docker.npmrc ./.npmrc
 COPY apps/bot/package.json ./apps/bot/
 COPY packages/database/package.json ./packages/database/
 COPY packages/database/prisma.config.ts ./packages/database/
