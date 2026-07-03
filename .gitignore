@@ -5,6 +5,7 @@ dist/
 !.env.example
 
 packages/database/src/generated/
+packages/database/.prisma-client-hash
 packages/database/prisma/*.db
 packages/database/prisma/*.db-journal
 *.db

@@ -16,7 +16,6 @@ ENV DATABASE_URL=file:./packages/database/prisma/dev.db
 COPY tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
-RUN pnpm --filter @grimkeeper/database db:generate
 RUN pnpm build
 
 FROM base AS runner

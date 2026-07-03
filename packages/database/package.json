@@ -12,9 +12,10 @@
     }
   },
   "scripts": {
-    "build": "prisma generate && tsc -p tsconfig.json",
-    "db:push": "prisma db push",
-    "db:generate": "prisma generate"
+    "build": "pnpm db:generate:if-needed && tsc -p tsconfig.json",
+    "db:generate": "prisma generate",
+    "db:generate:if-needed": "node scripts/generate-if-stale.mjs",
+    "db:push": "prisma db push && node scripts/generate-if-stale.mjs"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.8.0",
