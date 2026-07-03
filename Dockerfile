@@ -13,24 +13,16 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ops/docker.npmrc ./.npmrc
 COPY apps/bot/package.json ./apps/bot/
 COPY packages/database/package.json ./packages/database/
 COPY packages/database/prisma.config.ts ./packages/database/
 COPY packages/engine/package.json ./packages/engine/
-# Download packages into the cached store first, then link. Only fetch native binaries for linux/x64.
+# Download packages into the cached store first, then link (arch limits in ops/docker.npmrc).
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
-  pnpm config set store-dir /pnpm/store \
-  && pnpm config set supportedArchitectures.os linux \
-  && pnpm config set supportedArchitectures.cpu x64 \
-  && pnpm config set supportedArchitectures.libc glibc \
-  && pnpm fetch --frozen-lockfile
+  pnpm fetch --frozen-lockfile
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
-  pnpm config set store-dir /pnpm/store \
-  && pnpm config set supportedArchitectures.os linux \
-  && pnpm config set supportedArchitectures.cpu x64 \
-  && pnpm config set supportedArchitectures.libc glibc \
-  && pnpm install --frozen-lockfile --prefer-offline
+  pnpm install --frozen-lockfile --prefer-offline
 
 FROM deps AS build
 ENV DATABASE_URL=file:./packages/database/prisma/dev.db
