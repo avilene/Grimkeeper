@@ -12,7 +12,6 @@
     "docker:redeploy": "sh scripts/docker.sh redeploy",
     "docker:restart": "sh scripts/docker.sh restart",
     "docker:logs": "sh scripts/docker.sh logs",
-    "docker:fresh": "sh scripts/docker.sh fresh",
-    "docker:clean-cache": "sh scripts/docker.sh clean-cache"
+    "docker:fresh": "sh scripts/docker.sh fresh"
   }
 }

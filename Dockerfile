@@ -1,40 +1,31 @@
-# syntax=docker/dockerfile:1
-
-# bookworm-slim: prebuilt better-sqlite3 binaries (alpine musl often compiles from source).
-FROM node:24-bookworm-slim AS base
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-# Prefer IPv4 when resolving registry.npmjs.org (common droplet issue).
-ENV NODE_OPTIONS="--dns-result-order=ipv4first"
-RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
-
-FROM base AS deps
+FROM node:24-bookworm-slim AS build
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY ops/docker.npmrc ./.npmrc
-COPY apps/bot/package.json ./apps/bot/
-COPY packages/database/package.json ./packages/database/
-COPY packages/database/prisma.config.ts ./packages/database/
-COPY packages/engine/package.json ./packages/engine/
-# Download packages into the cached store first, then link (arch limits in ops/docker.npmrc).
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
-  pnpm fetch --frozen-lockfile
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
-  pnpm install --frozen-lockfile --prefer-offline
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/* \
+  && corepack enable && corepack prepare pnpm@11.9.0 --activate
 
-FROM deps AS build
-ENV DATABASE_URL=file:./packages/database/prisma/dev.db
+WORKDIR /app
+
+# Install deps in their own layer — cached until package.json or lockfile changes.
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY ops/docker.npmrc .npmrc
+COPY apps/bot/package.json apps/bot/
+COPY packages/database/package.json packages/database/
+COPY packages/database/prisma.config.ts packages/database/
+COPY packages/engine/package.json packages/engine/
+RUN pnpm install --frozen-lockfile
+
 COPY tsconfig.base.json ./
-COPY apps ./apps
-COPY packages ./packages
+COPY apps apps/
+COPY packages packages/
+
+ENV DATABASE_URL=file:./packages/database/prisma/dev.db
 RUN pnpm build
 
 FROM node:24-bookworm-slim AS runner
 ENV NODE_ENV=production
 WORKDIR /app
+
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/bot/node_modules ./apps/bot/node_modules
 COPY --from=build /app/packages/database/node_modules ./packages/database/node_modules
@@ -49,10 +40,10 @@ COPY --from=build /app/packages/engine/dist ./packages/engine/dist
 COPY --from=build /app/packages/engine/package.json ./packages/engine/package.json
 COPY --from=build /app/package.json ./package.json
 
-VOLUME ["/app/data"]
-ENV DATABASE_URL=file:/app/data/grimkeeper.db
-
 COPY scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 RUN chmod +x ./scripts/docker-entrypoint.sh
+
+VOLUME ["/app/data"]
+ENV DATABASE_URL=file:/app/data/grimkeeper.db
 
 CMD ["./scripts/docker-entrypoint.sh"]
