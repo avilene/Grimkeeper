@@ -37,7 +37,7 @@ import { logError } from "../logger.js";
 import { logGameEvent } from "../game-events-log.js";
 import { buildRoleDmEmbed } from "../role-embed.js";
 
-export const GAME_DISCORD_ROLES_ENABLED = false;
+export const GAME_DISCORD_ROLES_ENABLED = true;
 export const STORYTELLER_THREAD_NAME = "ST and the gang";
 
 export function minPlayers(): number {
