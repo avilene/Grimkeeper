@@ -4,11 +4,13 @@
 FROM node:24-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
+# Prefer IPv4 when resolving registry.npmjs.org (common droplet issue).
+ENV NODE_OPTIONS="--dns-result-order=ipv4first"
 RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
 
 FROM base AS deps
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ \
+  && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
@@ -16,9 +18,13 @@ COPY apps/bot/package.json ./apps/bot/
 COPY packages/database/package.json ./packages/database/
 COPY packages/database/prisma.config.ts ./packages/database/
 COPY packages/engine/package.json ./packages/engine/
-# Cache the pnpm store across builds so install skips re-downloading and re-compiling when possible.
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-  pnpm install --frozen-lockfile --store-dir=/pnpm/store
+# Download packages into the cached store first, then link. Survives flaky registry better than one-shot install.
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
+  pnpm config set store-dir /pnpm/store \
+  && pnpm fetch --frozen-lockfile
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
+  pnpm config set store-dir /pnpm/store \
+  && pnpm install --frozen-lockfile --prefer-offline
 
 FROM deps AS build
 ENV DATABASE_URL=file:./packages/database/prisma/dev.db
