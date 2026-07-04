@@ -3,15 +3,39 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+LOCKFILE=pnpm-lock.yaml
+HASH_FILE=.deploy/lockfile-hash
+
+lockfile_hash() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$LOCKFILE" | awk '{print $1}'
+  else
+    shasum -a 256 "$LOCKFILE" | awk '{print $1}'
+  fi
+}
+
+lockfile_changed() {
+  mkdir -p .deploy
+  current=$(lockfile_hash)
+  previous=$(cat "$HASH_FILE" 2>/dev/null || true)
+  [ "$current" != "$previous" ]
+}
+
+record_lockfile_hash() {
+  mkdir -p .deploy
+  lockfile_hash > "$HASH_FILE"
+}
+
 usage() {
   cat <<'EOF'
 Usage: scripts/docker.sh <command>
 
 Commands:
-  redeploy   Rebuild and restart containers (default)
-  restart    Restart without rebuilding (fast — use for .env changes)
+  redeploy   Rebuild and restart (default)
+             pnpm install runs only when pnpm-lock.yaml changed
+  restart    Restart containers without rebuilding (.env changes)
   logs       Follow container logs (optional service name)
-  fresh      docker compose down, then up --build
+  fresh      Force full rebuild including pnpm install
 
 Examples:
   pnpm docker:redeploy
@@ -25,7 +49,14 @@ cmd="${1:-redeploy}"
 
 case "$cmd" in
   redeploy|up)
-    docker compose up -d --build
+    if lockfile_changed; then
+      echo "Lockfile changed — running pnpm install during build."
+    else
+      echo "Lockfile unchanged — reusing cached deps layer (compile only)."
+    fi
+    docker compose build bot
+    record_lockfile_hash
+    docker compose up -d
     docker compose ps
     ;;
   restart)
@@ -36,8 +67,10 @@ case "$cmd" in
     docker compose logs -f "${2:-bot}"
     ;;
   fresh)
-    docker compose down
-    docker compose up -d --build
+    echo "Force full rebuild (pnpm install + compile)..."
+    docker compose build --no-cache bot
+    record_lockfile_hash
+    docker compose up -d
     docker compose ps
     ;;
   -h|--help|help)

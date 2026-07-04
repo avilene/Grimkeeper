@@ -6,12 +6,12 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Install deps in their own layer — cached until package.json or lockfile changes.
+# Deps layer: only files that affect pnpm-lock.yaml resolution.
+# Docker reuses this layer until one of these files changes.
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY ops/docker.npmrc .npmrc
 COPY apps/bot/package.json apps/bot/
 COPY packages/database/package.json packages/database/
-COPY packages/database/prisma.config.ts packages/database/
 COPY packages/engine/package.json packages/engine/
 RUN pnpm install --frozen-lockfile
 
