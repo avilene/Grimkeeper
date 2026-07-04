@@ -8,13 +8,12 @@ services:
     environment:
       DATABASE_URL: file:/app/data/grimkeeper.db
       DEV_MODE: ${DEV_MODE:-false}
-    labels:
-      logging: "promtail"
-      logging_jobname: "grimkeeper-bot"
     volumes:
       - grimkeeper-data:/app/data
 
+  # Optional — enable with: docker compose --profile logging up -d
   promtail:
+    profiles: ["logging"]
     image: grafana/promtail:2.9.8
     restart: unless-stopped
     command: -config.file=/etc/promtail/promtail-config.yaml -config.expand-env=true
@@ -27,6 +26,9 @@ services:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./ops/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+    labels:
+      logging: "promtail"
+      logging_jobname: "grimkeeper-bot"
 
 volumes:
   grimkeeper-data:
