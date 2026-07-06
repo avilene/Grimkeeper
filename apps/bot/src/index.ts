@@ -14,32 +14,18 @@ import "reflect-metadata";
 import { Events, IntentsBitField } from "discord.js";
 import { Client } from "discordx";
 
-import { DevCommands } from "./commands/dev.js";
-import { DevCommandsMinimal } from "./commands/dev-minimal.js";
-import { GameCommands } from "./commands/game.js";
-import { GameCommandsMinimal } from "./commands/game-minimal.js";
-import { StCommands } from "./commands/st.js";
-import { StCommandsMinimal } from "./commands/st-minimal.js";
+import { isMinimalMode } from "./bot-mode.js";
 import { setBotClient } from "./discord-client.js";
 import {
   flushDiscordReports,
   registerClientErrorHandlers,
   reportError,
 } from "./error-reporter.js";
-import { handleVoteButton, handleVoteModalSubmit } from "./interactions/day-vote.js";
+import { loadCommandModules } from "./load-commands.js";
 import { log } from "./logger.js";
 import { startReminderScheduler } from "./reminder-scheduler.js";
-import { isMinimalMode } from "./bot-mode.js";
 
-if (isMinimalMode()) {
-  void GameCommandsMinimal;
-  void StCommandsMinimal;
-  void DevCommandsMinimal;
-} else {
-  void GameCommands;
-  void StCommands;
-  void DevCommands;
-}
+await loadCommandModules();
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -65,22 +51,21 @@ client.once(Events.ClientReady, async () => {
   try {
     await client.initApplicationCommands();
   } catch (error) {
-    await reportError("commands.register.failed", error);
+    await reportError("commands.register.failed", error, { botMode: isMinimalMode() ? "minimal" : "full" });
   }
   await flushDiscordReports(client);
-  log("info", "bot.ready", { tag: client.user?.tag, id: client.user?.id });
+  log("info", "bot.ready", { tag: client.user?.tag, id: client.user?.id, botMode: isMinimalMode() ? "minimal" : "full" });
 });
 
 client.on("interactionCreate", (interaction) => {
   void (async () => {
-    if (interaction.isButton()) {
-      if (!isMinimalMode()) {
+    if (!isMinimalMode()) {
+      const { handleVoteButton, handleVoteModalSubmit } = await import("./interactions/day-vote.js");
+      if (interaction.isButton()) {
         const handled = await handleVoteButton(interaction);
         if (handled) return;
       }
-    }
-    if (interaction.isModalSubmit()) {
-      if (!isMinimalMode()) {
+      if (interaction.isModalSubmit()) {
         const handled = await handleVoteModalSubmit(interaction);
         if (handled) return;
       }

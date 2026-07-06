@@ -25,42 +25,6 @@ export function getErrorChannelId(): string | null {
   return value ? value : null;
 }
 
-export function formatErrorForDiscord(
-  source: string,
-  error: unknown,
-  context: Record<string, unknown> = {},
-): string {
-  const serialized = serializeError(error);
-  const lines = [`**[${source}]**`];
-
-  const message =
-    (typeof serialized.error === "string" && serialized.error) ||
-    (typeof serialized.message === "string" && serialized.message) ||
-    String(error);
-  lines.push(message);
-
-  if (typeof serialized.errorName === "string") {
-    lines.push(`Type: \`${serialized.errorName}\``);
-  }
-
-  const contextEntries = Object.entries(context).filter(([, value]) => value !== undefined);
-  if (contextEntries.length > 0) {
-    lines.push(
-      contextEntries.map(([key, value]) => `${key}: ${formatContextValue(value)}`).join("\n"),
-    );
-  }
-
-  if (typeof serialized.stack === "string") {
-    lines.push("```", serialized.stack, "```");
-  }
-
-  let text = lines.join("\n");
-  if (text.length > DISCORD_MESSAGE_LIMIT) {
-    text = `${text.slice(0, DISCORD_MESSAGE_LIMIT - 20)}\n… (truncated)`;
-  }
-  return text;
-}
-
 function formatContextValue(value: unknown): string {
   if (value === null) return "null";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -71,6 +35,101 @@ function formatContextValue(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function codeBlock(language: string, body: string): string {
+  const fence = "```";
+  return `${fence}${language}\n${body}\n${fence}`;
+}
+
+function truncateBlock(language: string, body: string, maxChars: number): string {
+  if (body.length <= maxChars) {
+    return codeBlock(language, body);
+  }
+  const suffix = "\n… (truncated)";
+  const budget = Math.max(0, maxChars - language.length - suffix.length - 8);
+  return codeBlock(language, `${body.slice(0, budget)}${suffix}`);
+}
+
+function extractErrorMessage(error: unknown, serialized: Record<string, unknown>): string {
+  if (typeof serialized.error === "string" && serialized.error) {
+    return serialized.error;
+  }
+  if (typeof serialized.message === "string" && serialized.message) {
+    return serialized.message;
+  }
+  return String(error);
+}
+
+function extractErrorMeta(
+  source: string,
+  error: unknown,
+  serialized: Record<string, unknown>,
+  context: Record<string, unknown>,
+): Record<string, unknown> {
+  const meta: Record<string, unknown> = {
+    time: new Date().toISOString(),
+    source,
+    ...context,
+  };
+
+  if (typeof serialized.errorName === "string") {
+    meta.type = serialized.errorName;
+  } else if (error instanceof Error) {
+    meta.type = error.name;
+  }
+
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    if (record.code !== undefined) meta.code = record.code;
+    if (record.status !== undefined) meta.status = record.status;
+    if (typeof record.method === "string") meta.method = record.method;
+    if (typeof record.url === "string") meta.url = record.url;
+  }
+
+  if (typeof serialized.stack === "string") {
+    const frame = serialized.stack.split("\n")[1]?.trim();
+    if (frame) meta.at = frame;
+  }
+
+  return meta;
+}
+
+function formatMetaBlock(meta: Record<string, unknown>): string {
+  const lines = Object.entries(meta)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => `${key}: ${formatContextValue(value)}`);
+  return codeBlock("yaml", lines.join("\n"));
+}
+
+export function formatErrorForDiscord(
+  source: string,
+  error: unknown,
+  context: Record<string, unknown> = {},
+): string {
+  const serialized = serializeError(error);
+  const message = extractErrorMessage(error, serialized);
+  const meta = extractErrorMeta(source, error, serialized, context);
+
+  const parts = [`**[${source}]**`, formatMetaBlock(meta), truncateBlock("", message, 700)];
+
+  if (typeof serialized.stack === "string") {
+    parts.push(truncateBlock("", serialized.stack, 900));
+  }
+
+  let text = parts.join("\n");
+  if (text.length > DISCORD_MESSAGE_LIMIT) {
+    const stack = typeof serialized.stack === "string" ? serialized.stack : "";
+    const withoutStack = parts.slice(0, 3).join("\n");
+    const remaining = DISCORD_MESSAGE_LIMIT - withoutStack.length - 30;
+    if (remaining > 80 && stack) {
+      text = `${withoutStack}\n${truncateBlock("", stack, remaining)}`;
+    } else {
+      text = `${withoutStack}\n… (truncated)`;
+    }
+  }
+
+  return text.slice(0, DISCORD_MESSAGE_LIMIT);
 }
 
 function fingerprint(source: string, error: unknown): string {
