@@ -834,8 +834,33 @@ export async function createDayThread(
   }
 }
 
+export async function deferInteractionReply(
+  interaction: CommandInteraction,
+  options: { ephemeral?: boolean } = {},
+): Promise<void> {
+  if (interaction.deferred || interaction.replied) return;
+  await interaction.deferReply(
+    options.ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
+  );
+}
+
+export async function replyOrEditInteraction(
+  interaction: CommandInteraction,
+  payload: { content?: string; embeds?: EmbedBuilder[]; flags?: number },
+): Promise<void> {
+  if (interaction.deferred) {
+    await interaction.editReply(payload);
+    return;
+  }
+  if (interaction.replied) {
+    await interaction.followUp(payload);
+    return;
+  }
+  await interaction.reply(payload);
+}
+
 export async function replyEngineError(
-  interaction: Pick<CommandInteraction, "reply"> & {
+  interaction: Pick<CommandInteraction, "reply" | "editReply" | "followUp"> & {
     deferred?: boolean;
     replied?: boolean;
     commandName?: string;
@@ -851,8 +876,10 @@ export async function replyEngineError(
       userId: "user" in interaction ? (interaction as CommandInteraction).user.id : undefined,
     });
   }
-  if (interaction.deferred || interaction.replied) {
-    await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+  if (interaction.deferred) {
+    await interaction.editReply({ content: message });
+  } else if (interaction.replied) {
+    await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
   } else {
     await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
   }

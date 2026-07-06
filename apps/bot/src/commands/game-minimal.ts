@@ -17,6 +17,7 @@ import {
   addRoleToUser,
   applyGameChannelPermissions,
   createKibThread,
+  deferInteractionReply,
   ensureGameRoles,
   getGameRoles,
   loadEngine,
@@ -24,6 +25,7 @@ import {
   persistEvents,
   removeRoleFromUser,
   replyEngineError,
+  replyOrEditInteraction,
   requireCommandAccess,
 } from "./command-context.js";
 
@@ -73,13 +75,15 @@ export class GameCommandsMinimal {
       return;
     }
 
+    await deferInteractionReply(interaction);
+
     const gameId = randomUUID();
     let roleHint = "";
     let gameRoles = null;
     if (GAME_DISCORD_ROLES_ENABLED) {
       gameRoles = await ensureGameRoles(interaction.guild, interaction.channelId);
       if (!gameRoles) {
-        await interaction.reply({
+        await replyOrEditInteraction(interaction, {
           content: "I couldn't create game roles. Check bot permissions (`Manage Roles`).",
           flags: MessageFlags.Ephemeral,
         });
@@ -122,7 +126,7 @@ export class GameCommandsMinimal {
       ? ` Kib thread created: ${kibThread}.`
       : " I could not create a kib thread (missing permissions or unsupported channel type).";
 
-    await interaction.reply({
+    await replyOrEditInteraction(interaction, {
       embeds: [
         new EmbedBuilder()
           .setTitle("Grimkeeper game created")

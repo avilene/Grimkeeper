@@ -13,12 +13,14 @@ import {
   addRoleToUser,
   cleanupGameRoles,
   createPlayerStThreads,
+  deferInteractionReply,
   getGameRoles,
   getStorytellerThread,
   loadEngine,
   persistEvents,
   removeRoleFromUser,
   replyEngineError,
+  replyOrEditInteraction,
   requireCommandAccess,
   requireStorytellerGame,
 } from "./command-context.js";
@@ -32,6 +34,8 @@ export class StCommandsMinimal {
     if (!(await requireCommandAccess(interaction))) return;
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
+
+    await deferInteractionReply(interaction, { ephemeral: true });
 
     try {
       const engine = await loadEngine(game.id);
@@ -53,7 +57,7 @@ export class StCommandsMinimal {
           ? ` Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.`
           : "";
 
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: `Game started.${threadHint}`,
         flags: MessageFlags.Ephemeral,
       });
