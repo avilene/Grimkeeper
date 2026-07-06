@@ -15,8 +15,6 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    outputs:
-      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,44 +33,8 @@ jobs:
             type=sha,prefix=
 
       - uses: docker/build-push-action@v6
-        id: build
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-  notify:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Notify Discord
-        env:
-          DISCORD_BUILD_WEBHOOK_URL: ${{ secrets.DISCORD_BUILD_WEBHOOK_URL }}
-          STATUS: ${{ needs.build-and-push.result }}
-          SHA: ${{ github.sha }}
-          REF: ${{ github.ref_name }}
-          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          DIGEST: ${{ needs.build-and-push.outputs.digest }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          if [ -z "$DISCORD_BUILD_WEBHOOK_URL" ]; then
-            echo "DISCORD_BUILD_WEBHOOK_URL not set — skipping notification."
-            exit 0
-          fi
-          short="${SHA:0:7}"
-          ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          content=$(printf '%s\n' \
-            "**Docker build ${STATUS}**" \
-            '```yaml' \
-            "time: ${ts}" \
-            "status: ${STATUS}" \
-            "branch: ${REF}" \
-            "commit: ${short}" \
-            "image: ${IMAGE}" \
-            "digest: ${DIGEST:-unknown}" \
-            "run: ${RUN_URL}" \
-            '```')
-          payload=$(printf '{"content":%s}' "$(printf '%s' "$content" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')")
-          curl -fsS -H "Content-Type: application/json" -d "$payload" "$DISCORD_BUILD_WEBHOOK_URL"
