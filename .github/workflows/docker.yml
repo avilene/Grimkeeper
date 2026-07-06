@@ -63,15 +63,16 @@ jobs:
           fi
           short="${SHA:0:7}"
           ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          content="**Docker build ${STATUS}**
-\`\`\`yaml
-time: ${ts}
-status: ${STATUS}
-branch: ${REF}
-commit: ${short}
-image: ${IMAGE}
-digest: ${DIGEST:-unknown}
-run: ${RUN_URL}
-\`\`\`"
+          content=$(printf '%s\n' \
+            "**Docker build ${STATUS}**" \
+            '```yaml' \
+            "time: ${ts}" \
+            "status: ${STATUS}" \
+            "branch: ${REF}" \
+            "commit: ${short}" \
+            "image: ${IMAGE}" \
+            "digest: ${DIGEST:-unknown}" \
+            "run: ${RUN_URL}" \
+            '```')
           payload=$(printf '{"content":%s}' "$(printf '%s' "$content" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')")
           curl -fsS -H "Content-Type: application/json" -d "$payload" "$DISCORD_BUILD_WEBHOOK_URL"
