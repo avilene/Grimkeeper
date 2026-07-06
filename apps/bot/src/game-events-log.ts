@@ -43,12 +43,38 @@ function eventFields(event: GameEvent): Record<string, unknown> {
       return { nightNumber: event.nightNumber };
     case GameEventType.DayStarted:
       return { dayNumber: event.dayNumber };
+    case GameEventType.DayOpened:
+      return { dayNumber: event.dayNumber, discordThreadId: event.discordThreadId };
     case GameEventType.GameEnded:
       return { winner: event.winner, reason: event.reason };
     case GameEventType.PlayerDied:
-      return { playerId: event.playerId, cause: event.cause };
+      return { playerId: event.playerId, cause: event.cause, nominationId: event.nominationId };
     case GameEventType.NominationMade:
-      return { nominatorId: event.nominatorId, nomineeId: event.nomineeId };
+      return {
+        nominationId: event.nominationId,
+        nominatorId: event.nominatorId,
+        nomineeId: event.nomineeId,
+        order: event.order,
+      };
+    case GameEventType.DefenseAdded:
+      return { nominationId: event.nominationId, playerId: event.playerId };
+    case GameEventType.VoteCast:
+      return { nominationId: event.nominationId, voterId: event.voterId, choice: event.choice, manualSet: event.manualSet };
+    case GameEventType.NominationsPaused:
+      return { pausedUntil: event.pausedUntil };
+    case GameEventType.NominationsResumed:
+      return {};
+    case GameEventType.VoteVisibilitySet:
+      return { visibility: event.visibility };
+    case GameEventType.NominationsClosed:
+      return {};
+    case GameEventType.NominationResolved:
+      return {
+        nominationId: event.nominationId,
+        passed: event.passed,
+        yesVotes: event.yesVotes,
+        livingCount: event.livingCount,
+      };
     case GameEventType.SeatsOpened:
       return {};
     case GameEventType.SeatsClosed:

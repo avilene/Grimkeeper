@@ -1,4 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 export type GamePhase = "lobby" | "setup" | "night" | "day" | "ended";
+export type VoteChoice = "yes" | "no" | "conditional";
+export type VoteVisibility = "public" | "secret";
+export type NominationStatus = "open" | "resolved_pass" | "resolved_fail" | "executed";
 
 import { GameCommandKind } from "./command-kinds.js";
 import { GameEventType } from "./event-types.js";
@@ -60,16 +65,68 @@ export interface DayStartedEvent extends GameEventBase {
   dayNumber: number;
 }
 
+export interface DayOpenedEvent extends GameEventBase {
+  type: typeof GameEventType.DayOpened;
+  dayNumber: number;
+  discordThreadId: string;
+}
+
+export interface DefenseAddedEvent extends GameEventBase {
+  type: typeof GameEventType.DefenseAdded;
+  nominationId: string;
+  playerId: string;
+  defense: string;
+}
+
+export interface VoteCastEvent extends GameEventBase {
+  type: typeof GameEventType.VoteCast;
+  nominationId: string;
+  voterId: string;
+  choice: VoteChoice;
+  reason: string | null;
+  manualSet?: boolean;
+}
+
+export interface NominationsPausedEvent extends GameEventBase {
+  type: typeof GameEventType.NominationsPaused;
+  pausedUntil: string;
+}
+
+export interface NominationsResumedEvent extends GameEventBase {
+  type: typeof GameEventType.NominationsResumed;
+}
+
+export interface VoteVisibilitySetEvent extends GameEventBase {
+  type: typeof GameEventType.VoteVisibilitySet;
+  visibility: VoteVisibility;
+}
+
+export interface NominationsClosedEvent extends GameEventBase {
+  type: typeof GameEventType.NominationsClosed;
+}
+
+export interface NominationResolvedEvent extends GameEventBase {
+  type: typeof GameEventType.NominationResolved;
+  nominationId: string;
+  passed: boolean;
+  yesVotes: number;
+  livingCount: number;
+}
+
 export interface PlayerDiedEvent extends GameEventBase {
   type: typeof GameEventType.PlayerDied;
   playerId: string;
   cause: string;
+  nominationId?: string;
 }
 
 export interface NominationMadeEvent extends GameEventBase {
   type: typeof GameEventType.NominationMade;
+  nominationId?: string;
   nominatorId: string;
   nomineeId: string;
+  accusation?: string;
+  order?: number;
 }
 
 export interface SeatPickedEvent extends GameEventBase {
@@ -112,8 +169,16 @@ export type GameEvent =
   | RolesDealtEvent
   | NightStartedEvent
   | DayStartedEvent
+  | DayOpenedEvent
   | PlayerDiedEvent
   | NominationMadeEvent
+  | DefenseAddedEvent
+  | VoteCastEvent
+  | NominationsPausedEvent
+  | NominationsResumedEvent
+  | VoteVisibilitySetEvent
+  | NominationsClosedEvent
+  | NominationResolvedEvent
   | SeatsOpenedEvent
   | SeatsClosedEvent
   | SeatPickedEvent
@@ -127,11 +192,41 @@ export interface PlayerState {
   roleId: string | null;
   alive: boolean;
   isFake: boolean;
+  ghostVoteUsed: boolean;
 }
 
-export interface NominationState {
+export interface NominationRecord {
+  id: string;
   nominatorId: string;
   nomineeId: string;
+  accusation: string;
+  defense: string | null;
+  order: number;
+  status: NominationStatus;
+}
+
+export interface VoteRecord {
+  nominationId: string;
+  voterId: string;
+  choice: VoteChoice;
+  reason: string | null;
+}
+
+export interface DayPhaseState {
+  dayNumber: number;
+  discordThreadId: string | null;
+  nominationsOpen: boolean;
+  nominationsPausedUntil: string | null;
+  voteVisibility: VoteVisibility;
+  nominations: NominationRecord[];
+  votes: VoteRecord[];
+  executionUsed: boolean;
+}
+
+export interface VoteTally {
+  yes: number;
+  no: number;
+  conditional: number;
 }
 
 export interface GameState {
@@ -145,7 +240,7 @@ export interface GameState {
   nightNumber: number;
   dayNumber: number;
   players: PlayerState[];
-  nominations: NominationState[];
+  day: DayPhaseState | null;
   seatsOpen: boolean;
   winner: "good" | "evil" | null;
 }
@@ -213,6 +308,80 @@ export interface MakeNominationCommand {
   gameId: string;
   nominatorId: string;
   nomineeId: string;
+  accusation: string;
+}
+
+export interface OpenDayCommand {
+  kind: typeof GameCommandKind.OpenDay;
+  gameId: string;
+  discordThreadId: string;
+}
+
+export interface AddDefenseCommand {
+  kind: typeof GameCommandKind.AddDefense;
+  gameId: string;
+  playerId: string;
+  nominationId: string;
+  defense: string;
+}
+
+export interface CastVoteCommand {
+  kind: typeof GameCommandKind.CastVote;
+  gameId: string;
+  voterId: string;
+  nominationId: string;
+  choice: VoteChoice;
+  reason?: string | null;
+}
+
+export interface SetPlayerVoteCommand {
+  kind: typeof GameCommandKind.SetPlayerVote;
+  gameId: string;
+  voterId: string;
+  nominationId: string;
+  choice: VoteChoice;
+  reason?: string | null;
+}
+
+export interface KillPlayerCommand {
+  kind: typeof GameCommandKind.KillPlayer;
+  gameId: string;
+  playerId: string;
+  cause: string;
+}
+
+export interface PauseNominationsCommand {
+  kind: typeof GameCommandKind.PauseNominations;
+  gameId: string;
+  pausedUntil: string;
+}
+
+export interface ResumeNominationsCommand {
+  kind: typeof GameCommandKind.ResumeNominations;
+  gameId: string;
+}
+
+export interface SetVoteVisibilityCommand {
+  kind: typeof GameCommandKind.SetVoteVisibility;
+  gameId: string;
+  visibility: VoteVisibility;
+}
+
+export interface CloseNominationsCommand {
+  kind: typeof GameCommandKind.CloseNominations;
+  gameId: string;
+}
+
+export interface ResolveNominationCommand {
+  kind: typeof GameCommandKind.ResolveNomination;
+  gameId: string;
+}
+
+export interface ExecutePlayerCommand {
+  kind: typeof GameCommandKind.ExecutePlayer;
+  gameId: string;
+  playerId: string;
+  nominationId: string;
 }
 
 export interface PickSeatCommand {
@@ -256,6 +425,17 @@ export type GameCommand =
   | ClearFakePlayersCommand
   | AdvancePhaseCommand
   | MakeNominationCommand
+  | OpenDayCommand
+  | AddDefenseCommand
+  | CastVoteCommand
+  | SetPlayerVoteCommand
+  | KillPlayerCommand
+  | PauseNominationsCommand
+  | ResumeNominationsCommand
+  | SetVoteVisibilityCommand
+  | CloseNominationsCommand
+  | ResolveNominationCommand
+  | ExecutePlayerCommand
   | OpenSeatsCommand
   | CloseSeatsCommand
   | PickSeatCommand
@@ -284,10 +464,58 @@ function emptyState(gameId: string): GameState {
     nightNumber: 0,
     dayNumber: 0,
     players: [],
-    nominations: [],
+    day: null,
     seatsOpen: false,
     winner: null,
   };
+}
+
+export function countLivingPlayers(state: GameState): number {
+  return state.players.filter((player) => player.alive).length;
+}
+
+export function passesExecutionVote(yesVotes: number, livingCount: number): boolean {
+  return yesVotes > Math.floor(livingCount / 2);
+}
+
+export function createEmptyDayState(dayNumber: number): DayPhaseState {
+  return {
+    dayNumber,
+    discordThreadId: null,
+    nominationsOpen: true,
+    nominationsPausedUntil: null,
+    voteVisibility: "public",
+    nominations: [],
+    votes: [],
+    executionUsed: false,
+  };
+}
+
+export function getNominationTally(state: GameState, nominationId: string): VoteTally {
+  const tally: VoteTally = { yes: 0, no: 0, conditional: 0 };
+  if (!state.day) return tally;
+
+  for (const vote of state.day.votes) {
+    if (vote.nominationId !== nominationId) continue;
+    tally[vote.choice]++;
+  }
+  return tally;
+}
+
+export function getEffectiveYesVotes(state: GameState, nominationId: string): number {
+  if (!state.day) return 0;
+
+  let yes = 0;
+  for (const vote of state.day.votes) {
+    if (vote.nominationId !== nominationId || vote.choice !== "yes") continue;
+    yes++;
+  }
+  return yes;
+}
+
+export function isNominationsPaused(day: DayPhaseState, now = new Date()): boolean {
+  if (!day.nominationsPausedUntil) return false;
+  return new Date(day.nominationsPausedUntil) > now;
 }
 
 export function getStorytellerDiscordIds(state: GameState): string[] {
@@ -332,6 +560,29 @@ export class GameEngine {
 
   getPlayerById(playerId: string): PlayerState | undefined {
     return this.state.players.find((player) => player.id === playerId);
+  }
+
+  getNominationById(nominationId: string): NominationRecord | undefined {
+    return this.state.day?.nominations.find((nomination) => nomination.id === nominationId);
+  }
+
+  getNextOpenNomination(): NominationRecord | undefined {
+    if (!this.state.day) return undefined;
+    return this.state.day.nominations
+      .filter((nomination) => nomination.status === "open")
+      .sort((a, b) => a.order - b.order)[0];
+  }
+
+  getNominationTally(nominationId: string): VoteTally {
+    return getNominationTally(this.state, nominationId);
+  }
+
+  getEffectiveYesVotes(nominationId: string): number {
+    return getEffectiveYesVotes(this.state, nominationId);
+  }
+
+  countLivingPlayers(): number {
+    return countLivingPlayers(this.state);
   }
 
   static fromEvents(gameId: string, events: GameEvent[]): GameEngine {
@@ -432,20 +683,146 @@ export class GameEngine {
         break;
       case GameCommandKind.MakeNomination:
         this.assertPhase("day", "Nominations can only be made during the day.");
+        this.assertDayState();
+        this.assertNominationsAcceptingNew();
         this.assertAlivePlayer(command.nominatorId, "Only alive players can nominate.");
         this.assertAlivePlayer(command.nomineeId, "You can only nominate alive players.");
         if (command.nominatorId === command.nomineeId) {
           throw new GameEngineError("You cannot nominate yourself.");
         }
+        if (!command.accusation.trim()) {
+          throw new GameEngineError("An accusation is required.");
+        }
         if (
-          this.state.nominations.some((nomination) => nomination.nominatorId === command.nominatorId)
+          this.state.day!.nominations.some(
+            (nomination) => nomination.nominatorId === command.nominatorId,
+          )
         ) {
           throw new GameEngineError("You have already made a nomination today.");
         }
-        if (this.state.nominations.some((nomination) => nomination.nomineeId === command.nomineeId)) {
+        if (
+          this.state.day!.nominations.some((nomination) => nomination.nomineeId === command.nomineeId)
+        ) {
           throw new GameEngineError("That player has already been nominated today.");
         }
         break;
+      case GameCommandKind.OpenDay:
+        this.assertPhase("day", "Day can only be opened during the day phase.");
+        if (!this.state.day) {
+          throw new GameEngineError("Day state is not initialized.");
+        }
+        break;
+      case GameCommandKind.AddDefense: {
+        this.assertPhase("day", "Defense can only be added during the day.");
+        this.assertDayState();
+        const nomination = this.getNominationById(command.nominationId);
+        if (!nomination || nomination.status !== "open") {
+          throw new GameEngineError("That nomination is not open.");
+        }
+        if (nomination.nomineeId !== command.playerId) {
+          throw new GameEngineError("Only the nominee can add a defense.");
+        }
+        if (!command.defense.trim()) {
+          throw new GameEngineError("Defense text is required.");
+        }
+        break;
+      }
+      case GameCommandKind.CastVote: {
+        this.assertPhase("day", "Votes can only be cast during the day.");
+        this.assertDayState();
+        if (!this.state.day!.nominationsOpen) {
+          throw new GameEngineError("Nominations and voting are closed.");
+        }
+        const nomination = this.getNominationById(command.nominationId);
+        if (!nomination || nomination.status !== "open") {
+          throw new GameEngineError("That nomination is not open for voting.");
+        }
+        const voter = this.getPlayerById(command.voterId);
+        if (!voter) {
+          throw new GameEngineError("Player is not in this game.");
+        }
+        if (command.choice === "conditional" && !command.reason?.trim()) {
+          throw new GameEngineError("Conditional votes require a reason.");
+        }
+        if (!voter.alive) {
+          if (voter.ghostVoteUsed) {
+            throw new GameEngineError("You have already used your ghost vote.");
+          }
+          if (command.choice !== "yes") {
+            throw new GameEngineError("Ghost votes must be yes.");
+          }
+        }
+        break;
+      }
+      case GameCommandKind.SetPlayerVote: {
+        this.assertPhase("day", "Votes can only be set during the day.");
+        this.assertDayState();
+        const nomination = this.getNominationById(command.nominationId);
+        if (!nomination || nomination.status !== "open") {
+          throw new GameEngineError("That nomination is not open for voting.");
+        }
+        const voter = this.getPlayerById(command.voterId);
+        if (!voter) {
+          throw new GameEngineError("Player is not in this game.");
+        }
+        if (command.choice === "conditional" && !command.reason?.trim()) {
+          throw new GameEngineError("Conditional votes require a reason.");
+        }
+        break;
+      }
+      case GameCommandKind.KillPlayer:
+        if (this.state.phase === "ended") {
+          throw new GameEngineError("Game has already ended.");
+        }
+        if (!this.getPlayerById(command.playerId)) {
+          throw new GameEngineError("Player is not in this game.");
+        }
+        this.assertAlivePlayer(command.playerId, "That player is already dead.");
+        break;
+      case GameCommandKind.PauseNominations:
+        this.assertPhase("day", "Nominations can only be paused during the day.");
+        this.assertDayState();
+        break;
+      case GameCommandKind.ResumeNominations:
+        this.assertPhase("day", "Nominations can only be resumed during the day.");
+        this.assertDayState();
+        break;
+      case GameCommandKind.SetVoteVisibility:
+        this.assertPhase("day", "Vote visibility can only be changed during the day.");
+        this.assertDayState();
+        break;
+      case GameCommandKind.CloseNominations:
+        this.assertPhase("day", "Nominations can only be closed during the day.");
+        this.assertDayState();
+        if (!this.state.day!.nominationsOpen) {
+          throw new GameEngineError("Nominations are already closed.");
+        }
+        break;
+      case GameCommandKind.ResolveNomination: {
+        this.assertPhase("day", "Nominations can only be resolved during the day.");
+        this.assertDayState();
+        const next = this.getNextOpenNomination();
+        if (!next) {
+          throw new GameEngineError("No open nominations remain to resolve.");
+        }
+        break;
+      }
+      case GameCommandKind.ExecutePlayer: {
+        this.assertPhase("day", "Executions can only happen during the day.");
+        this.assertDayState();
+        if (this.state.day!.executionUsed) {
+          throw new GameEngineError("Only one execution is allowed per day.");
+        }
+        const nomination = this.getNominationById(command.nominationId);
+        if (!nomination || nomination.status !== "resolved_pass") {
+          throw new GameEngineError("That nomination has not passed.");
+        }
+        if (nomination.nomineeId !== command.playerId) {
+          throw new GameEngineError("That player is not the nominee for this execution.");
+        }
+        this.assertAlivePlayer(command.playerId, "That player is already dead.");
+        break;
+      }
       case GameCommandKind.OpenSeats:
         this.assertPhase("setup", "Seats can only be opened during setup.");
         if (this.state.seatsOpen) {
@@ -612,13 +989,137 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
-      case GameCommandKind.MakeNomination:
+      case GameCommandKind.MakeNomination: {
+        const order = (this.state.day?.nominations.length ?? 0) + 1;
+        const nominationId = randomUUID();
         return [
           {
             type: GameEventType.NominationMade,
             gameId: command.gameId,
+            nominationId,
             nominatorId: command.nominatorId,
             nomineeId: command.nomineeId,
+            accusation: command.accusation.trim(),
+            order,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
+      case GameCommandKind.OpenDay:
+        return [
+          {
+            type: GameEventType.DayOpened,
+            gameId: command.gameId,
+            dayNumber: this.state.dayNumber,
+            discordThreadId: command.discordThreadId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.AddDefense:
+        return [
+          {
+            type: GameEventType.DefenseAdded,
+            gameId: command.gameId,
+            nominationId: command.nominationId,
+            playerId: command.playerId,
+            defense: command.defense.trim(),
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.CastVote:
+        return [
+          {
+            type: GameEventType.VoteCast,
+            gameId: command.gameId,
+            nominationId: command.nominationId,
+            voterId: command.voterId,
+            choice: command.choice,
+            reason: command.reason?.trim() ?? null,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.SetPlayerVote:
+        return [
+          {
+            type: GameEventType.VoteCast,
+            gameId: command.gameId,
+            nominationId: command.nominationId,
+            voterId: command.voterId,
+            choice: command.choice,
+            reason: command.reason?.trim() ?? null,
+            manualSet: true,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.KillPlayer:
+        return [
+          {
+            type: GameEventType.PlayerDied,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            cause: command.cause,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.PauseNominations:
+        return [
+          {
+            type: GameEventType.NominationsPaused,
+            gameId: command.gameId,
+            pausedUntil: command.pausedUntil,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.ResumeNominations:
+        return [
+          {
+            type: GameEventType.NominationsResumed,
+            gameId: command.gameId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.SetVoteVisibility:
+        return [
+          {
+            type: GameEventType.VoteVisibilitySet,
+            gameId: command.gameId,
+            visibility: command.visibility,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.CloseNominations:
+        return [
+          {
+            type: GameEventType.NominationsClosed,
+            gameId: command.gameId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.ResolveNomination: {
+        const nomination = this.getNextOpenNomination()!;
+        const yesVotes = this.getEffectiveYesVotes(nomination.id);
+        const livingCount = this.countLivingPlayers();
+        const passed = passesExecutionVote(yesVotes, livingCount);
+        return [
+          {
+            type: GameEventType.NominationResolved,
+            gameId: command.gameId,
+            nominationId: nomination.id,
+            passed,
+            yesVotes,
+            livingCount,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
+      case GameCommandKind.ExecutePlayer:
+        return [
+          {
+            type: GameEventType.PlayerDied,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            cause: "execution",
+            nominationId: command.nominationId,
             timestamp: new Date().toISOString(),
           },
         ];
@@ -670,6 +1171,7 @@ export class GameEngine {
           roleId: null,
           alive: true,
           isFake: event.discordUserId.startsWith("dev:"),
+          ghostVoteUsed: false,
         });
         break;
       case GameEventType.PlayerRemoved:
@@ -714,14 +1216,85 @@ export class GameEngine {
       case GameEventType.DayStarted:
         this.state.phase = "day";
         this.state.dayNumber = event.dayNumber;
-        this.state.nominations = [];
+        this.state.day = createEmptyDayState(event.dayNumber);
         break;
-      case GameEventType.NominationMade:
-        this.state.nominations.push({
+      case GameEventType.DayOpened:
+        if (this.state.day) {
+          this.state.day.discordThreadId = event.discordThreadId;
+        }
+        break;
+      case GameEventType.NominationMade: {
+        if (!this.state.day) {
+          this.state.day = createEmptyDayState(this.state.dayNumber || 1);
+        }
+        this.state.day.nominations.push({
+          id: event.nominationId ?? randomUUID(),
           nominatorId: event.nominatorId,
           nomineeId: event.nomineeId,
+          accusation: event.accusation ?? "",
+          defense: null,
+          order: event.order ?? this.state.day.nominations.length + 1,
+          status: "open",
         });
         break;
+      }
+      case GameEventType.DefenseAdded: {
+        const nomination = this.getNominationById(event.nominationId);
+        if (nomination) {
+          nomination.defense = event.defense;
+        }
+        break;
+      }
+      case GameEventType.VoteCast: {
+        if (!this.state.day) break;
+        const existingIndex = this.state.day.votes.findIndex(
+          (vote) =>
+            vote.nominationId === event.nominationId && vote.voterId === event.voterId,
+        );
+        const voteRecord: VoteRecord = {
+          nominationId: event.nominationId,
+          voterId: event.voterId,
+          choice: event.choice,
+          reason: event.reason,
+        };
+        if (existingIndex >= 0) {
+          this.state.day.votes[existingIndex] = voteRecord;
+        } else {
+          this.state.day.votes.push(voteRecord);
+        }
+        const voter = this.getPlayerById(event.voterId);
+        if (voter && !voter.alive && !event.manualSet) {
+          voter.ghostVoteUsed = true;
+        }
+        break;
+      }
+      case GameEventType.NominationsPaused:
+        if (this.state.day) {
+          this.state.day.nominationsPausedUntil = event.pausedUntil;
+        }
+        break;
+      case GameEventType.NominationsResumed:
+        if (this.state.day) {
+          this.state.day.nominationsPausedUntil = null;
+        }
+        break;
+      case GameEventType.VoteVisibilitySet:
+        if (this.state.day) {
+          this.state.day.voteVisibility = event.visibility;
+        }
+        break;
+      case GameEventType.NominationsClosed:
+        if (this.state.day) {
+          this.state.day.nominationsOpen = false;
+        }
+        break;
+      case GameEventType.NominationResolved: {
+        const nomination = this.getNominationById(event.nominationId);
+        if (nomination) {
+          nomination.status = event.passed ? "resolved_pass" : "resolved_fail";
+        }
+        break;
+      }
       case GameEventType.SeatsOpened:
         this.state.seatsOpen = true;
         break;
@@ -739,6 +1312,13 @@ export class GameEngine {
         const player = this.state.players.find((p) => p.id === event.playerId);
         if (player) {
           player.alive = false;
+        }
+        if (event.cause === "execution" && event.nominationId && this.state.day) {
+          this.state.day.executionUsed = true;
+          const nomination = this.getNominationById(event.nominationId);
+          if (nomination) {
+            nomination.status = "executed";
+          }
         }
         break;
       }
@@ -786,10 +1366,23 @@ export class GameEngine {
     }
   }
 
-  formatNomination(nomination: NominationState): string {
+  formatNomination(nomination: NominationRecord): string {
     const nominator = this.getPlayerById(nomination.nominatorId);
     const nominee = this.getPlayerById(nomination.nomineeId);
-    return `${nominator?.displayName ?? "Unknown"} nominates ${nominee?.displayName ?? "Unknown"}`;
+    const base = `${nominator?.displayName ?? "Unknown"} nominates ${nominee?.displayName ?? "Unknown"}`;
+    if (nomination.accusation) {
+      return `${base}: ${nomination.accusation}`;
+    }
+    return base;
+  }
+
+  formatNominationTally(nominationId: string, options?: { revealSecret?: boolean }): string {
+    const tally = this.getNominationTally(nominationId);
+    const day = this.state.day;
+    if (day?.voteVisibility === "secret" && !options?.revealSecret) {
+      return "Votes recorded (secret mode)";
+    }
+    return `Yes: ${tally.yes} | No: ${tally.no} | Conditional: ${tally.conditional}`;
   }
 
   getSeatingChart(): string[] {
@@ -817,6 +1410,22 @@ export class GameEngine {
     const seatCount = this.state.players.length;
     if (!Number.isInteger(seat) || seat < 1 || seat > seatCount) {
       throw new GameEngineError(`Seat must be between 1 and ${seatCount}.`);
+    }
+  }
+
+  private assertDayState(): void {
+    if (!this.state.day) {
+      throw new GameEngineError("Day state is not initialized.");
+    }
+  }
+
+  private assertNominationsAcceptingNew(): void {
+    this.assertDayState();
+    if (!this.state.day!.nominationsOpen) {
+      throw new GameEngineError("Nominations are closed.");
+    }
+    if (isNominationsPaused(this.state.day!)) {
+      throw new GameEngineError("Nominations are paused.");
     }
   }
 

@@ -6,7 +6,7 @@ import {
   User,
 } from "discord.js";
 import { Discord, Slash, SlashGroup, SlashOption } from "discordx";
-import { getActiveGameForGuild } from "@grimkeeper/database";
+import { createGameReminder, getActiveGameForGuild, listPendingReminders, cancelGameReminders } from "@grimkeeper/database";
 import {
   GameCommandKind,
   dealRolesFromScript,
@@ -16,9 +16,20 @@ import {
 
 import { isDevMode } from "../dev.js";
 import {
+  buildDayIntroEmbed,
+  formatVoteVisibility,
+  parsePauseDurationMinutes,
+  updateNominationMessage,
+  type DayDiscussionChannel,
+} from "../day-thread.js";
+import { upsertPinnedSeatingChart } from "../seating-chart.js";
+import { upsertPinnedGameStatus } from "../game-status.js";
+import { formatReminderDuration, parseReminderDuration } from "../reminder-duration.js";
+import {
   GAME_DISCORD_ROLES_ENABLED,
   addRoleToUser,
   cleanupGameRoles,
+  createDayThread,
   deliverRolesToPlayers,
   ensureGameThreads,
   getStorytellerThread,
@@ -35,6 +46,7 @@ import {
   syncGameProjection,
   getGameRoles,
 } from "./command-context.js";
+import { runDevKill, runSetPlayerVote } from "../set-vote.js";
 
 @Discord()
 @SlashGroup({ name: "st", description: "Storyteller commands for an active game" })
@@ -276,17 +288,11 @@ export class StCommands {
         )
         .addFields({ name: "Current seating", value: engine.getSeatingChart().join("\n") });
 
-      const townEmbed = new EmbedBuilder()
-        .setTitle("Pick your seat")
-        .setDescription(
-          `The storyteller has opened seat selection. Players, use \`/game seat\` to choose a seat **(1–${playerCount})** in this channel.`,
-        );
-
       await postToStorytellerThread(guild, game.channelId, { embeds: [stEmbed] });
-      await postToTownChannel(guild, game.channelId, { embeds: [townEmbed] });
+      await upsertPinnedSeatingChart(guild, game.channelId, engine);
 
       await interaction.reply({
-        content: "Seat selection is open. Players have been notified in town.",
+        content: "Seat selection is open. A pinned seating chart was posted in town.",
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -320,12 +326,12 @@ export class StCommands {
         });
 
       await postToStorytellerThread(guild, game.channelId, { embeds: [townEmbed] });
-      await postToTownChannel(guild, game.channelId, { embeds: [townEmbed] });
+      await upsertPinnedSeatingChart(guild, game.channelId, engine);
 
       await interaction.reply({
         content: allSeated
-          ? "Seat selection closed. Seating announced in town."
-          : "Seat selection closed, but some players are still unseated.",
+          ? "Seat selection closed. Pinned seating chart updated."
+          : "Seat selection closed, but some players are still unseated. Pinned chart updated.",
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -481,24 +487,529 @@ export class StCommands {
     }
   }
 
-  @Slash({ name: "day", description: "Advance to the next day" })
+  @Slash({ name: "day", description: "Advance to the next day and open the day thread" })
   async day(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
 
     try {
       const engine = await loadEngine(game.id);
       const events = engine.handle({ kind: GameCommandKind.AdvancePhase, gameId: game.id, targetPhase: "day" });
       await persistEvents(engine, events);
       await syncGameProjection(game.id, engine);
+
+      const dayNumber = engine.getState().dayNumber;
+      const dayThread = await createDayThread(guild, game.channelId, game.id, dayNumber, engine);
+      if (!dayThread) {
+        await interaction.reply({
+          content: `Day ${dayNumber} started, but I could not create the day thread (check permissions).`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const openEvents = engine.handle({
+        kind: GameCommandKind.OpenDay,
+        gameId: game.id,
+        discordThreadId: dayThread.id,
+      });
+      await persistEvents(engine, openEvents);
+
+      const introEmbed = buildDayIntroEmbed(engine);
+      await dayThread.send({ embeds: [introEmbed] }).catch(() => undefined);
+      await upsertPinnedGameStatus(guild, dayThread.id, engine);
+      await postToTownChannel(guild, game.channelId, {
+        content: `Day ${dayNumber} has begun — discuss and vote in <#${dayThread.id}>.`,
+      });
+
       await interaction.reply({
-        content: `Day ${engine.getState().dayNumber} started. Players can nominate with \`/game nominate\`.`,
+        content: `Day ${dayNumber} started. Town square: <#${dayThread.id}>.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       await replyEngineError(interaction, error);
     }
+  }
+
+  @Slash({ name: "pause-nominations", description: "Pause new nominations for a duration" })
+  async pauseNominations(
+    @SlashOption({
+      name: "duration",
+      description: "How long to pause (e.g. 5m, 10, 15m)",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    duration: string,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    const minutes = parsePauseDurationMinutes(duration);
+    if (!minutes) {
+      await interaction.reply({
+        content: "Duration must be a number of minutes between 1 and 120 (e.g. `5m` or `10`).",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      const engine = await loadEngine(game.id);
+      const pausedUntil = new Date(Date.now() + minutes * 60_000).toISOString();
+      const events = engine.handle({
+        kind: GameCommandKind.PauseNominations,
+        gameId: game.id,
+        pausedUntil,
+      });
+      await persistEvents(engine, events);
+
+      const dayThreadId = engine.getState().day?.discordThreadId ?? game.channelId;
+      if (interaction.guildId) {
+        await createGameReminder({
+          gameId: game.id,
+          guildId: interaction.guildId,
+          channelId: dayThreadId,
+          message: "Nominations pause ended — players may nominate again.",
+          fireAt: new Date(pausedUntil),
+          createdBy: interaction.user.id,
+        });
+      }
+
+      if (dayThreadId && interaction.guild) {
+        const thread = await interaction.guild.channels.fetch(dayThreadId).catch(() => null);
+        if (thread?.isTextBased()) {
+          await thread.send(`Nominations paused for **${minutes}** minute(s).`).catch(() => undefined);
+        }
+      }
+
+      await interaction.reply({
+        content: `Nominations paused for ${minutes} minute(s).`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "vote-visibility", description: "Set public or secret vote visibility (Organ Grinder mode)" })
+  async voteVisibility(
+    @SlashOption({
+      name: "mode",
+      description: "public shows tallies; secret hides them from players",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    mode: "public" | "secret",
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const events = engine.handle({
+        kind: GameCommandKind.SetVoteVisibility,
+        gameId: game.id,
+        visibility: mode,
+      });
+      await persistEvents(engine, events);
+
+      const dayThreadId = engine.getState().day?.discordThreadId;
+      if (dayThreadId && interaction.guild) {
+        const thread = await interaction.guild.channels.fetch(dayThreadId).catch(() => null);
+        if (thread?.isTextBased()) {
+          await thread
+            .send(`Vote visibility is now **${formatVoteVisibility(mode)}**.`)
+            .catch(() => undefined);
+        }
+      }
+
+      await interaction.reply({
+        content: `Vote visibility set to **${formatVoteVisibility(mode)}**.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "close-nominations", description: "Stop new nominations and votes for the day" })
+  async closeNominations(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const events = engine.handle({
+        kind: GameCommandKind.CloseNominations,
+        gameId: game.id,
+      });
+      await persistEvents(engine, events);
+
+      const dayThreadId = engine.getState().day?.discordThreadId;
+      if (dayThreadId && interaction.guild) {
+        const thread = await interaction.guild.channels.fetch(dayThreadId).catch(() => null);
+        if (thread?.isTextBased()) {
+          await thread.send("Nominations and voting are now **closed**.").catch(() => undefined);
+        }
+      }
+
+      await interaction.reply({
+        content: "Nominations and voting closed.",
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "resolve-next", description: "Resolve the next nomination in queue order" })
+  async resolveNext(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const next = engine.getNextOpenNomination();
+      if (!next) {
+        await interaction.reply({
+          content: "No open nominations remain to resolve.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const events = engine.handle({
+        kind: GameCommandKind.ResolveNomination,
+        gameId: game.id,
+      });
+      await persistEvents(engine, events);
+
+      const resolved = engine.getNominationById(next.id);
+      const yesVotes = engine.getEffectiveYesVotes(next.id);
+      const livingCount = engine.countLivingPlayers();
+      const nominee = engine.getPlayerById(next.nomineeId);
+      const passed = resolved?.status === "resolved_pass";
+      const tally = engine.formatNominationTally(next.id, { revealSecret: true });
+
+      const dayThreadId = engine.getState().day?.discordThreadId;
+      if (dayThreadId && interaction.guild) {
+        const thread = await interaction.guild.channels.fetch(dayThreadId).catch(() => null);
+        if (thread?.isThread()) {
+          await updateNominationMessage(
+            engine,
+            game.id,
+            thread as DayDiscussionChannel,
+            next.id,
+            { revealSecret: true },
+          );
+          await thread
+            .send(
+              `Nomination #${next.order} for **${nominee?.displayName ?? "Unknown"}** ${passed ? "**passed**" : "**failed**"} (${yesVotes}/${livingCount} living, ${tally}).` +
+                (passed ? " ST may run `/st execute`." : ""),
+            )
+            .catch(() => undefined);
+        }
+      }
+
+      await interaction.reply({
+        content: `Nomination #${next.order} ${passed ? "passed" : "failed"}. ${tally}`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "execute", description: "Execute a player after a nomination passes" })
+  async execute(
+    @SlashOption({
+      name: "player",
+      description: "Player to execute",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    player: User,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const target = engine.getPlayerByDiscordId(player.id);
+      if (!target) {
+        await interaction.reply({ content: "That user is not in this game.", flags: MessageFlags.Ephemeral });
+        return;
+      }
+
+      const nomination = engine
+        .getState()
+        .day?.nominations.find(
+          (candidate) =>
+            candidate.nomineeId === target.id && candidate.status === "resolved_pass",
+        );
+      if (!nomination) {
+        await interaction.reply({
+          content: "That player does not have a passed nomination to execute.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const events = engine.handle({
+        kind: GameCommandKind.ExecutePlayer,
+        gameId: game.id,
+        playerId: target.id,
+        nominationId: nomination.id,
+      });
+      await persistEvents(engine, events);
+      await syncGameProjection(game.id, engine);
+
+      const dayThreadId = engine.getState().day?.discordThreadId;
+      if (dayThreadId && interaction.guild) {
+        const thread = await interaction.guild.channels.fetch(dayThreadId).catch(() => null);
+        if (thread?.isThread()) {
+          await updateNominationMessage(
+            engine,
+            game.id,
+            thread as DayDiscussionChannel,
+            nomination.id,
+            { revealSecret: true },
+          );
+          await thread
+            .send(`<@${target.discordUserId}> has been **executed**.`)
+            .catch(() => undefined);
+        }
+      }
+
+      await postToTownChannel(interaction.guild!, game.channelId, {
+        content: `<@${target.discordUserId}> was executed on day ${engine.getState().dayNumber}.`,
+      });
+
+      await interaction.reply({
+        content: `Executed **${target.displayName}**.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "kill", description: "Mark a player dead (night kill or other cause)" })
+  async kill(
+    @SlashOption({
+      name: "player",
+      description: "Player to kill",
+      type: ApplicationCommandOptionType.User,
+      required: false,
+    })
+    player: User | undefined,
+    @SlashOption({
+      name: "seat",
+      description: "Seat for fake/dev players",
+      type: ApplicationCommandOptionType.Integer,
+      required: false,
+      minValue: 1,
+      maxValue: 15,
+    })
+    seat: number | undefined,
+    @SlashOption({
+      name: "cause",
+      description: "Cause of death (default: night)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    cause: string | undefined,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    if (!player && seat == null) {
+      await interaction.reply({
+        content: "Provide a `player` or `seat`.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await runDevKill({
+      interaction,
+      gameId: game.id,
+      userId: player?.id,
+      seat: seat ?? null,
+      cause: cause?.trim() || "night",
+    });
+  }
+
+  @Slash({ name: "set-vote", description: "Manually set a player's vote on a nomination" })
+  async setVote(
+    @SlashOption({
+      name: "choice",
+      description: "Vote to record",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    choice: "yes" | "no" | "conditional",
+    @SlashOption({
+      name: "voter",
+      description: "Living player casting the vote",
+      type: ApplicationCommandOptionType.User,
+      required: false,
+    })
+    voter: User | undefined,
+    @SlashOption({
+      name: "voter_seat",
+      description: "Seat number for fake/dev players",
+      type: ApplicationCommandOptionType.Integer,
+      required: false,
+      minValue: 1,
+      maxValue: 15,
+    })
+    voterSeat: number | undefined,
+    @SlashOption({
+      name: "nominee",
+      description: "Nominated player",
+      type: ApplicationCommandOptionType.User,
+      required: false,
+    })
+    nominee: User | undefined,
+    @SlashOption({
+      name: "nominee_seat",
+      description: "Nominee seat for fake/dev players",
+      type: ApplicationCommandOptionType.Integer,
+      required: false,
+      minValue: 1,
+      maxValue: 15,
+    })
+    nomineeSeat: number | undefined,
+    @SlashOption({
+      name: "reason",
+      description: "Required for conditional votes",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    reason: string | undefined,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    await runSetPlayerVote({
+      interaction,
+      gameId: game.id,
+      guild: interaction.guild,
+      voterUserId: voter?.id,
+      voterSeat: voterSeat ?? null,
+      nomineeUserId: nominee?.id,
+      nomineeSeat: nomineeSeat ?? null,
+      choice,
+      reason: reason ?? null,
+    });
+  }
+
+  @Slash({ name: "remind", description: "Schedule a reminder message in the day thread or town channel" })
+  async remind(
+    @SlashOption({
+      name: "in",
+      description: "When to send the reminder (e.g. 5m, 10, 1h)",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    inDuration: string,
+    @SlashOption({
+      name: "message",
+      description: "Reminder text",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    message: string,
+    @SlashOption({
+      name: "channel",
+      description: "Where to post the reminder",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    channel: "day" | "town" | undefined,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    if (!interaction.guildId) return;
+
+    const minutes = parseReminderDuration(inDuration);
+    if (!minutes) {
+      await interaction.reply({
+        content: "Duration must be like `5m`, `10`, or `1h` (max 24h).",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const engine = await loadEngine(game.id);
+    const dayThreadId = engine.getState().day?.discordThreadId;
+    const targetChannelId =
+      channel === "town" || !dayThreadId ? game.channelId : dayThreadId;
+    const fireAt = new Date(Date.now() + minutes * 60_000);
+
+    await createGameReminder({
+      gameId: game.id,
+      guildId: interaction.guildId,
+      channelId: targetChannelId,
+      message: message.trim(),
+      fireAt,
+      createdBy: interaction.user.id,
+    });
+
+    const where = channel === "town" || !dayThreadId ? "town" : `<#${dayThreadId}>`;
+    await interaction.reply({
+      content: `Reminder set in ${formatReminderDuration(minutes)} for ${where}: “${message.trim()}”`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({ name: "reminders", description: "List pending reminders for this game" })
+  async reminders(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    const pending = await listPendingReminders(game.id);
+    if (pending.length === 0) {
+      await interaction.reply({ content: "No pending reminders.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const lines = pending.map(
+      (reminder) =>
+        `- <t:${Math.floor(reminder.fireAt.getTime() / 1000)}:R> in <#${reminder.channelId}>: ${reminder.message}`,
+    );
+
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder().setTitle("Pending reminders").setDescription(lines.join("\n")),
+      ],
+      flags: MessageFlags.Ephemeral,
+    });
   }
 
   @Slash({ name: "grim-reveal", description: "Show end-of-game role reveal" })
@@ -547,7 +1058,7 @@ export class StCommands {
       const engine = await loadEngine(game.id);
       const events = engine.handle({ kind: GameCommandKind.EndGame, gameId: game.id, winner, reason });
       await persistEvents(engine, events);
-      await syncGameProjection(game.id, engine);
+      await cancelGameReminders(game.id);
       if (GAME_DISCORD_ROLES_ENABLED) {
         await cleanupGameRoles(guild, game.channelId);
       }

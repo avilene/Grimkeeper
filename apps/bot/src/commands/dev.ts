@@ -16,6 +16,7 @@ import {
 
 import { isDevMode, requireDevMode } from "../dev.js";
 import {
+  formatDayStatus,
   loadEngine,
   minPlayers,
   persistEvents,
@@ -23,6 +24,12 @@ import {
   requireCommandAccess,
   requireStorytellerGame,
 } from "./command-context.js";
+import {
+  runDevDayStart,
+  runDevKill,
+  runDevNominate,
+  runSetPlayerVote,
+} from "../set-vote.js";
 
 @Discord()
 @SlashGroup({ name: "dev", description: "Development utilities (DEV_MODE only)" })
@@ -193,5 +200,190 @@ export class DevCommands {
       ],
       flags: MessageFlags.Ephemeral,
     });
+  }
+
+  @Slash({ name: "day", description: "Start the next day (dev shortcut with fake-player support)" })
+  async devDay(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    if (!(await this.requireDev(interaction))) return;
+
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild || !interaction.channelId) return;
+
+    await runDevDayStart({
+      interaction,
+      gameId: game.id,
+      channelId: game.channelId,
+      guild,
+    });
+  }
+
+  @Slash({ name: "day-status", description: "Show nominations, votes, and day state" })
+  async devDayStatus(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    if (!(await this.requireDev(interaction))) return;
+
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    const engine = await loadEngine(game.id);
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("Day status")
+          .setDescription(formatDayStatus(engine)),
+      ],
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({ name: "nominate", description: "Record a nomination by seat (for fake players)" })
+  async devNominate(
+    @SlashOption({
+      name: "nominator_seat",
+      description: "Seat of the nominator",
+      type: ApplicationCommandOptionType.Integer,
+      required: true,
+      minValue: 1,
+      maxValue: 15,
+    })
+    nominatorSeat: number,
+    @SlashOption({
+      name: "nominee_seat",
+      description: "Seat of the nominee",
+      type: ApplicationCommandOptionType.Integer,
+      required: true,
+      minValue: 1,
+      maxValue: 15,
+    })
+    nomineeSeat: number,
+    @SlashOption({
+      name: "accusation",
+      description: "Accusation text",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    accusation: string,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+    if (!(await this.requireDev(interaction))) return;
+
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    await runDevNominate({
+      interaction,
+      gameId: game.id,
+      guild: interaction.guild,
+      nominatorSeat,
+      nomineeSeat,
+      accusation,
+    });
+  }
+
+  @Slash({ name: "set-vote", description: "Manually set a vote by seat (for fake players)" })
+  async devSetVote(
+    @SlashOption({
+      name: "voter_seat",
+      description: "Seat of the voter",
+      type: ApplicationCommandOptionType.Integer,
+      required: true,
+      minValue: 1,
+      maxValue: 15,
+    })
+    voterSeat: number,
+    @SlashOption({
+      name: "nominee_seat",
+      description: "Seat of the nominee",
+      type: ApplicationCommandOptionType.Integer,
+      required: true,
+      minValue: 1,
+      maxValue: 15,
+    })
+    nomineeSeat: number,
+    @SlashOption({
+      name: "choice",
+      description: "Vote to record",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    choice: "yes" | "no" | "conditional",
+    @SlashOption({
+      name: "reason",
+      description: "Required for conditional votes",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    reason: string | undefined,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+    if (!(await this.requireDev(interaction))) return;
+
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    await runSetPlayerVote({
+      interaction,
+      gameId: game.id,
+      guild: interaction.guild,
+      voterSeat,
+      nomineeSeat,
+      choice,
+      reason: reason ?? null,
+    });
+  }
+
+  @Slash({ name: "kill", description: "Mark a player dead by seat (testing night kills / ghost votes)" })
+  async devKill(
+    @SlashOption({
+      name: "seat",
+      description: "Seat of the player to kill",
+      type: ApplicationCommandOptionType.Integer,
+      required: true,
+      minValue: 1,
+      maxValue: 15,
+    })
+    seat: number,
+    @SlashOption({
+      name: "cause",
+      description: "Cause of death (default: night)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    cause: string | undefined,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+    if (!(await this.requireDev(interaction))) return;
+
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    await runDevKill({
+      interaction,
+      gameId: game.id,
+      seat,
+      cause: cause?.trim() || "night",
+    });
+  }
+
+  private async requireDev(interaction: CommandInteraction): Promise<boolean> {
+    try {
+      requireDevMode();
+      return true;
+    } catch {
+      await interaction.reply({
+        content: "Dev mode is disabled. Set `DEV_MODE=true` in your environment.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return false;
+    }
   }
 }

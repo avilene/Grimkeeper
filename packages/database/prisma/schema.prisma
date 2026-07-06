@@ -8,13 +8,17 @@ datasource db {
 }
 
 model Game {
-  id        String      @id @default(cuid())
-  guildId   String
-  channelId String
-  phase     String      @default("lobby")
-  createdAt DateTime    @default(now())
-  events    GameEvent[]
-  players   Player[]
+  id          String         @id @default(cuid())
+  guildId     String
+  channelId   String
+  phase       String         @default("lobby")
+  dayNumber   Int            @default(0)
+  nightNumber Int            @default(0)
+  createdAt   DateTime       @default(now())
+  events      GameEvent[]
+  players     Player[]
+  gameDays    GameDay[]
+  reminders   GameReminder[]
 
   @@index([guildId])
 }
@@ -27,9 +31,72 @@ model Player {
   seat          Int?
   roleId        String?
   alive         Boolean @default(true)
+  ghostVoteUsed Boolean @default(false)
   game          Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@unique([gameId, discordUserId])
+  @@index([gameId])
+}
+
+model GameDay {
+  id                  String       @id @default(cuid())
+  gameId              String
+  dayNumber           Int
+  discordThreadId     String?
+  nominationsOpen     Boolean      @default(true)
+  voteVisibility      String       @default("public")
+  executionUsed       Boolean      @default(false)
+  nominationsPausedUntil DateTime?
+  game                Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  nominations         Nomination[]
+  votes               Vote[]
+
+  @@unique([gameId, dayNumber])
+  @@index([gameId])
+}
+
+model Nomination {
+  id          String   @id
+  gameDayId   String
+  nominatorId String
+  nomineeId   String
+  accusation  String
+  defense     String?
+  order       Int
+  status      String
+  gameDay     GameDay  @relation(fields: [gameDayId], references: [id], onDelete: Cascade)
+  votes       Vote[]
+
+  @@index([gameDayId])
+  @@index([gameDayId, order])
+}
+
+model Vote {
+  id           String     @id @default(cuid())
+  gameDayId    String
+  nominationId String
+  voterId      String
+  choice       String
+  reason       String?
+  nomination   Nomination @relation(fields: [nominationId], references: [id], onDelete: Cascade)
+  gameDay      GameDay    @relation(fields: [gameDayId], references: [id], onDelete: Cascade)
+
+  @@unique([nominationId, voterId])
+  @@index([gameDayId])
+}
+
+model GameReminder {
+  id        String   @id @default(cuid())
+  gameId    String
+  guildId   String
+  channelId String
+  message   String
+  fireAt    DateTime
+  fired     Boolean  @default(false)
+  createdBy String
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([fired, fireAt])
   @@index([gameId])
 }
 

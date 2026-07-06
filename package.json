@@ -6,7 +6,7 @@
     "build": "pnpm -r build",
     "dev": "pnpm --filter bot dev",
     "predev": "pnpm --filter @grimkeeper/database db:generate:if-needed",
-    "test": "pnpm --filter @grimkeeper/engine test && pnpm --filter bot test",
+    "test": "pnpm --filter @grimkeeper/engine test && pnpm --filter @grimkeeper/database test && pnpm --filter bot test",
     "db:push": "pnpm --filter @grimkeeper/database db:push",
     "db:generate": "pnpm --filter @grimkeeper/database db:generate",
     "docker:redeploy": "sh scripts/docker.sh redeploy",

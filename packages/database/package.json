@@ -13,11 +13,13 @@
   },
   "scripts": {
     "build": "pnpm db:generate:if-needed && tsc -p tsconfig.json",
+    "test": "vitest run",
     "db:generate": "prisma generate",
     "db:generate:if-needed": "node scripts/generate-if-stale.mjs",
     "db:push": "prisma db push && node scripts/generate-if-stale.mjs"
   },
   "dependencies": {
+    "@grimkeeper/engine": "workspace:*",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "better-sqlite3": "^12.6.2",
@@ -27,6 +29,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.0.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
   }
 }

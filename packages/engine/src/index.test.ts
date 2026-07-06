@@ -235,11 +235,12 @@ describe("GameEngine", () => {
       gameId,
       nominatorId: nominator!.id,
       nomineeId: nominee!.id,
+      accusation: "They blinked suspiciously.",
     });
     for (const event of events) engine.apply(event);
 
-    expect(engine.getState().nominations).toHaveLength(1);
-    expect(engine.formatNomination(engine.getState().nominations[0]!)).toContain("nominates");
+    expect(engine.getState().day?.nominations).toHaveLength(1);
+    expect(engine.formatNomination(engine.getState().day!.nominations[0]!)).toContain("nominates");
   });
 
   it("clears nominations when a new day starts", () => {
@@ -257,6 +258,7 @@ describe("GameEngine", () => {
       gameId,
       nominatorId: nominator!.id,
       nomineeId: nominee!.id,
+      accusation: "Suspicious behavior.",
     });
     for (const event of nominationEvents) engine.apply(event);
 
@@ -273,7 +275,7 @@ describe("GameEngine", () => {
       timestamp: new Date().toISOString(),
     });
 
-    expect(engine.getState().nominations).toHaveLength(0);
+    expect(engine.getState().day?.nominations).toHaveLength(0);
   });
 
   it("clears seats when the game starts", () => {
@@ -348,6 +350,7 @@ describe("GameEngine", () => {
       gameId,
       nominatorId: players[0]!.id,
       nomineeId: players[1]!.id,
+      accusation: "First accusation.",
     });
     for (const event of first) engine.apply(event);
 
@@ -357,7 +360,400 @@ describe("GameEngine", () => {
         gameId,
         nominatorId: players[2]!.id,
         nomineeId: players[1]!.id,
+        accusation: "Duplicate nominee.",
       }),
     ).toThrow("already been nominated");
+  });
+
+  it("resolves nominations in fifo order with majority", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const players = engine.getState().players;
+    const nominate = (nominatorIndex: number, nomineeIndex: number) => {
+      const events = engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId,
+        nominatorId: players[nominatorIndex]!.id,
+        nomineeId: players[nomineeIndex]!.id,
+        accusation: "Accusation.",
+      });
+      for (const event of events) engine.apply(event);
+      return engine.getState().day!.nominations.at(-1)!;
+    };
+
+    const first = nominate(0, 1);
+    nominate(2, 3);
+
+    for (const voterIndex of [0, 2, 4]) {
+      const voteEvents = engine.handle({
+        kind: GameCommandKind.CastVote,
+        gameId,
+        voterId: players[voterIndex]!.id,
+        nominationId: first.id,
+        choice: "yes",
+      });
+      for (const event of voteEvents) engine.apply(event);
+    }
+
+    const resolveEvents = engine.handle({
+      kind: GameCommandKind.ResolveNomination,
+      gameId,
+    });
+    for (const event of resolveEvents) engine.apply(event);
+
+    expect(engine.getNominationById(first.id)?.status).toBe("resolved_pass");
+    expect(engine.getNextOpenNomination()?.nomineeId).toBe(players[3]!.id);
+  });
+
+  it("blocks a second ghost vote", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(3));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const players = engine.getState().players;
+    engine.apply({
+      type: GameEventType.PlayerDied,
+      gameId,
+      playerId: players[2]!.id,
+      cause: "night",
+      timestamp: new Date().toISOString(),
+    });
+
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Accusation.",
+    });
+    for (const event of nominationEvents) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    const firstVote = engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      voterId: players[2]!.id,
+      nominationId: nomination.id,
+      choice: "yes",
+    });
+    for (const event of firstVote) engine.apply(event);
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.CastVote,
+        gameId,
+        voterId: players[2]!.id,
+        nominationId: nomination.id,
+        choice: "yes",
+      }),
+    ).toThrow("ghost vote");
+  });
+
+  it("allows only one execution per day", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const players = engine.getState().players;
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Accusation.",
+    });
+    for (const event of nominationEvents) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    for (const voterIndex of [0, 2, 3, 4]) {
+      const voteEvents = engine.handle({
+        kind: GameCommandKind.CastVote,
+        gameId,
+        voterId: players[voterIndex]!.id,
+        nominationId: nomination.id,
+        choice: "yes",
+      });
+      for (const event of voteEvents) engine.apply(event);
+    }
+
+    const resolveEvents = engine.handle({
+      kind: GameCommandKind.ResolveNomination,
+      gameId,
+    });
+    for (const event of resolveEvents) engine.apply(event);
+
+    const executeEvents = engine.handle({
+      kind: GameCommandKind.ExecutePlayer,
+      gameId,
+      playerId: players[1]!.id,
+      nominationId: nomination.id,
+    });
+    for (const event of executeEvents) engine.apply(event);
+
+    expect(engine.getState().day?.executionUsed).toBe(true);
+    expect(engine.getPlayerById(players[1]!.id)?.alive).toBe(false);
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.ExecutePlayer,
+        gameId,
+        playerId: players[1]!.id,
+        nominationId: nomination.id,
+      }),
+    ).toThrow("Only one execution");
+  });
+
+  it("lets storytellers manually set votes without ghost vote limits", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const players = engine.getState().players;
+    engine.apply({
+      type: GameEventType.PlayerDied,
+      gameId,
+      playerId: players[4]!.id,
+      cause: "night",
+      timestamp: new Date().toISOString(),
+    });
+
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Accusation.",
+    });
+    for (const event of nominationEvents) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    engine.apply({
+      type: GameEventType.NominationsClosed,
+      gameId,
+      timestamp: new Date().toISOString(),
+    });
+
+    const voteEvents = engine.handle({
+      kind: GameCommandKind.SetPlayerVote,
+      gameId,
+      voterId: players[4]!.id,
+      nominationId: nomination.id,
+      choice: "yes",
+    });
+    for (const event of voteEvents) engine.apply(event);
+
+    expect(engine.getPlayerById(players[4]!.id)?.ghostVoteUsed).toBe(false);
+    expect(engine.getEffectiveYesVotes(nomination.id)).toBe(1);
+  });
+
+  it("kills a player outside execution", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.NightStarted,
+      gameId,
+      nightNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const player = engine.getState().players[0]!;
+    const events = engine.handle({
+      kind: GameCommandKind.KillPlayer,
+      gameId,
+      playerId: player.id,
+      cause: "night",
+    });
+    for (const event of events) engine.apply(event);
+
+    expect(engine.getPlayerById(player.id)?.alive).toBe(false);
+  });
+
+  it("pauses nominations until the pause expires", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const players = engine.getState().players;
+    const pausedUntil = new Date(Date.now() + 60_000).toISOString();
+    const pauseEvents = engine.handle({
+      kind: GameCommandKind.PauseNominations,
+      gameId,
+      pausedUntil,
+    });
+    for (const event of pauseEvents) engine.apply(event);
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId,
+        nominatorId: players[0]!.id,
+        nomineeId: players[1]!.id,
+        accusation: "Too soon.",
+      }),
+    ).toThrow("paused");
+  });
+
+  it("stores the day thread id when the day opens", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const events = engine.handle({
+      kind: GameCommandKind.OpenDay,
+      gameId,
+      discordThreadId: "thread-123",
+    });
+    for (const event of events) engine.apply(event);
+
+    expect(engine.getState().day?.discordThreadId).toBe("thread-123");
+  });
+
+  it("records defense text on a nomination", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const players = engine.getState().players;
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Accusation.",
+    });
+    for (const event of nominationEvents) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    const defenseEvents = engine.handle({
+      kind: GameCommandKind.AddDefense,
+      gameId,
+      playerId: players[1]!.id,
+      nominationId: nomination.id,
+      defense: "I am good.",
+    });
+    for (const event of defenseEvents) engine.apply(event);
+
+    expect(engine.getNominationById(nomination.id)?.defense).toBe("I am good.");
+  });
+
+  it("hides vote tallies in secret mode until revealed", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+    engine.apply({
+      type: GameEventType.VoteVisibilitySet,
+      gameId,
+      visibility: "secret",
+      timestamp: new Date().toISOString(),
+    });
+
+    const players = engine.getState().players;
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Accusation.",
+    });
+    for (const event of nominationEvents) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    const voteEvents = engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      voterId: players[2]!.id,
+      nominationId: nomination.id,
+      choice: "yes",
+    });
+    for (const event of voteEvents) engine.apply(event);
+
+    expect(engine.formatNominationTally(nomination.id)).toBe("Votes recorded (secret mode)");
+    expect(engine.formatNominationTally(nomination.id, { revealSecret: true })).toContain("Yes: 1");
+  });
+
+  it("does not count conditional votes toward execution majority", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const players = engine.getState().players;
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Accusation.",
+    });
+    for (const event of nominationEvents) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    for (const voterIndex of [0, 2]) {
+      const voteEvents = engine.handle({
+        kind: GameCommandKind.CastVote,
+        gameId,
+        voterId: players[voterIndex]!.id,
+        nominationId: nomination.id,
+        choice: "yes",
+      });
+      for (const event of voteEvents) engine.apply(event);
+    }
+
+    const conditionalEvents = engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      voterId: players[3]!.id,
+      nominationId: nomination.id,
+      choice: "conditional",
+      reason: "If they are the demon.",
+    });
+    for (const event of conditionalEvents) engine.apply(event);
+
+    expect(engine.getEffectiveYesVotes(nomination.id)).toBe(2);
+    expect(engine.getNominationTally(nomination.id).conditional).toBe(1);
+
+    const resolveEvents = engine.handle({
+      kind: GameCommandKind.ResolveNomination,
+      gameId,
+    });
+    for (const event of resolveEvents) engine.apply(event);
+
+    expect(engine.getNominationById(nomination.id)?.status).toBe("resolved_fail");
   });
 });

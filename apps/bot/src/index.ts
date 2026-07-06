@@ -15,13 +15,26 @@ import { Events, IntentsBitField } from "discord.js";
 import { Client } from "discordx";
 
 import { DevCommands } from "./commands/dev.js";
+import { DevCommandsMinimal } from "./commands/dev-minimal.js";
 import { GameCommands } from "./commands/game.js";
+import { GameCommandsMinimal } from "./commands/game-minimal.js";
 import { StCommands } from "./commands/st.js";
+import { StCommandsMinimal } from "./commands/st-minimal.js";
+import { setBotClient } from "./discord-client.js";
+import { handleVoteButton, handleVoteModalSubmit } from "./interactions/day-vote.js";
 import { log, logError } from "./logger.js";
+import { startReminderScheduler } from "./reminder-scheduler.js";
+import { isMinimalMode } from "./bot-mode.js";
 
-void GameCommands;
-void StCommands;
-void DevCommands;
+if (isMinimalMode()) {
+  void GameCommandsMinimal;
+  void StCommandsMinimal;
+  void DevCommandsMinimal;
+} else {
+  void GameCommands;
+  void StCommands;
+  void DevCommands;
+}
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -38,6 +51,10 @@ const client = new Client({
 });
 
 client.once(Events.ClientReady, async () => {
+  setBotClient(client);
+  if (!isMinimalMode()) {
+    startReminderScheduler(client);
+  }
   try {
     await client.initApplicationCommands();
   } catch (error) {
@@ -48,7 +65,21 @@ client.once(Events.ClientReady, async () => {
 });
 
 client.on("interactionCreate", (interaction) => {
-  void Promise.resolve(client.executeInteraction(interaction)).catch((error: unknown) => {
+  void (async () => {
+    if (interaction.isButton()) {
+      if (!isMinimalMode()) {
+        const handled = await handleVoteButton(interaction);
+        if (handled) return;
+      }
+    }
+    if (interaction.isModalSubmit()) {
+      if (!isMinimalMode()) {
+        const handled = await handleVoteModalSubmit(interaction);
+        if (handled) return;
+      }
+    }
+    await client.executeInteraction(interaction);
+  })().catch((error: unknown) => {
     logError("error", "interaction.failed", error, {
       command: interaction.isChatInputCommand() ? interaction.commandName : interaction.type,
       guildId: interaction.guildId,

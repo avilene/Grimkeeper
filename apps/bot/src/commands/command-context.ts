@@ -5,7 +5,6 @@ import {
   Guild,
   ChannelType,
   MessageFlags,
-  PermissionFlagsBits,
   Role,
   ThreadAutoArchiveDuration,
 } from "discord.js";
@@ -14,6 +13,7 @@ import {
   getActiveGameForGuild,
   getGameEvents,
   prisma,
+  syncGameProjectionFromEngine,
   type Prisma,
 } from "@grimkeeper/database";
 import {
@@ -29,19 +29,103 @@ import {
   resolveStandardScript,
   type GameEvent,
   type GameScript,
+  type NominationRecord,
+  type PlayerState,
 } from "@grimkeeper/engine";
 
 import { canUseBot } from "../access.js";
+import { isMinimalMode } from "../bot-mode.js";
 import { isDevMode } from "../dev.js";
+import { dayThreadName } from "../day-thread.js";
 import { logError } from "../logger.js";
 import { logGameEvent } from "../game-events-log.js";
+import { refreshGameStatusForEngine } from "../game-status.js";
 import { buildRoleDmEmbed } from "../role-embed.js";
 
 export const GAME_DISCORD_ROLES_ENABLED = true;
 export const STORYTELLER_THREAD_NAME = "ST and the gang";
 
+export function kibThreadName(parentChannelName: string): string {
+  return `kib-${parentChannelName}`.slice(0, 100);
+}
+
+export function stPlayerThreadName(displayName: string): string {
+  return `ST ${displayName}`.slice(0, 100);
+}
+
+export function storytellerThreadName(parentChannelName?: string): string {
+  if (isMinimalMode() && parentChannelName) {
+    return kibThreadName(parentChannelName);
+  }
+  return STORYTELLER_THREAD_NAME;
+}
+
 export function minPlayers(): number {
   return isDevMode() ? DEV_MIN_PLAYERS : DEFAULT_MIN_PLAYERS;
+}
+
+export function resolvePlayerRef(
+  engine: GameEngine,
+  options: { userId?: string; seat?: number | null },
+): PlayerState | undefined {
+  if (options.userId) {
+    return engine.getPlayerByDiscordId(options.userId);
+  }
+  if (options.seat != null) {
+    return engine.getState().players.find((player) => player.seat === options.seat);
+  }
+  return undefined;
+}
+
+export function findOpenNominationForNominee(
+  engine: GameEngine,
+  nomineeId: string,
+): NominationRecord | undefined {
+  return engine
+    .getState()
+    .day?.nominations.find(
+      (nomination) => nomination.nomineeId === nomineeId && nomination.status === "open",
+    );
+}
+
+export function formatDayStatus(engine: GameEngine): string {
+  const state = engine.getState();
+  const day = state.day;
+  if (state.phase !== "day" || !day) {
+    return `Phase: **${state.phase}** (no active day)`;
+  }
+
+  const lines = [
+    `Day **${state.dayNumber}** — nominations ${day.nominationsOpen ? "open" : "closed"}`,
+    `Vote visibility: **${day.voteVisibility}**`,
+    `Execution used: **${day.executionUsed ? "yes" : "no"}**`,
+    `Day thread: ${day.discordThreadId ? `<#${day.discordThreadId}>` : "not set"}`,
+  ];
+
+  if (day.nominations.length === 0) {
+    lines.push("", "No nominations.");
+    return lines.join("\n");
+  }
+
+  lines.push("", "**Nominations:**");
+  for (const nomination of day.nominations.slice().sort((a, b) => a.order - b.order)) {
+    const nominator = engine.getPlayerById(nomination.nominatorId);
+    const nominee = engine.getPlayerById(nomination.nomineeId);
+    const tally = engine.formatNominationTally(nomination.id, { revealSecret: true });
+    lines.push(
+      `#${nomination.order} ${nominator?.displayName ?? "?"} → ${nominee?.displayName ?? "?"} [${nomination.status}] — ${tally}`,
+    );
+    const votes = day.votes
+      .filter((vote) => vote.nominationId === nomination.id)
+      .map((vote) => {
+        const voter = engine.getPlayerById(vote.voterId);
+        const suffix = vote.reason ? ` (${vote.reason})` : "";
+        return `  - ${voter?.displayName ?? "?"}: ${vote.choice}${suffix}`;
+      });
+    lines.push(...votes);
+  }
+
+  return lines.join("\n");
 }
 
 export async function loadScriptForCreate(
@@ -135,25 +219,15 @@ export async function persistEvents(engine: GameEngine, events: ReturnType<GameE
     await appendGameEvent(engine.getState().gameId, event.type, toJson(event));
     logGameEvent(engine, event);
   }
+
+  if (events.length > 0) {
+    await syncGameProjection(engine.getState().gameId, engine);
+    await refreshGameStatusForEngine(engine);
+  }
 }
 
 export async function syncGameProjection(gameId: string, engine: GameEngine): Promise<void> {
-  const state = engine.getState();
-  await prisma.game.update({
-    where: { id: gameId },
-    data: { phase: state.phase },
-  });
-
-  for (const player of state.players) {
-    await prisma.player.updateMany({
-      where: { id: player.id, gameId },
-      data: {
-        seat: player.seat,
-        roleId: player.roleId,
-        alive: player.alive,
-      },
-    });
-  }
+  await syncGameProjectionFromEngine(gameId, engine);
 }
 
 export async function requireStorytellerGame(interaction: CommandInteraction) {
@@ -218,6 +292,7 @@ export async function requireCommandAccess(interaction: CommandInteraction): Pro
 type GameRoles = {
   stRole: Role;
   playersRole: Role;
+  spectatorRole: Role;
 };
 
 export function roleSlugFromChannelName(name: string): string {
@@ -230,18 +305,20 @@ export function roleSlugFromChannelName(name: string): string {
 export async function ensureGameRoles(guild: Guild | null, channelId: string): Promise<GameRoles | null> {
   if (!guild) return null;
   const channel = await guild.channels.fetch(channelId).catch(() => null);
-  if (!channel) return null;
+  if (!channel || !("name" in channel)) return null;
   const slug = roleSlugFromChannelName(channel.name);
   const stName = `st-${slug}`;
   const playersName = `p-${slug}`;
+  const spectatorName = `spec-${slug}`;
 
-  const existing = await getGameRolesByName(guild, stName, playersName);
+  const existing = await getGameRolesByName(guild, stName, playersName, spectatorName);
   if (existing) return existing;
 
   try {
     const stRole = await guild.roles.create({ name: stName, mentionable: true });
     const playersRole = await guild.roles.create({ name: playersName, mentionable: true });
-    return { stRole, playersRole };
+    const spectatorRole = await guild.roles.create({ name: spectatorName, mentionable: false });
+    return { stRole, playersRole, spectatorRole };
   } catch {
     return null;
   }
@@ -252,19 +329,30 @@ export async function getGameRoles(guild: Guild | null, channelId: string): Prom
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!channel) return null;
   const slug = roleSlugFromChannelName(channel.name);
-  return getGameRolesByName(guild, `st-${slug}`, `p-${slug}`);
+  return getGameRolesByName(guild, `st-${slug}`, `p-${slug}`, `spec-${slug}`);
 }
 
 export async function getGameRolesByName(
   guild: Guild,
   stName: string,
   playersName: string,
+  spectatorName: string,
 ): Promise<GameRoles | null> {
   await guild.roles.fetch();
   const stRole = guild.roles.cache.find((role) => role.name === stName);
   const playersRole = guild.roles.cache.find((role) => role.name === playersName);
   if (!stRole || !playersRole) return null;
-  return { stRole, playersRole };
+
+  let spectatorRole = guild.roles.cache.find((role) => role.name === spectatorName);
+  if (!spectatorRole) {
+    try {
+      spectatorRole = await guild.roles.create({ name: spectatorName, mentionable: false });
+    } catch {
+      return null;
+    }
+  }
+
+  return { stRole, playersRole, spectatorRole };
 }
 
 export async function addRoleToUser(guild: Guild | null, userId: string, roleId: string): Promise<void> {
@@ -287,8 +375,29 @@ export async function cleanupGameRoles(guild: Guild | null, channelId: string): 
   if (!roles) return;
 
   // Deleting a role removes it from all members automatically.
+  await roles.spectatorRole.delete("Grimkeeper game ended; cleanup game roles.").catch(() => undefined);
   await roles.playersRole.delete("Grimkeeper game ended; cleanup game roles.").catch(() => undefined);
   await roles.stRole.delete("Grimkeeper game ended; cleanup game roles.").catch(() => undefined);
+}
+
+export async function applyGameChannelPermissions(
+  guild: Guild,
+  channelId: string,
+  stRoleId: string,
+  playersRoleId: string,
+): Promise<void> {
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel || !("permissionOverwrites" in channel)) return;
+
+  const threadPermissions = {
+    CreatePublicThreads: true,
+    CreatePrivateThreads: true,
+    SendMessagesInThreads: true,
+    ManageThreads: true,
+  };
+
+  await channel.permissionOverwrites.edit(stRoleId, threadPermissions).catch(() => undefined);
+  await channel.permissionOverwrites.edit(playersRoleId, threadPermissions).catch(() => undefined);
 }
 
 export async function postToTownChannel(
@@ -364,6 +473,9 @@ export async function ensureGameThreads(
 }
 
 export function personalPlayerThreadName(gameId: string, displayName: string): string {
+  if (isMinimalMode()) {
+    return stPlayerThreadName(displayName);
+  }
   const sanitized = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const shortGameId = gameId.slice(0, 6);
   return `player-${sanitized || "member"}-${shortGameId}`.slice(0, 100);
@@ -398,6 +510,101 @@ export async function findPersonalPlayerThread(
   return archived?.threads.find((candidate) => candidate.name === threadName) ?? null;
 }
 
+export async function createKibThread(
+  interaction: CommandInteraction,
+  gameId: string,
+  gameRoles?: GameRoles,
+): Promise<string | null> {
+  const guild = interaction.guild;
+  const channelId = interaction.channelId;
+  if (!guild || !channelId) return null;
+
+  const parent = await guild.channels.fetch(channelId).catch(() => null);
+  if (!isGameTextChannel(parent)) return null;
+
+  const threadName = kibThreadName(parent.name);
+  let thread = await getStorytellerThread(guild, channelId);
+  if (!thread) {
+    try {
+      thread = await parent.threads.create({
+        name: threadName,
+        autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+        reason: `Kib thread for game ${gameId}`,
+        ...( {
+          type: ChannelType.PrivateThread,
+          invitable: true,
+        } as Record<string, unknown>),
+      });
+      const roleMention = gameRoles
+        ? ` Pingable roles: <@&${gameRoles.stRole.id}> / <@&${gameRoles.playersRole.id}>.`
+        : "";
+      await thread
+        .send(`Kib thread ready.${roleMention} Use \`/st add-spectator\` to assign spectators.`)
+        .catch(() => undefined);
+    } catch {
+      return null;
+    }
+  }
+
+  if (thread.archived) {
+    await thread.setArchived(false, "Game created; reopening kib thread.").catch(() => undefined);
+  }
+
+  await thread.members.add(interaction.user.id).catch(() => undefined);
+  return `<#${thread.id}>`;
+}
+
+export async function createPlayerStThreads(
+  interaction: CommandInteraction,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+): Promise<{ created: number; failed: number }> {
+  const guild = interaction.guild;
+  if (!guild) return { created: 0, failed: 0 };
+
+  const storytellerIds = engine.getStorytellerDiscordIds();
+  let created = 0;
+  let failed = 0;
+
+  for (const player of engine.getState().players) {
+    if (isFakePlayer(player.discordUserId)) continue;
+
+    const thread =
+      (await findPersonalPlayerThread(guild, game.channelId, game.id, player.displayName)) ??
+      (await createPersonalPlayerThread(
+        interaction,
+        game.id,
+        game.channelId,
+        player.discordUserId,
+        player.displayName,
+      ));
+
+    if (!thread) {
+      failed++;
+      continue;
+    }
+
+    if (thread.archived) {
+      await thread.setArchived(false, "Game started; reopening player thread.").catch(() => undefined);
+    }
+
+    await thread.members.add(player.discordUserId).catch(() => undefined);
+    for (const stId of storytellerIds) {
+      await thread.members.add(stId).catch(() => undefined);
+    }
+
+    if (isMinimalMode()) {
+      await thread
+        .send(`Private ST thread for <@${player.discordUserId}>.`)
+        .catch(() => undefined);
+    }
+
+    created++;
+  }
+
+  return { created, failed };
+}
+
 export async function ensureStorytellerThread(
   guild: Guild,
   parentChannelId: string,
@@ -408,9 +615,11 @@ export async function ensureStorytellerThread(
     const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
     if (!isGameTextChannel(parent)) return null;
 
+    const threadName = storytellerThreadName(parent.name);
+
     try {
       thread = await parent.threads.create({
-        name: STORYTELLER_THREAD_NAME,
+        name: threadName,
         autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
         reason: `Storyteller thread for game ${gameId}`,
         ...( {
@@ -511,30 +720,35 @@ export async function createPersonalPlayerThread(
   }
 }
 
-export function isStorytellerThread(candidate: AnyThreadChannel, parentChannelId: string): boolean {
-  return candidate.parentId === parentChannelId && candidate.name === STORYTELLER_THREAD_NAME;
+export function isStorytellerThread(
+  candidate: { parentId: string | null; name: string },
+  parentChannelId: string,
+  parentChannelName?: string,
+): boolean {
+  if (candidate.parentId !== parentChannelId) return false;
+  const expectedName = storytellerThreadName(parentChannelName);
+  return candidate.name === expectedName;
 }
 
 export async function getStorytellerThread(
   guild: Guild,
   parentChannelId: string,
 ): Promise<AnyThreadChannel | null> {
+  const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
+  const parentChannelName = parent && "name" in parent ? parent.name : undefined;
+  const expectedName = storytellerThreadName(parentChannelName);
+
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
-  const activeThread = active?.threads.find((candidate) =>
-    isStorytellerThread(candidate, parentChannelId),
+  const activeThread = active?.threads.find(
+    (candidate) =>
+      candidate.parentId === parentChannelId && candidate.name === expectedName,
   );
   if (activeThread) return activeThread;
 
-  const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
-  if (
-    !parent ||
-    (parent.type !== ChannelType.GuildText && parent.type !== ChannelType.GuildAnnouncement)
-  ) {
-    return null;
-  }
+  if (!isGameTextChannel(parent)) return null;
 
   const archived = await parent.threads.fetchArchived({ type: "private" }).catch(() => null);
-  return archived?.threads.find((candidate) => isStorytellerThread(candidate, parentChannelId)) ?? null;
+  return archived?.threads.find((candidate) => candidate.name === expectedName) ?? null;
 }
 
 export async function openStorytellerThread(
@@ -559,15 +773,87 @@ export async function openStorytellerThread(
   return thread;
 }
 
-export async function replyEngineError(interaction: CommandInteraction, error: unknown): Promise<void> {
+export async function requireDayThread(
+  interaction: CommandInteraction,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+): Promise<boolean> {
+  const day = engine.getState().day;
+  if (!day?.discordThreadId) {
+    await interaction.reply({
+      content: "The day thread is not open yet. Wait for the storyteller to start the day.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return false;
+  }
+
+  if (interaction.channelId !== day.discordThreadId) {
+    await interaction.reply({
+      content: `Nomination and voting commands must be used in the day thread: <#${day.discordThreadId}>.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return false;
+  }
+
+  return true;
+}
+
+export async function createDayThread(
+  guild: Guild,
+  parentChannelId: string,
+  gameId: string,
+  dayNumber: number,
+  engine: GameEngine,
+): Promise<AnyThreadChannel | null> {
+  const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
+  if (!isGameTextChannel(parent)) return null;
+
+  try {
+    const thread = await parent.threads.create({
+      name: dayThreadName(dayNumber),
+      autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+      reason: `Day ${dayNumber} thread for game ${gameId}`,
+    });
+
+    const memberIds = new Set<string>();
+    for (const player of engine.getState().players) {
+      if (player.alive && (!player.isFake || isDevMode())) {
+        memberIds.add(player.discordUserId);
+      }
+    }
+    for (const stId of engine.getStorytellerDiscordIds()) {
+      memberIds.add(stId);
+    }
+    for (const userId of memberIds) {
+      await thread.members.add(userId).catch(() => undefined);
+    }
+
+    return thread;
+  } catch {
+    return null;
+  }
+}
+
+export async function replyEngineError(
+  interaction: Pick<CommandInteraction, "reply"> & {
+    deferred?: boolean;
+    replied?: boolean;
+    commandName?: string;
+  },
+  error: unknown,
+): Promise<void> {
   const message = error instanceof GameEngineError ? error.message : "Unexpected game engine error.";
   if (!(error instanceof GameEngineError)) {
     logError("error", "command.failed", error, {
-      command: interaction.commandName,
-      guildId: interaction.guildId,
-      channelId: interaction.channelId,
-      userId: interaction.user.id,
+      command: interaction.commandName ?? "interaction",
+      guildId: "guildId" in interaction ? (interaction as CommandInteraction).guildId : undefined,
+      channelId: "channelId" in interaction ? (interaction as CommandInteraction).channelId : undefined,
+      userId: "user" in interaction ? (interaction as CommandInteraction).user.id : undefined,
     });
   }
-  await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+  if (interaction.deferred || interaction.replied) {
+    await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+  } else {
+    await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+  }
 }
