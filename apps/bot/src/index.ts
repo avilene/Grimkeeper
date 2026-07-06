@@ -21,8 +21,13 @@ import { GameCommandsMinimal } from "./commands/game-minimal.js";
 import { StCommands } from "./commands/st.js";
 import { StCommandsMinimal } from "./commands/st-minimal.js";
 import { setBotClient } from "./discord-client.js";
+import {
+  flushDiscordReports,
+  registerClientErrorHandlers,
+  reportError,
+} from "./error-reporter.js";
 import { handleVoteButton, handleVoteModalSubmit } from "./interactions/day-vote.js";
-import { log, logError } from "./logger.js";
+import { log } from "./logger.js";
 import { startReminderScheduler } from "./reminder-scheduler.js";
 import { isMinimalMode } from "./bot-mode.js";
 
@@ -50,6 +55,8 @@ const client = new Client({
   },
 });
 
+registerClientErrorHandlers(client);
+
 client.once(Events.ClientReady, async () => {
   setBotClient(client);
   if (!isMinimalMode()) {
@@ -58,9 +65,9 @@ client.once(Events.ClientReady, async () => {
   try {
     await client.initApplicationCommands();
   } catch (error) {
-    logError("error", "commands.register.failed", error);
-    throw error;
+    await reportError("commands.register.failed", error);
   }
+  await flushDiscordReports(client);
   log("info", "bot.ready", { tag: client.user?.tag, id: client.user?.id });
 });
 
@@ -80,7 +87,7 @@ client.on("interactionCreate", (interaction) => {
     }
     await client.executeInteraction(interaction);
   })().catch((error: unknown) => {
-    logError("error", "interaction.failed", error, {
+    void reportError("interaction.failed", error, {
       command: interaction.isChatInputCommand() ? interaction.commandName : interaction.type,
       guildId: interaction.guildId,
       channelId: interaction.channelId,
@@ -89,4 +96,9 @@ client.on("interactionCreate", (interaction) => {
   });
 });
 
-await client.login(token);
+try {
+  await client.login(token);
+} catch (error) {
+  await reportError("discord.login.failed", error);
+  process.exit(1);
+}

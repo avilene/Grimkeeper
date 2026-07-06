@@ -123,15 +123,6 @@ export function installLogCapture(): void {
       ...(warning.stack ? { stack: warning.stack, stackLines: warning.stack.split("\n") } : {}),
     });
   });
-
-  process.on("uncaughtException", (error) => {
-    logError("error", "process.uncaughtException", error);
-    process.exit(1);
-  });
-
-  process.on("unhandledRejection", (reason) => {
-    logError("error", "process.unhandledRejection", reason);
-  });
 }
 
 function formatConsoleArgs(args: unknown[]): {

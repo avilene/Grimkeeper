@@ -37,7 +37,7 @@ import { canUseBot } from "../access.js";
 import { isMinimalMode } from "../bot-mode.js";
 import { isDevMode } from "../dev.js";
 import { dayThreadName } from "../day-thread.js";
-import { logError } from "../logger.js";
+import { reportError } from "../error-reporter.js";
 import { logGameEvent } from "../game-events-log.js";
 import { refreshGameStatusForEngine } from "../game-status.js";
 import { buildRoleDmEmbed } from "../role-embed.js";
@@ -844,7 +844,7 @@ export async function replyEngineError(
 ): Promise<void> {
   const message = error instanceof GameEngineError ? error.message : "Unexpected game engine error.";
   if (!(error instanceof GameEngineError)) {
-    logError("error", "command.failed", error, {
+    void reportError("command.failed", error, {
       command: interaction.commandName ?? "interaction",
       guildId: "guildId" in interaction ? (interaction as CommandInteraction).guildId : undefined,
       channelId: "channelId" in interaction ? (interaction as CommandInteraction).channelId : undefined,

@@ -1,7 +1,7 @@
 import type { Client } from "discord.js";
 import { listDueReminders, markReminderFired } from "@grimkeeper/database";
 
-import { logError } from "./logger.js";
+import { reportError } from "./error-reporter.js";
 
 export async function processDueReminders(client: Client): Promise<void> {
   const due = await listDueReminders();
@@ -13,7 +13,7 @@ export async function processDueReminders(client: Client): Promise<void> {
       }
       await markReminderFired(reminder.id);
     } catch (error) {
-      logError("error", "reminder.fire.failed", error, {
+      void reportError("reminder.fire.failed", error, {
         reminderId: reminder.id,
         gameId: reminder.gameId,
       });
@@ -22,8 +22,12 @@ export async function processDueReminders(client: Client): Promise<void> {
 }
 
 export function startReminderScheduler(client: Client, intervalMs = 30_000): void {
-  void processDueReminders(client);
+  void processDueReminders(client).catch((error: unknown) => {
+    void reportError("reminder.scheduler.tick.failed", error);
+  });
   setInterval(() => {
-    void processDueReminders(client);
+    void processDueReminders(client).catch((error: unknown) => {
+      void reportError("reminder.scheduler.tick.failed", error);
+    });
   }, intervalMs);
 }
