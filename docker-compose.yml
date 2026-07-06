@@ -8,6 +8,7 @@ services:
     environment:
       DATABASE_URL: file:/app/data/grimkeeper.db
       DEV_MODE: ${DEV_MODE:-false}
+      BOT_MODE: ${BOT_MODE:-full}
     volumes:
       - grimkeeper-data:/app/data
 
@@ -30,5 +31,24 @@ services:
       logging: "promtail"
       logging_jobname: "grimkeeper-bot"
 
+  # Optional — poll GHCR for new :latest digest and auto-redeploy:
+  #   docker compose --profile deploy up -d watcher
+  watcher:
+    profiles: ["deploy"]
+    image: docker:27-cli
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      IMAGE_WATCH_INTERVAL: ${IMAGE_WATCH_INTERVAL:-300}
+      AUTO_REDEPLOY: ${AUTO_REDEPLOY:-true}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/app:ro
+      - grimkeeper-deploy:/app/.deploy
+    working_dir: /app
+    entrypoint: ["/bin/sh", "scripts/watch-image.sh"]
+
 volumes:
   grimkeeper-data:
+  grimkeeper-deploy:

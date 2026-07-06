@@ -7,5 +7,5 @@ echo "Applying database schema..."
 cd /app/packages/database
 ./node_modules/.bin/prisma db push
 
-echo "Starting Grimkeeper bot..."
+echo "Starting Grimkeeper bot (BOT_MODE=${BOT_MODE:-full})..."
 exec node /app/apps/bot/dist/index.js

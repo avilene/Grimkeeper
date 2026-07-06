@@ -48,6 +48,15 @@ Droplet setup (recommended — skips pnpm install on server):
   3. docker login ghcr.io -u YOUR_USER
   4. pnpm docker:redeploy
 
+Build notifications:
+  - GitHub repo secret: DISCORD_BUILD_WEBHOOK_URL (Discord channel webhook)
+  - Each push to main posts build success/failure to that channel
+
+Auto-deploy when GHCR :latest changes:
+  - pnpm docker:watch              # poll every 5m, notify only
+  - AUTO_REDEPLOY=true pnpm docker:watch
+  - docker compose --profile deploy up -d watcher   # background on droplet
+
 Examples:
   pnpm docker:redeploy
   pnpm docker:restart
