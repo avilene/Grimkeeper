@@ -265,9 +265,16 @@ export type ReminderAccess = {
   engine: GameEngine | null;
 };
 
-export function resolveReminderTargetChannel(interaction: CommandInteraction): string | null {
+export async function resolveReminderTargetChannel(
+  interaction: CommandInteraction,
+): Promise<string | null> {
   if (!interaction.channelId) return null;
-  const channel = interaction.channel;
+
+  let channel = interaction.channel;
+  if (!channel && interaction.inGuild()) {
+    channel = await interaction.guild!.channels.fetch(interaction.channelId).catch(() => null);
+  }
+
   if (channel?.isThread()) {
     return channel.parentId ?? interaction.channelId;
   }
@@ -294,7 +301,7 @@ export async function requireReminderAccess(interaction: CommandInteraction): Pr
     return null;
   }
 
-  const targetChannelId = resolveReminderTargetChannel(interaction);
+  const targetChannelId = await resolveReminderTargetChannel(interaction);
   if (!targetChannelId) {
     await replyOrEditInteraction(interaction, {
       content: "This command must be used in a channel or thread.",
