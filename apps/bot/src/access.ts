@@ -1,6 +1,6 @@
 import type { CommandInteraction } from "discord.js";
 
-function parseList(value: string | undefined): Set<string> {
+export function parseList(value: string | undefined): Set<string> {
   if (!value) return new Set();
   return new Set(
     value
@@ -36,4 +36,51 @@ export async function canUseBot(interaction: CommandInteraction): Promise<boolea
   if (!member) return false;
 
   return member.roles.cache.some((role) => allowedRoleIds.has(role.id));
+}
+
+export async function isInExplicitAllowlist(interaction: CommandInteraction): Promise<boolean> {
+  const allowedUserIds = parseList(process.env.ALLOWED_USER_IDS);
+  const allowedRoleIds = parseList(process.env.ALLOWED_ROLE_IDS);
+  if (allowedUserIds.size === 0 && allowedRoleIds.size === 0) {
+    return false;
+  }
+
+  const userId = interaction.user?.id;
+  if (!userId) return false;
+
+  if (allowedUserIds.has(userId)) {
+    return true;
+  }
+
+  if (!interaction.guildId || allowedRoleIds.size === 0) {
+    return false;
+  }
+
+  const member = await interaction.guild?.members.fetch(userId).catch(() => null);
+  if (!member) return false;
+
+  return member.roles.cache.some((role) => allowedRoleIds.has(role.id));
+}
+
+export async function hasReminderManagerRole(interaction: CommandInteraction): Promise<boolean> {
+  const reminderRoleIds = parseList(process.env.REMINDER_ROLE_IDS);
+  if (reminderRoleIds.size === 0) return false;
+
+  const userId = interaction.user?.id;
+  if (!userId || !interaction.guildId) return false;
+
+  const member = await interaction.guild?.members.fetch(userId).catch(() => null);
+  if (!member) return false;
+
+  return member.roles.cache.some((role) => reminderRoleIds.has(role.id));
+}
+
+export async function canManageChannelReminders(interaction: CommandInteraction): Promise<boolean> {
+  if (await isInExplicitAllowlist(interaction)) return true;
+  return hasReminderManagerRole(interaction);
+}
+
+export function getReminderPingRoleId(): string | null {
+  const roleId = process.env.REMINDER_PING_ROLE_ID?.trim();
+  return roleId || null;
 }

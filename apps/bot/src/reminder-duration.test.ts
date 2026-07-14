@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatReminderDuration, parseReminderDuration } from "./reminder-duration.js";
+import { formatReminderDuration, parseReminderDuration, parseReminderHours } from "./reminder-duration.js";
 
 describe("parseReminderDuration", () => {
   it("parses minutes", () => {
@@ -26,5 +26,24 @@ describe("formatReminderDuration", () => {
     expect(formatReminderDuration(1)).toBe("1 minute");
     expect(formatReminderDuration(60)).toBe("1 hour");
     expect(formatReminderDuration(120)).toBe("2 hours");
+  });
+});
+
+describe("parseReminderHours", () => {
+  it("parses space-separated hour offsets", () => {
+    expect(parseReminderHours("4 8 12")).toEqual([4, 8, 12]);
+    expect(parseReminderHours("  4   8  12 ")).toEqual([4, 8, 12]);
+  });
+
+  it("dedupes and sorts", () => {
+    expect(parseReminderHours("12 4 8 4 12")).toEqual([4, 8, 12]);
+  });
+
+  it("rejects invalid input", () => {
+    expect(parseReminderHours("")).toBeNull();
+    expect(parseReminderHours("0 4")).toBeNull();
+    expect(parseReminderHours("25")).toBeNull();
+    expect(parseReminderHours("4h")).toBeNull();
+    expect(parseReminderHours("abc")).toBeNull();
   });
 });

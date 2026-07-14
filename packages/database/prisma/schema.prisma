@@ -86,18 +86,21 @@ model Vote {
 }
 
 model GameReminder {
-  id        String   @id @default(cuid())
-  gameId    String
-  guildId   String
-  channelId String
-  message   String
-  fireAt    DateTime
-  fired     Boolean  @default(false)
-  createdBy String
-  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
+  gameId      String?
+  guildId     String
+  channelId   String
+  message     String
+  fireAt      DateTime
+  fired       Boolean  @default(false)
+  pingPlayers Boolean  @default(false)
+  pingRoleId  String?
+  createdBy   String
+  game        Game?    @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@index([fired, fireAt])
   @@index([gameId])
+  @@index([guildId, channelId])
 }
 
 model GameEvent {

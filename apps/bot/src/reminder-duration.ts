@@ -18,6 +18,27 @@ export function parseReminderDuration(input: string): number | null {
   return amount;
 }
 
+const MAX_REMINDER_HOURS_BATCH = 25;
+
+export function parseReminderHours(input: string): number[] | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  const parts = trimmed.split(/\s+/);
+  const hours: number[] = [];
+
+  for (const part of parts) {
+    if (!/^\d+$/.test(part)) return null;
+    const value = Number(part);
+    if (!Number.isInteger(value) || value < 1 || value > 24) return null;
+    hours.push(value);
+  }
+
+  if (hours.length === 0 || hours.length > MAX_REMINDER_HOURS_BATCH) return null;
+
+  return [...new Set(hours)].sort((a, b) => a - b);
+}
+
 export function formatReminderDuration(minutes: number): string {
   if (minutes % 60 === 0 && minutes >= 60) {
     const hours = minutes / 60;

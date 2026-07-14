@@ -6,11 +6,16 @@ export type { GameEvent, Prisma } from "./generated/prisma/client.js";
 export { bindPrismaLogging, type DbLogFn, type DbLogLevel } from "./logging.js";
 export { syncGameProjectionFromEngine, shouldSyncDayState } from "./sync-projection.js";
 export {
+  createReminder,
   createGameReminder,
   listDueReminders,
   markReminderFired,
   cancelGameReminders,
+  cancelReminders,
+  countPendingReminders,
   listPendingReminders,
+  type ReminderScope,
+  type CreateReminderInput,
 } from "./reminders.js";
 
 export type StoredGameEvent = GameEvent;

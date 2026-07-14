@@ -16,6 +16,7 @@ import {
   syncGameProjectionFromEngine,
   type Prisma,
 } from "@grimkeeper/database";
+import type { ReminderScope } from "@grimkeeper/database";
 import {
   DEV_MIN_PLAYERS,
   DEFAULT_MIN_PLAYERS,
@@ -33,10 +34,12 @@ import {
   type PlayerState,
 } from "@grimkeeper/engine";
 
-import { canUseBot } from "../access.js";
+import { canUseBot, canManageChannelReminders, getReminderPingRoleId, isInExplicitAllowlist } from "../access.js";
 import { isMinimalMode } from "../bot-mode.js";
 import { isDevMode } from "../dev.js";
 import { dayThreadName } from "../day-thread.js";
+import { getBotClient } from "../discord-client.js";
+import { buildReminderFireContent } from "../reminder-message.js";
 import { reportError } from "../error-reporter.js";
 import { logGameEvent } from "../game-events-log.js";
 import { refreshGameStatusForEngine } from "../game-status.js";
@@ -250,6 +253,117 @@ export async function requireStorytellerGame(interaction: CommandInteraction) {
 
   return game;
 }
+
+export async function requireSetRemindersAccess(interaction: CommandInteraction) {
+  return requireReminderAccess(interaction);
+}
+
+export type ReminderAccess = {
+  scope: ReminderScope;
+  targetChannelId: string;
+  game: Awaited<ReturnType<typeof getActiveGameForGuild>>;
+  engine: GameEngine | null;
+};
+
+export function resolveReminderTargetChannel(interaction: CommandInteraction): string | null {
+  if (!interaction.channelId) return null;
+  const channel = interaction.channel;
+  if (channel?.isThread()) {
+    return channel.parentId ?? interaction.channelId;
+  }
+  return interaction.channelId;
+}
+
+export async function requireReminderAccess(interaction: CommandInteraction): Promise<ReminderAccess | null> {
+  if (!interaction.guildId) {
+    await interaction.reply({ content: "This command must be used in a server.", flags: MessageFlags.Ephemeral });
+    return null;
+  }
+
+  const targetChannelId = resolveReminderTargetChannel(interaction);
+  if (!targetChannelId) {
+    await interaction.reply({ content: "This command must be used in a channel or thread.", flags: MessageFlags.Ephemeral });
+    return null;
+  }
+
+  const game = await getActiveGameForGuild(interaction.guildId);
+  if (game) {
+    const engine = await loadEngine(game.id);
+    const isStoryteller = engine.isStoryteller(interaction.user.id);
+    const isAllowlistOverride = await isInExplicitAllowlist(interaction);
+
+    if (isStoryteller || isAllowlistOverride) {
+      return {
+        scope: { kind: "game", gameId: game.id },
+        targetChannelId,
+        game,
+        engine,
+      };
+    }
+  }
+
+  if (!(await canManageChannelReminders(interaction))) {
+    await interaction.reply({
+      content:
+        "No active game access. Set channel reminders with `REMINDER_ROLE_IDS`, or add your user/role to `ALLOWED_USER_IDS` / `ALLOWED_ROLE_IDS`.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return null;
+  }
+
+  return {
+    scope: { kind: "channel", guildId: interaction.guildId, channelId: targetChannelId },
+    targetChannelId,
+    game: null,
+    engine: null,
+  };
+}
+
+export async function buildReminderPingMention(
+  reminder: { gameId: string | null; guildId: string; pingPlayers: boolean; pingRoleId?: string | null },
+): Promise<string | null> {
+  if (!reminder.pingPlayers) return null;
+
+  if (reminder.pingRoleId) {
+    return `<@&${reminder.pingRoleId}>`;
+  }
+
+  if (reminder.gameId) {
+    return buildPlayerPingMention(reminder.gameId, reminder.guildId);
+  }
+
+  const pingRoleId = getReminderPingRoleId();
+  return pingRoleId ? `<@&${pingRoleId}>` : null;
+}
+
+export async function buildPlayerPingMention(
+  gameId: string,
+  guildId: string,
+): Promise<string | null> {
+  const game = await prisma.game.findUnique({ where: { id: gameId } });
+  if (!game) return null;
+
+  const client = getBotClient();
+  const discordGuild = (await client?.guilds.fetch(guildId).catch(() => null)) ?? null;
+  const gameRoles = await getGameRoles(discordGuild, game.channelId);
+  if (gameRoles) {
+    return `<@&${gameRoles.playersRole.id}>`;
+  }
+
+  if (!GAME_DISCORD_ROLES_ENABLED) {
+    const engine = await loadEngine(gameId);
+    const mentions = engine
+      .getState()
+      .players.filter((player) => !player.isFake)
+      .map((player) => `<@${player.discordUserId}>`)
+      .join(" ");
+    return mentions || null;
+  }
+
+  return null;
+}
+
+export { buildReminderFireContent };
 
 export async function requireActivePlayerGame(interaction: CommandInteraction) {
   if (!interaction.guildId) {
