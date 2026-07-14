@@ -48,18 +48,27 @@ describe("buildDiscordLogEmbed", () => {
 });
 
 describe("buildErrorLogEmbed", () => {
-  it("adds message and stack fields", () => {
+  it("adds command path to title and a full log code block", () => {
     const error = new Error("boom");
-    const embed = buildErrorLogEmbed("interaction.failed", error, { guildId: "g1" });
+    const embed = buildErrorLogEmbed("interaction.failed", error, {
+      command: "st",
+      subcommand: "clear-reminders",
+      guildId: "g1",
+    });
     const data = embed.toJSON();
 
-    expect(data.title).toBe("interaction.failed");
+    expect(data.title).toBe("interaction.failed · /st clear-reminders");
     expect(data.color).toBe(0xed4245);
-    expect(data.fields?.map((field) => field.name)).toEqual(["Details", "Message", "Stack"]);
+    expect(data.fields?.map((field) => field.name)).toEqual(["Details", "Log"]);
+    expect(data.fields?.[0]?.value).toContain("command: /st clear-reminders");
     expect(data.fields?.[0]?.value).toContain("guildId: g1");
     expect(data.fields?.[0]?.value).toContain("type: Error");
-    expect(data.fields?.[1]?.value).toContain("boom");
-    expect(data.fields?.[2]?.value).toContain("Error: boom");
+    const logField = data.fields?.[1]?.value ?? "";
+    expect(logField).toMatch(/^```\n/);
+    expect(logField).toContain("source: interaction.failed");
+    expect(logField).toContain("command: /st clear-reminders");
+    expect(logField).toContain("message: boom");
+    expect(logField).toContain("Error: boom");
   });
 
   it("includes discord api code in details when present", () => {
@@ -70,13 +79,13 @@ describe("buildErrorLogEmbed", () => {
     expect(details).toContain("status: 400");
   });
 
-  it("truncates very long stack fields", () => {
+  it("truncates very long log fields", () => {
     const error = new Error("x".repeat(5000));
     error.stack = `Error: ${"x".repeat(5000)}\n    at foo`;
     const embed = buildErrorLogEmbed("process.uncaughtException", error);
-    const stackField = embed.toJSON().fields?.find((field) => field.name === "Stack");
-    expect(stackField?.value?.length).toBeLessThanOrEqual(1024);
-    expect(stackField?.value).toContain("truncated");
+    const logField = embed.toJSON().fields?.find((field) => field.name === "Log");
+    expect(logField?.value?.length).toBeLessThanOrEqual(1024);
+    expect(logField?.value).toContain("truncated");
   });
 });
 

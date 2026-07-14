@@ -75,6 +75,35 @@ function parseEmbedTimestamp(meta: Record<string, unknown>): Date {
   return new Date();
 }
 
+function formatCommandPath(context: Record<string, unknown>): string | undefined {
+  const command = context.command;
+  const subcommand = context.subcommand;
+  if (typeof command !== "string" || !command) return undefined;
+  if (typeof subcommand === "string" && subcommand) {
+    return `/${command} ${subcommand}`;
+  }
+  return `/${command}`;
+}
+
+function buildFullErrorLogText(
+  meta: Record<string, unknown>,
+  message: string,
+  stack?: string,
+): string {
+  const lines: string[] = [];
+  for (const [key, value] of Object.entries(meta)) {
+    if (value === undefined) continue;
+    lines.push(`${key}: ${formatContextValue(value)}`);
+  }
+  lines.push("");
+  lines.push(`message: ${message}`);
+  if (stack) {
+    lines.push("");
+    lines.push(stack);
+  }
+  return lines.join("\n");
+}
+
 export function buildDiscordLogEmbed(
   source: string,
   meta: Record<string, unknown>,
@@ -148,8 +177,18 @@ export function buildErrorLogEmbed(
   const serialized = serializeError(error);
   const message = extractErrorMessage(error, serialized);
   const meta = extractErrorMeta(source, error, serialized, context);
+  const commandPath = formatCommandPath(context);
+  if (commandPath) meta.command = commandPath;
+
   const stack = typeof serialized.stack === "string" ? serialized.stack : undefined;
-  return buildDiscordLogEmbed(source, meta, { message, stack });
+  const fullLog = buildFullErrorLogText(meta, message, stack);
+  const title = commandPath ? `${source} · ${commandPath}` : source;
+
+  const embed = buildDiscordLogEmbed(source, meta)
+    .setTitle(title)
+    .addFields({ name: "Log", value: codeField(fullLog), inline: false });
+
+  return embed;
 }
 
 export function buildLifecycleLogEmbed(

@@ -108,6 +108,9 @@ client.on("interactionCreate", (interaction) => {
     }
     void reportError("interaction.failed", error, {
       command: interaction.isChatInputCommand() ? interaction.commandName : interaction.type,
+      subcommand: interaction.isChatInputCommand()
+        ? interaction.options.getSubcommand(false) ?? undefined
+        : undefined,
       guildId: interaction.guildId,
       channelId: interaction.channelId,
       userId: interaction.user.id,

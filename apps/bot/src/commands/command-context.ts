@@ -1043,11 +1043,15 @@ export async function replyEngineError(
 ): Promise<void> {
   const message = error instanceof GameEngineError ? error.message : "Unexpected game engine error.";
   if (!(error instanceof GameEngineError)) {
+    const cmd = interaction as CommandInteraction;
     void reportError("command.failed", error, {
       command: interaction.commandName ?? "interaction",
-      guildId: "guildId" in interaction ? (interaction as CommandInteraction).guildId : undefined,
-      channelId: "channelId" in interaction ? (interaction as CommandInteraction).channelId : undefined,
-      userId: "user" in interaction ? (interaction as CommandInteraction).user.id : undefined,
+      subcommand: cmd.isChatInputCommand?.()
+        ? cmd.options.getSubcommand(false) ?? undefined
+        : undefined,
+      guildId: "guildId" in interaction ? cmd.guildId : undefined,
+      channelId: "channelId" in interaction ? cmd.channelId : undefined,
+      userId: "user" in interaction ? cmd.user.id : undefined,
     });
   }
   const attempts = buildInteractionResponseAttempts(interaction, {
