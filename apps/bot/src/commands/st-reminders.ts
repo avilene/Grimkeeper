@@ -15,7 +15,7 @@ import {
 
 import { getReminderPingRoleId } from "../access.js";
 import { logReminderAction } from "../action-log.js";
-import { formatReminderDuration, parseReminderDuration, parseReminderHours } from "../reminder-duration.js";
+import { formatReminderDuration, formatHoursFromNow, formatReminderFireIn, parseReminderDuration, parseReminderHours } from "../reminder-duration.js";
 import { discordTimestamp, formatReminderText, parseReminderEmoji } from "../reminder-message.js";
 import {
   deferInteractionReply,
@@ -229,6 +229,7 @@ export class StReminderCommands {
     const now = Date.now();
     const createdInThread = interaction.channel?.isThread() ?? false;
     const pingRoleId = pingRole?.id ?? (scope.kind === "channel" ? getReminderPingRoleId() : null);
+    const seriesEndAt = new Date(now + Math.max(...hours) * 3_600_000);
 
     await Promise.all(
       hours.map((hour) =>
@@ -240,6 +241,7 @@ export class StReminderCommands {
           emoji,
           sourceKey: `${interaction.id}:${hour}`,
           fireAt: new Date(now + hour * 3_600_000),
+          seriesEndAt,
           createdBy: interaction.user.id,
           pingPlayers: true,
           pingRoleId: pingRoleId ?? null,
@@ -249,8 +251,9 @@ export class StReminderCommands {
 
     const scheduleLines = hours.map((hour) => {
       const fireAt = new Date(now + hour * 3_600_000);
-      return `- ${discordTimestamp(fireAt, "R")} (${discordTimestamp(fireAt, "t")})`;
+      return `- ${formatHoursFromNow(hour)} (${discordTimestamp(fireAt, "F")})`;
     });
+    const seriesEndLine = `Final reminder ${formatReminderFireIn(seriesEndAt, now)} (${discordTimestamp(seriesEndAt, "F")})`;
     const totalPending = await countPendingReminders(scope);
     const scopeLabel = scope.kind === "game" ? "this game" : `<#${targetChannelId}>`;
     const threadNote = createdInThread ? " (created in thread, fires in parent channel)" : "";
@@ -273,6 +276,8 @@ export class StReminderCommands {
       content: [
         `Set **${hours.length}** reminder${hours.length === 1 ? "" : "s"} in <#${targetChannelId}> pinging ${pingLabel}${threadNote}:`,
         `“${formatReminderText(trimmedMessage, emoji)}”`,
+        "",
+        seriesEndLine,
         "",
         ...scheduleLines,
         "",
@@ -303,13 +308,17 @@ export class StReminderCommands {
     }
 
     const lines = pending.map((reminder) => {
-      const when = discordTimestamp(reminder.fireAt, "R");
+      const when = formatReminderFireIn(reminder.fireAt);
+      const seriesNote =
+        reminder.seriesEndAt && reminder.seriesEndAt.getTime() > reminder.fireAt.getTime()
+          ? `, final ${formatReminderFireIn(reminder.seriesEndAt)}`
+          : "";
       const pingNote = reminder.pingPlayers
         ? reminder.pingRoleId
           ? ` (pings <@&${reminder.pingRoleId}>)`
           : " (pings players)"
         : "";
-      return `- \`${reminder.id.slice(0, 8)}\` ${when} in <#${reminder.channelId}>${pingNote}: ${formatReminderText(reminder.message, reminder.emoji)}`;
+      return `- \`${reminder.id.slice(0, 8)}\` ${when}${seriesNote} in <#${reminder.channelId}>${pingNote}: ${formatReminderText(reminder.message, reminder.emoji)}`;
     });
 
     await replyOrEditInteraction(interaction, {

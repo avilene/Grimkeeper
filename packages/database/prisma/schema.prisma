@@ -94,6 +94,7 @@ model GameReminder {
   emoji       String?
   sourceKey   String?  @unique
   fireAt      DateTime
+  seriesEndAt DateTime?
   fired       Boolean  @default(false)
   pingPlayers Boolean  @default(false)
   pingRoleId  String?

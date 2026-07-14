@@ -1,3 +1,5 @@
+import { formatReminderFireIn } from "./reminder-duration.js";
+
 export function discordTimestamp(date: Date, style: "R" | "F" | "t" = "R"): string {
   return `<t:${Math.floor(date.getTime() / 1000)}:${style}>`;
 }
@@ -19,13 +21,24 @@ export function formatReminderText(message: string, emoji?: string | null): stri
   return `${prefix}${message.trim()}`;
 }
 
+export function formatSeriesEndNote(
+  fireAt: Date,
+  seriesEndAt: Date | null | undefined,
+  now = Date.now(),
+): string {
+  if (!seriesEndAt || seriesEndAt.getTime() <= fireAt.getTime()) return "";
+  return ` · Final reminder ${formatReminderFireIn(seriesEndAt, now)} (${discordTimestamp(seriesEndAt, "F")})`;
+}
+
 export function buildReminderFireContent(
   playerPing: string | null,
   message: string,
   fireAt: Date,
   emoji?: string | null,
+  seriesEndAt?: Date | null,
 ): string {
-  const when = discordTimestamp(fireAt, "t");
-  const body = `${formatReminderText(message, emoji)} (${when})`;
+  const seriesNote = formatSeriesEndNote(fireAt, seriesEndAt);
+  const when = seriesNote ? "" : ` (${discordTimestamp(fireAt, "t")})`;
+  const body = `${formatReminderText(message, emoji)}${when}${seriesNote}`;
   return playerPing ? `${playerPing} ${body}` : body;
 }

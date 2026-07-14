@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatReminderDuration, parseReminderDuration, parseReminderHours } from "./reminder-duration.js";
+import { formatReminderDuration, formatHoursFromNow, formatReminderFireIn, parseReminderDuration, parseReminderHours } from "./reminder-duration.js";
 
 describe("parseReminderDuration", () => {
   it("parses minutes", () => {
@@ -26,6 +26,27 @@ describe("formatReminderDuration", () => {
     expect(formatReminderDuration(1)).toBe("1 minute");
     expect(formatReminderDuration(60)).toBe("1 hour");
     expect(formatReminderDuration(120)).toBe("2 hours");
+  });
+});
+
+describe("formatHoursFromNow", () => {
+  it("formats hour offsets as readable relative times", () => {
+    expect(formatHoursFromNow(16)).toBe("in 16 hours");
+    expect(formatHoursFromNow(0.5)).toBe("in 30 minutes");
+    expect(formatHoursFromNow(1)).toBe("in 1 hour");
+  });
+});
+
+describe("formatReminderFireIn", () => {
+  it("formats future fire times relative to now", () => {
+    const now = Date.parse("2026-07-14T08:00:00Z");
+    const fireAt = new Date("2026-07-14T16:00:00Z");
+    expect(formatReminderFireIn(fireAt, now)).toBe("in 8 hours");
+  });
+
+  it("returns now for past or immediate times", () => {
+    const now = Date.parse("2026-07-14T16:00:00Z");
+    expect(formatReminderFireIn(new Date("2026-07-14T16:00:00Z"), now)).toBe("now");
   });
 });
 

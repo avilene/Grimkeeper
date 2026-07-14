@@ -49,3 +49,14 @@ export function formatReminderDuration(minutes: number): string {
   }
   return `${minutes} minute${minutes === 1 ? "" : "s"}`;
 }
+
+export function formatHoursFromNow(hours: number): string {
+  const minutes = Math.round(hours * 60);
+  return `in ${formatReminderDuration(minutes)}`;
+}
+
+export function formatReminderFireIn(fireAt: Date, now = Date.now()): string {
+  const minutes = Math.max(0, Math.round((fireAt.getTime() - now) / 60_000));
+  if (minutes === 0) return "now";
+  return `in ${formatReminderDuration(minutes)}`;
+}

@@ -13,6 +13,7 @@ export interface CreateReminderInput {
   emoji?: string | null;
   sourceKey?: string | null;
   fireAt: Date;
+  seriesEndAt?: Date | null;
   createdBy: string;
   pingPlayers?: boolean;
   pingRoleId?: string | null;

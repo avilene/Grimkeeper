@@ -52,4 +52,15 @@ describe("buildReminderFireContent", () => {
       `noms close (<t:${Math.floor(fireAt.getTime() / 1000)}:t>)`,
     );
   });
+
+  it("shows when the final series reminder ends on intermediate pings", () => {
+    const fireAt = new Date("2026-07-14T12:00:00Z");
+    const seriesEndAt = new Date("2026-07-14T20:00:00Z");
+    const content = buildReminderFireContent("<@&123>", "check votes", fireAt, null, seriesEndAt);
+    expect(content).toContain("<@&123>");
+    expect(content).toContain("check votes");
+    expect(content).toContain("Final reminder in");
+    expect(content).toContain(`<t:${Math.floor(seriesEndAt.getTime() / 1000)}:F>`);
+    expect(content).not.toContain(`<t:${Math.floor(fireAt.getTime() / 1000)}:t>`);
+  });
 });
