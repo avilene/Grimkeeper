@@ -45,9 +45,7 @@ registerClientErrorHandlers(client);
 
 client.once(Events.ClientReady, async () => {
   setBotClient(client);
-  if (!isMinimalMode()) {
-    startReminderScheduler(client);
-  }
+  startReminderScheduler(client);
   try {
     await client.initApplicationCommands();
     log("info", "commands.register.ok", { botMode: isMinimalMode() ? "minimal" : "full" });
