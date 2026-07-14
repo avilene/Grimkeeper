@@ -29,3 +29,21 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  notify-failure:
+    needs: [build]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Notify Discord error channel
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          ERROR_CHANNEL_ID: ${{ secrets.ERROR_CHANNEL_ID }}
+        run: |
+          sh scripts/notify-discord-channel.sh "Grimkeeper CI failed" "failure" \
+            "workflow: CI" \
+            "ref: ${{ github.ref }}" \
+            "sha: ${{ github.sha }}" \
+            "actor: ${{ github.actor }}" \
+            "run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"

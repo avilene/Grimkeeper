@@ -271,14 +271,21 @@ export async function resolveReminderTargetChannel(
 ): Promise<string | null> {
   if (!interaction.channelId) return null;
 
-  let channel = interaction.channel;
-  if (!channel && interaction.inGuild()) {
-    channel = await interaction.guild!.channels.fetch(interaction.channelId).catch(() => null);
+  const cached = interaction.channel;
+  if (cached?.isThread()) {
+    return cached.parentId ?? interaction.channelId;
+  }
+  if (cached) {
+    return interaction.channelId;
   }
 
-  if (channel?.isThread()) {
-    return channel.parentId ?? interaction.channelId;
+  if (interaction.inGuild()) {
+    const fetched = await interaction.guild!.channels.fetch(interaction.channelId).catch(() => null);
+    if (fetched?.isThread()) {
+      return fetched.parentId ?? interaction.channelId;
+    }
   }
+
   return interaction.channelId;
 }
 
@@ -1029,16 +1036,15 @@ export async function replyEngineError(
       userId: "user" in interaction ? (interaction as CommandInteraction).user.id : undefined,
     });
   }
-  const payload = { content: message, flags: MessageFlags.Ephemeral };
   const attempts: Array<() => Promise<unknown>> = [];
   if (interaction.deferred) {
     attempts.push(() => interaction.editReply({ content: message }));
   } else if (interaction.replied) {
-    attempts.push(() => interaction.followUp(payload));
+    attempts.push(() => interaction.followUp({ content: message, flags: MessageFlags.Ephemeral }));
   } else {
-    attempts.push(() => interaction.reply(payload));
+    attempts.push(() => interaction.reply({ content: message, flags: MessageFlags.Ephemeral }));
     attempts.push(() => interaction.editReply({ content: message }));
-    attempts.push(() => interaction.followUp(payload));
+    attempts.push(() => interaction.followUp({ content: message, flags: MessageFlags.Ephemeral }));
   }
   await withAcknowledgedFallback(attempts);
 }
