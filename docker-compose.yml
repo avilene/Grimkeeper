@@ -37,6 +37,7 @@ services:
   # GitHub repo secrets: DEPLOY_WEBHOOK_URL, DEPLOY_WEBHOOK_SECRET
   deploy-hook:
     profiles: ["deploy"]
+    image: ${DEPLOY_HOOK_IMAGE:-grimkeeper-deploy-hook:local}
     build: ./ops/deploy-hook
     restart: unless-stopped
     env_file:
