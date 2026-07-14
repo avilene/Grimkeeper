@@ -25,6 +25,10 @@ fi
 
 mkdir -p .deploy
 
+watch_log() {
+  printf '[%s] [watch] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"
+}
+
 image_digest() {
   if command -v jq >/dev/null 2>&1; then
     docker manifest inspect "$GRIMKEEPER_IMAGE" 2>/dev/null | jq -r '
@@ -56,28 +60,29 @@ handle_digest() {
   previous="$(cat "$DIGEST_FILE" 2>/dev/null || true)"
 
   if [ -z "$current" ]; then
-    echo "[watch] Could not read manifest for $GRIMKEEPER_IMAGE (docker login ghcr.io?)" >&2
+    watch_log "Could not read manifest for $GRIMKEEPER_IMAGE (docker login ghcr.io?)" >&2
     return 1
   fi
 
   if [ "$current" = "$previous" ]; then
-    echo "[watch] No change ($current)"
+    watch_log "No change ($current)"
     return 0
   fi
 
-  echo "[watch] New digest: $current (was: ${previous:-none})"
+  watch_log "New digest: $current (was: ${previous:-none})"
   printf '%s' "$current" > "$DIGEST_FILE"
 
   if [ -n "$previous" ]; then
     notify_new_build "$previous" "$current"
     if [ "$AUTO_REDEPLOY" = "true" ]; then
-      echo "[watch] Auto-redeploying..."
+      watch_log "Auto-redeploying..."
       docker compose pull bot
       docker compose up -d --no-build bot
       docker compose ps bot
+      watch_log "Redeploy complete"
     fi
   else
-    echo "[watch] Baseline digest recorded."
+    watch_log "Baseline digest recorded."
   fi
 }
 
@@ -86,7 +91,7 @@ check_once() {
   handle_digest "$digest" || true
 }
 
-echo "[watch] Image: $GRIMKEEPER_IMAGE (every ${INTERVAL}s, autoRedeploy=${AUTO_REDEPLOY})"
+watch_log "Image: $GRIMKEEPER_IMAGE (every ${INTERVAL}s, autoRedeploy=${AUTO_REDEPLOY})"
 
 if [ "$ONCE" = "true" ]; then
   check_once
@@ -95,5 +100,6 @@ fi
 
 while true; do
   check_once
+  watch_log "Next check in ${INTERVAL}s"
   sleep "$INTERVAL"
 done
