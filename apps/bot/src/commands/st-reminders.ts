@@ -16,7 +16,7 @@ import {
 
 import { getReminderPingRoleId } from "../access.js";
 import { logReminderAction } from "../action-log.js";
-import { formatReminderDuration, formatHoursFromNow, formatReminderFireIn, parseReminderDuration, parseReminderHours } from "../reminder-duration.js";
+import { formatReminderDuration, parseReminderDuration, parseReminderHours } from "../reminder-duration.js";
 import { discordTimestamp, formatReminderText, parseReminderEmoji } from "../reminder-message.js";
 import {
   deferInteractionReply,
@@ -252,9 +252,8 @@ export class StReminderCommands {
 
     const scheduleLines = hours.map((hour) => {
       const fireAt = new Date(now + hour * 3_600_000);
-      return `- ${formatHoursFromNow(hour)} (${discordTimestamp(fireAt, "F")})`;
+      return `- ${discordTimestamp(fireAt, "R")}`;
     });
-    const seriesEndLine = `Final reminder ${formatReminderFireIn(seriesEndAt, now)} (${discordTimestamp(seriesEndAt, "F")})`;
     const totalPending = await countPendingReminders(scope);
     const scopeLabel = `<#${targetChannelId}>`;
     const threadNote = createdInThread ? " (created in thread, fires in parent channel)" : "";
@@ -277,8 +276,6 @@ export class StReminderCommands {
       content: [
         `Set **${hours.length}** reminder${hours.length === 1 ? "" : "s"} in <#${targetChannelId}> pinging ${pingLabel}${threadNote}:`,
         `“${formatReminderText(trimmedMessage, emoji)}”`,
-        "",
-        seriesEndLine,
         "",
         ...scheduleLines,
         "",
@@ -309,17 +306,13 @@ export class StReminderCommands {
     }
 
     const lines = pending.map((reminder) => {
-      const when = formatReminderFireIn(reminder.fireAt);
-      const seriesNote =
-        reminder.seriesEndAt && reminder.seriesEndAt.getTime() > reminder.fireAt.getTime()
-          ? `, final ${formatReminderFireIn(reminder.seriesEndAt)}`
-          : "";
+      const when = discordTimestamp(reminder.fireAt, "R");
       const pingNote = reminder.pingPlayers
         ? reminder.pingRoleId
           ? ` (pings <@&${reminder.pingRoleId}>)`
           : " (pings players)"
         : "";
-      return `- \`${reminder.id.slice(0, 8)}\` ${when}${seriesNote} in <#${reminder.channelId}>${pingNote}: ${formatReminderText(reminder.message, reminder.emoji)}`;
+      return `- \`${reminder.id.slice(0, 8)}\` ${when} in <#${reminder.channelId}>${pingNote}: ${formatReminderText(reminder.message, reminder.emoji)}`;
     });
 
     await replyOrEditInteraction(interaction, {

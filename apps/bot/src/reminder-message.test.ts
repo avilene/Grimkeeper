@@ -38,29 +38,18 @@ describe("formatReminderText", () => {
 });
 
 describe("buildReminderFireContent", () => {
-  it("includes player ping and scheduled time", () => {
+  it("includes player ping and relative scheduled time", () => {
     const fireAt = new Date("2026-07-14T16:00:00Z");
     const content = buildReminderFireContent("<@&123>", "noms close", fireAt, "🔔");
     expect(content).toContain("<@&123>");
     expect(content).toContain("🔔 noms close");
-    expect(content).toContain(`<t:${Math.floor(fireAt.getTime() / 1000)}:t>`);
+    expect(content).toContain(`<t:${Math.floor(fireAt.getTime() / 1000)}:R>`);
   });
 
   it("omits ping and emoji when unavailable", () => {
     const fireAt = new Date("2026-07-14T16:00:00Z");
     expect(buildReminderFireContent(null, "noms close", fireAt)).toBe(
-      `noms close (<t:${Math.floor(fireAt.getTime() / 1000)}:t>)`,
+      `noms close (<t:${Math.floor(fireAt.getTime() / 1000)}:R>)`,
     );
-  });
-
-  it("shows when the final series reminder ends on intermediate pings", () => {
-    const fireAt = new Date("2026-07-14T12:00:00Z");
-    const seriesEndAt = new Date("2026-07-14T20:00:00Z");
-    const content = buildReminderFireContent("<@&123>", "check votes", fireAt, null, seriesEndAt);
-    expect(content).toContain("<@&123>");
-    expect(content).toContain("check votes");
-    expect(content).toContain("Final reminder in");
-    expect(content).toContain(`<t:${Math.floor(seriesEndAt.getTime() / 1000)}:F>`);
-    expect(content).not.toContain(`<t:${Math.floor(fireAt.getTime() / 1000)}:t>`);
   });
 });

@@ -312,7 +312,13 @@ export async function requireReminderAccess(interaction: CommandInteraction): Pr
     if (isStoryteller || isAllowlistOverride) {
       const channelIds = buildGameReminderChannelIds(game, targetChannelId, engine);
       return {
-        scope: { kind: "game", gameId: game.id, channelId: targetChannelId, channelIds },
+        scope: {
+          kind: "game",
+          gameId: game.id,
+          guildId: interaction.guildId,
+          channelId: targetChannelId,
+          channelIds,
+        },
         targetChannelId,
         game,
         engine,

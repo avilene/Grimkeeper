@@ -2,7 +2,7 @@ import { Prisma } from "./generated/prisma/client.js";
 import { prisma } from "./client.js";
 
 export type ReminderScope =
-  | { kind: "game"; gameId: string; channelId: string; channelIds: string[] }
+  | { kind: "game"; gameId: string; guildId: string; channelId: string; channelIds: string[] }
   | { kind: "channel"; guildId: string; channelId: string };
 
 export interface CreateReminderInput {
@@ -19,15 +19,17 @@ export interface CreateReminderInput {
   pingRoleId?: string | null;
 }
 
-function scopeWhere(scope: ReminderScope) {
+function scopeWhere(scope: ReminderScope): Prisma.GameReminderWhereInput {
   if (scope.kind === "game") {
     return {
-      gameId: scope.gameId,
-      channelId: { in: scope.channelIds },
-      fired: false as const,
+      fired: false,
+      OR: [
+        { gameId: scope.gameId, channelId: { in: scope.channelIds } },
+        { gameId: null, guildId: scope.guildId, channelId: { in: scope.channelIds } },
+      ],
     };
   }
-  return { gameId: null, guildId: scope.guildId, channelId: scope.channelId, fired: false as const };
+  return { gameId: null, guildId: scope.guildId, channelId: scope.channelId, fired: false };
 }
 
 function matchesIdPrefix(id: string, idPrefix: string): boolean {
@@ -111,24 +113,36 @@ export interface CancelRemindersFilter {
 }
 
 export async function cancelReminders(scope: ReminderScope, filter?: CancelRemindersFilter) {
-  const reminders = await prisma.gameReminder.findMany({
-    where: scopeWhere(scope),
-    select: { id: true, channelId: true, message: true },
-  });
+  if (filter?.idPrefix) {
+    const idPrefix = filter.idPrefix;
+    const reminders = await prisma.gameReminder.findMany({
+      where: scopeWhere(scope),
+      select: { id: true, channelId: true, message: true },
+    });
 
-  const toCancel = reminders.filter((reminder) => {
-    if (filter?.channelId && reminder.channelId !== filter.channelId) return false;
-    if (filter?.message && reminder.message !== filter.message) return false;
-    if (filter?.idPrefix && !matchesIdPrefix(reminder.id, filter.idPrefix)) return false;
-    return true;
-  });
+    const ids = reminders
+      .filter((reminder) => {
+        if (filter.channelId && reminder.channelId !== filter.channelId) return false;
+        if (filter.message && reminder.message !== filter.message) return false;
+        return matchesIdPrefix(reminder.id, idPrefix);
+      })
+      .map((reminder) => reminder.id);
 
-  if (toCancel.length === 0) {
-    return 0;
+    if (ids.length === 0) return 0;
+
+    const result = await prisma.gameReminder.updateMany({
+      where: { id: { in: ids }, fired: false },
+      data: { fired: true },
+    });
+    return result.count;
   }
 
+  const where: Prisma.GameReminderWhereInput = { ...scopeWhere(scope) };
+  if (filter?.channelId) where.channelId = filter.channelId;
+  if (filter?.message) where.message = filter.message;
+
   const result = await prisma.gameReminder.updateMany({
-    where: { id: { in: toCancel.map((reminder) => reminder.id) } },
+    where,
     data: { fired: true },
   });
   return result.count;
@@ -147,12 +161,27 @@ export async function listPendingReminders(scope: ReminderScope) {
   });
 }
 
-/** Cancel by ID prefix; falls back to any pending reminder in the game if channel scope misses. */
+/** Cancel by ID prefix; falls back to guild/game matches if the channel scope misses. */
 export async function cancelReminderByIdPrefix(scope: ReminderScope, idPrefix: string): Promise<number> {
   const cancelled = await cancelReminders(scope, { idPrefix });
   if (cancelled > 0) return cancelled;
 
   if (scope.kind !== "game") return 0;
+
+  const guildChannelReminders = await prisma.gameReminder.findMany({
+    where: { gameId: null, guildId: scope.guildId, fired: false },
+    select: { id: true },
+  });
+  const channelMatches = guildChannelReminders.filter((reminder) =>
+    matchesIdPrefix(reminder.id, idPrefix),
+  );
+  if (channelMatches.length > 0) {
+    const result = await prisma.gameReminder.updateMany({
+      where: { id: { in: channelMatches.map((reminder) => reminder.id) }, fired: false },
+      data: { fired: true },
+    });
+    return result.count;
+  }
 
   const reminders = await prisma.gameReminder.findMany({
     where: { gameId: scope.gameId, fired: false },
@@ -162,7 +191,7 @@ export async function cancelReminderByIdPrefix(scope: ReminderScope, idPrefix: s
   if (matches.length === 0) return 0;
 
   const result = await prisma.gameReminder.updateMany({
-    where: { id: { in: matches.map((reminder) => reminder.id) } },
+    where: { id: { in: matches.map((reminder) => reminder.id) }, fired: false },
     data: { fired: true },
   });
   return result.count;
