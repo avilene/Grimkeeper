@@ -1,19 +1,11 @@
-FROM docker:27-cli
-
+# Pre-built webhook binaries are glibc-linked; docker:27-cli is Alpine (musl).
+# Build a static binary so it runs on the Alpine base that ships docker CLI.
+FROM golang:1.22-alpine AS webhook-build
 ARG WEBHOOK_VERSION=2.8.1
+RUN CGO_ENABLED=0 go install github.com/adnanh/webhook@v${WEBHOOK_VERSION}
 
-RUN apk add --no-cache curl && \
-  arch="$(uname -m)" && \
-  case "$arch" in \
-    x86_64) webhook_arch=linux-amd64 ;; \
-    aarch64) webhook_arch=linux-arm64 ;; \
-    *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
-  esac && \
-  curl -fsSL "https://github.com/adnanh/webhook/releases/download/${WEBHOOK_VERSION}/webhook-${webhook_arch}.tar.gz" \
-    | tar -xz -C /usr/local/bin --strip-components=1 "webhook-${webhook_arch}/webhook" && \
-  chmod +x /usr/local/bin/webhook && \
-  apk del curl
-
+FROM docker:27-cli
+COPY --from=webhook-build /go/bin/webhook /usr/local/bin/webhook
 COPY hooks.json /etc/webhook/hooks.json
 
 EXPOSE 9000
