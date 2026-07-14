@@ -24,6 +24,9 @@ RUN pnpm build
 
 FROM node:24-bookworm-slim AS runner
 ENV NODE_ENV=production
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 COPY --from=build /app/node_modules ./node_modules
