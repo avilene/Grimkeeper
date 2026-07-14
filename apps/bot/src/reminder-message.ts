@@ -63,12 +63,10 @@ export function parsePingRolesFromString(input: string): string[] {
 }
 
 export function resolvePingRoleIds(
-  singleRoleId: string | undefined,
   rolesInput: string | undefined,
   fallbackRoleId: string | null,
 ): string[] {
   const ids = new Set<string>();
-  if (singleRoleId) ids.add(singleRoleId);
   if (rolesInput?.trim()) {
     for (const id of parsePingRolesFromString(rolesInput)) ids.add(id);
   }

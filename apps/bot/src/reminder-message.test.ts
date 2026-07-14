@@ -101,14 +101,13 @@ describe("parsePingRolesFromString", () => {
 });
 
 describe("resolvePingRoleIds", () => {
-  const roleA = "123456789012345678";
   const roleB = "987654321098765432";
   const roleC = "111111111111111111";
 
-  it("merges picker role, string input, and fallback", () => {
-    expect(resolvePingRoleIds(roleA, `<@&${roleB}>`, roleC)).toEqual([roleA, roleB]);
-    expect(resolvePingRoleIds(undefined, undefined, roleC)).toEqual([roleC]);
-    expect(resolvePingRoleIds(undefined, undefined, null)).toEqual([]);
+  it("parses string input and uses fallback", () => {
+    expect(resolvePingRoleIds(`<@&${roleB}>`, roleC)).toEqual([roleB]);
+    expect(resolvePingRoleIds(undefined, roleC)).toEqual([roleC]);
+    expect(resolvePingRoleIds(undefined, null)).toEqual([]);
   });
 });
 

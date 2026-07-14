@@ -10,6 +10,7 @@ const ST_REMINDER_SUBCOMMANDS = new Set([
   "reminders",
   "clear-reminders",
   "delete-reminder",
+  "edit-reminder",
 ]);
 
 const INTERACTION_DEFER_BUDGET_MS = 2_800;

@@ -11,7 +11,9 @@ import {
   cancelReminderByIdPrefix,
   countPendingReminders,
   createReminder,
+  findRemindersByIdPrefix,
   listPendingReminders,
+  updateReminder,
 } from "@grimkeeper/database";
 
 import { getReminderPingRoleId } from "../access.js";
@@ -174,26 +176,12 @@ export class StReminderCommands {
     })
     hoursInput: string,
     @SlashOption({
-      name: "ping_role",
-      description: "Primary role to ping (combine with ping_roles for more)",
-      type: ApplicationCommandOptionType.Role,
-      required: false,
-    })
-    pingRole: Role | undefined,
-    @SlashOption({
       name: "ping_roles",
-      description: "Additional roles — mentions or IDs, space/comma separated (e.g. @ST @Players)",
+      description: "Roles to ping — @mentions or IDs, space/comma separated (defaults to REMINDER_PING_ROLE_ID or game players)",
       type: ApplicationCommandOptionType.String,
       required: false,
     })
     pingRolesInput: string | undefined,
-    @SlashOption({
-      name: "emoji",
-      description: "Optional emoji prefix (e.g. 🔔 or a custom server emoji)",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-    })
-    emojiInput: string | undefined,
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
@@ -214,28 +202,19 @@ export class StReminderCommands {
     }
 
     const pingRoleIds = resolvePingRoleIds(
-      pingRole?.id,
       pingRolesInput,
       scope.kind === "channel" ? getReminderPingRoleId() : null,
     );
     if (scope.kind === "channel" && pingRoleIds.length === 0) {
       await replyOrEditInteraction(interaction, {
         content:
-          "Provide `ping_role` or `ping_roles`, or set `REMINDER_PING_ROLE_ID` for channel reminders.",
+          "Provide `ping_roles` or set `REMINDER_PING_ROLE_ID` for channel reminders.",
         ...EPHEMERAL,
       });
       return;
     }
 
     const trimmedMessage = message.trim();
-    const emoji = parseReminderEmoji(emojiInput);
-    if (emojiInput?.trim() && !emoji) {
-      await replyOrEditInteraction(interaction, {
-        content: "Emoji must be a single unicode emoji or custom emoji (e.g. `🔔` or `<:name:id>`).",
-        ...EPHEMERAL,
-      });
-      return;
-    }
 
     const now = Date.now();
     const createdInThread = interaction.channel?.isThread() ?? false;
@@ -249,7 +228,7 @@ export class StReminderCommands {
           guildId: interaction.guildId!,
           channelId: targetChannelId,
           message: trimmedMessage,
-          emoji,
+          emoji: null,
           sourceKey: `${interaction.id}:${hour}`,
           fireAt: new Date(now + hour * 3_600_000),
           seriesEndAt,
@@ -277,7 +256,6 @@ export class StReminderCommands {
       count: hours.length,
       hours,
       message: trimmedMessage,
-      emoji: emoji ?? undefined,
       pingRoleId: pingRoleId ?? undefined,
       userId: interaction.user.id,
     });
@@ -285,7 +263,7 @@ export class StReminderCommands {
     await replyOrEditInteraction(interaction, {
       content: [
         `Set **${hours.length}** reminder${hours.length === 1 ? "" : "s"} in <#${targetChannelId}> pinging ${pingLabel}${threadNote}:`,
-        `“${formatReminderText(trimmedMessage, emoji)}”`,
+        `“${trimmedMessage}”`,
         "",
         ...scheduleLines,
         "",
@@ -329,7 +307,7 @@ export class StReminderCommands {
         new EmbedBuilder()
           .setTitle("Pending reminders")
           .setDescription(
-            `${lines.join("\n")}\n\nDelete one with \`/st delete-reminder id:<prefix>\` or clear with \`/st clear-reminders\`.`,
+            `${lines.join("\n")}\n\nEdit with \`/st edit-reminder id:<prefix>\`, delete with \`/st delete-reminder id:<prefix>\`, or clear with \`/st clear-reminders\`.`,
           ),
       ],
       ...EPHEMERAL,
@@ -452,6 +430,150 @@ export class StReminderCommands {
     });
     await replyOrEditInteraction(interaction, {
       content: `Cancelled **${cancelled}** reminder${cancelled === 1 ? "" : "s"}. **${remaining}** still pending.`,
+      ...EPHEMERAL,
+    });
+  }
+
+  @Slash({ name: "edit-reminder", description: "Update a pending reminder by ID prefix" })
+  async editReminder(
+    @SlashOption({
+      name: "id",
+      description: "ID prefix from /st reminders (e.g. first 8 characters)",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    idPrefix: string,
+    @SlashOption({
+      name: "message",
+      description: "New reminder text",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    message: string | undefined,
+    @SlashOption({
+      name: "in",
+      description: "Reschedule from now (e.g. 5m, 10, 1h)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    inDuration: string | undefined,
+    @SlashOption({
+      name: "ping_roles",
+      description: "Roles to ping — @mentions or IDs, space/comma separated",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    pingRolesInput: string | undefined,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+
+    const access = await requireReminderAccess(interaction);
+    if (!access) return;
+
+    const { scope: reminderScope } = access;
+    const trimmedId = idPrefix.trim();
+    if (!trimmedId) {
+      await replyOrEditInteraction(interaction, {
+        content: "Provide a reminder ID prefix.",
+        ...EPHEMERAL,
+      });
+      return;
+    }
+
+    const hasMessage = message !== undefined;
+    const hasSchedule = inDuration !== undefined;
+    const hasPingRoles = pingRolesInput !== undefined;
+    if (!hasMessage && !hasSchedule && !hasPingRoles) {
+      await replyOrEditInteraction(interaction, {
+        content: "Provide at least one of `message`, `in`, or `ping_roles` to update.",
+        ...EPHEMERAL,
+      });
+      return;
+    }
+
+    const matches = await findRemindersByIdPrefix(reminderScope, trimmedId);
+    if (matches.length === 0) {
+      await replyOrEditInteraction(interaction, {
+        content: `No pending reminder found with ID prefix \`${trimmedId}\`. Check \`/st reminders\`.`,
+        ...EPHEMERAL,
+      });
+      return;
+    }
+    if (matches.length > 1) {
+      await replyOrEditInteraction(interaction, {
+        content: `ID prefix \`${trimmedId}\` matches **${matches.length}** reminders. Use a longer prefix.`,
+        ...EPHEMERAL,
+      });
+      return;
+    }
+
+    const reminder = matches[0];
+    const updates: {
+      message?: string;
+      fireAt?: Date;
+      pingPlayers?: boolean;
+      pingRoleId?: string | null;
+    } = {};
+    const changes: string[] = [];
+
+    if (hasMessage) {
+      const trimmedMessage = message.trim();
+      if (!trimmedMessage) {
+        await replyOrEditInteraction(interaction, {
+          content: "Message cannot be empty.",
+          ...EPHEMERAL,
+        });
+        return;
+      }
+      updates.message = trimmedMessage;
+      changes.push(`message → “${trimmedMessage}”`);
+    }
+
+    if (hasSchedule) {
+      const minutes = parseReminderDuration(inDuration);
+      if (!minutes) {
+        await replyOrEditInteraction(interaction, {
+          content: "Duration must be like `5m`, `10`, or `1h` (max 24h).",
+          ...EPHEMERAL,
+        });
+        return;
+      }
+      const fireAt = new Date(Date.now() + minutes * 60_000);
+      updates.fireAt = fireAt;
+      changes.push(`fires ${discordTimestamp(fireAt, "R")}`);
+    }
+
+    if (hasPingRoles) {
+      const pingRoleIds = resolvePingRoleIds(pingRolesInput, null);
+      if (reminder.gameId === null && pingRoleIds.length === 0) {
+        await replyOrEditInteraction(interaction, {
+          content: "Channel reminders need at least one role in `ping_roles`.",
+          ...EPHEMERAL,
+        });
+        return;
+      }
+      updates.pingRoleId = encodePingRoleIds(pingRoleIds);
+      updates.pingPlayers = true;
+      const pingLabel = formatPingRoleMentions(updates.pingRoleId) ?? "player role";
+      changes.push(`pings ${pingLabel}`);
+    }
+
+    const updated = await updateReminder(reminder.id, updates);
+
+    logReminderAction("updated", {
+      reminderId: updated.id,
+      scope: reminderScope.kind,
+      gameId: reminderScope.kind === "game" ? reminderScope.gameId : undefined,
+      changes,
+      userId: interaction.user.id,
+    });
+
+    await replyOrEditInteraction(interaction, {
+      content: [
+        `Updated reminder \`${updated.id.slice(0, 8)}\` in <#${updated.channelId}>:`,
+        ...changes.map((change) => `- ${change}`),
+      ].join("\n"),
       ...EPHEMERAL,
     });
   }

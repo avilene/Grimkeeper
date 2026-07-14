@@ -15,7 +15,7 @@ export function logCommandInvoked(interaction: Interaction): void {
 }
 
 export function logReminderAction(
-  action: "created" | "fired" | "cancelled" | "listed",
+  action: "created" | "fired" | "cancelled" | "listed" | "updated",
   fields: Record<string, unknown>,
 ): void {
   log("info", `reminder.${action}`, fields);
