@@ -14,4 +14,4 @@ COPY hooks.json /etc/webhook/hooks.json
 EXPOSE 9000
 
 ENTRYPOINT ["webhook"]
-CMD ["-verbose", "-hooks", "/etc/webhook/hooks.json", "-hotreload"]
+CMD ["-verbose", "-template", "-hooks", "/etc/webhook/hooks.json", "-hotreload"]
