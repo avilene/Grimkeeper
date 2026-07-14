@@ -17,7 +17,14 @@ import {
 import { getReminderPingRoleId } from "../access.js";
 import { logReminderAction } from "../action-log.js";
 import { formatReminderDuration, parseReminderDuration, parseReminderHours } from "../reminder-duration.js";
-import { discordTimestamp, formatReminderText, parseReminderEmoji } from "../reminder-message.js";
+import {
+  discordTimestamp,
+  encodePingRoleIds,
+  formatPingRoleMentions,
+  formatReminderText,
+  parseReminderEmoji,
+  resolvePingRoleIds,
+} from "../reminder-message.js";
 import {
   replyOrEditInteraction,
   requireReminderAccess,
@@ -168,11 +175,18 @@ export class StReminderCommands {
     hoursInput: string,
     @SlashOption({
       name: "ping_role",
-      description: "Role to ping (channel reminders; defaults to REMINDER_PING_ROLE_ID or game players role)",
+      description: "Primary role to ping (combine with ping_roles for more)",
       type: ApplicationCommandOptionType.Role,
       required: false,
     })
     pingRole: Role | undefined,
+    @SlashOption({
+      name: "ping_roles",
+      description: "Additional roles — mentions or IDs, space/comma separated (e.g. @ST @Players)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    pingRolesInput: string | undefined,
     @SlashOption({
       name: "emoji",
       description: "Optional emoji prefix (e.g. 🔔 or a custom server emoji)",
@@ -199,15 +213,18 @@ export class StReminderCommands {
       return;
     }
 
-    if (scope.kind === "channel") {
-      const channelPingRoleId = pingRole?.id ?? getReminderPingRoleId();
-      if (!channelPingRoleId) {
-        await replyOrEditInteraction(interaction, {
-          content: "Provide a `ping_role` or set `REMINDER_PING_ROLE_ID` for channel reminders.",
-          ...EPHEMERAL,
-        });
-        return;
-      }
+    const pingRoleIds = resolvePingRoleIds(
+      pingRole?.id,
+      pingRolesInput,
+      scope.kind === "channel" ? getReminderPingRoleId() : null,
+    );
+    if (scope.kind === "channel" && pingRoleIds.length === 0) {
+      await replyOrEditInteraction(interaction, {
+        content:
+          "Provide `ping_role` or `ping_roles`, or set `REMINDER_PING_ROLE_ID` for channel reminders.",
+        ...EPHEMERAL,
+      });
+      return;
     }
 
     const trimmedMessage = message.trim();
@@ -222,7 +239,7 @@ export class StReminderCommands {
 
     const now = Date.now();
     const createdInThread = interaction.channel?.isThread() ?? false;
-    const pingRoleId = pingRole?.id ?? (scope.kind === "channel" ? getReminderPingRoleId() : null);
+    const pingRoleId = encodePingRoleIds(pingRoleIds);
     const seriesEndAt = new Date(now + Math.max(...hours) * 3_600_000);
 
     await Promise.all(
@@ -250,7 +267,7 @@ export class StReminderCommands {
     const totalPending = await countPendingReminders(scope);
     const scopeLabel = `<#${targetChannelId}>`;
     const threadNote = createdInThread ? " (created in thread, fires in parent channel)" : "";
-    const pingLabel = pingRoleId ? `<@&${pingRoleId}>` : "player role";
+    const pingLabel = formatPingRoleMentions(pingRoleId) ?? "player role";
 
     logReminderAction("created", {
       scope: scope.kind,
@@ -298,9 +315,10 @@ export class StReminderCommands {
 
     const lines = pending.map((reminder) => {
       const when = discordTimestamp(reminder.fireAt, "R");
+      const pingMentions = reminder.pingPlayers ? formatPingRoleMentions(reminder.pingRoleId) : null;
       const pingNote = reminder.pingPlayers
-        ? reminder.pingRoleId
-          ? ` (pings <@&${reminder.pingRoleId}>)`
+        ? pingMentions
+          ? ` (pings ${pingMentions})`
           : " (pings players)"
         : "";
       return `- \`${reminder.id.slice(0, 8)}\` ${when} in <#${reminder.channelId}>${pingNote}: ${formatReminderText(reminder.message, reminder.emoji)}`;

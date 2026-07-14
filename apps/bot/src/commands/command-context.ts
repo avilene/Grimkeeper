@@ -364,7 +364,13 @@ export async function buildReminderPingMention(
   if (!reminder.pingPlayers) return null;
 
   if (reminder.pingRoleId) {
-    return `<@&${reminder.pingRoleId}>`;
+    const mentions = reminder.pingRoleId
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .map((id) => `<@&${id}>`)
+      .join(" ");
+    return mentions || null;
   }
 
   if (reminder.gameId) {

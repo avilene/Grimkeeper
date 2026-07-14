@@ -3,10 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   buildReminderFireContent,
   discordTimestamp,
+  encodePingRoleIds,
   formatFiredReminderBody,
+  formatPingRoleMentions,
   formatReminderText,
+  parsePingRolesFromString,
   parseReminderEmoji,
   reminderEndAt,
+  resolvePingRoleIds,
 } from "./reminder-message.js";
 
 describe("discordTimestamp", () => {
@@ -79,5 +83,45 @@ describe("buildReminderFireContent", () => {
     expect(buildReminderFireContent(null, "Noms and whispers close", fireAt)).toBe(
       `Noms and whispers close ${discordTimestamp(fireAt, "R")}`,
     );
+  });
+});
+
+describe("parsePingRolesFromString", () => {
+  const roleA = "123456789012345678";
+  const roleB = "987654321098765432";
+
+  it("parses role mentions and raw IDs", () => {
+    expect(parsePingRolesFromString(`<@&${roleA}> <@&${roleB}>`)).toEqual([roleA, roleB]);
+    expect(parsePingRolesFromString(`${roleA},${roleB}`)).toEqual([roleA, roleB]);
+  });
+
+  it("deduplicates repeated IDs", () => {
+    expect(parsePingRolesFromString(`<@&${roleA}> ${roleA}`)).toEqual([roleA]);
+  });
+});
+
+describe("resolvePingRoleIds", () => {
+  const roleA = "123456789012345678";
+  const roleB = "987654321098765432";
+  const roleC = "111111111111111111";
+
+  it("merges picker role, string input, and fallback", () => {
+    expect(resolvePingRoleIds(roleA, `<@&${roleB}>`, roleC)).toEqual([roleA, roleB]);
+    expect(resolvePingRoleIds(undefined, undefined, roleC)).toEqual([roleC]);
+    expect(resolvePingRoleIds(undefined, undefined, null)).toEqual([]);
+  });
+});
+
+describe("encodePingRoleIds and formatPingRoleMentions", () => {
+  it("round-trips multiple role IDs", () => {
+    const encoded = encodePingRoleIds(["123456789012345678", "987654321098765432"]);
+    expect(encoded).toBe("123456789012345678,987654321098765432");
+    expect(formatPingRoleMentions(encoded)).toBe(
+      "<@&123456789012345678> <@&987654321098765432>",
+    );
+  });
+
+  it("formats a single stored role ID", () => {
+    expect(formatPingRoleMentions("123456789012345678")).toBe("<@&123456789012345678>");
   });
 });
