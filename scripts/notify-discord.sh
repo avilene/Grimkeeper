@@ -18,7 +18,7 @@ if ! command -v curl >/dev/null 2>&1; then
 fi
 
 timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-meta="time: ${timestamp}
+meta="source: ${title}
 status: ${status}"
 
 for line in "$@"; do
@@ -26,16 +26,21 @@ for line in "$@"; do
 ${line}"
 done
 
-# Escape for JSON string (minimal — webhook content only).
+case "$status" in
+  failure|error|failed) color=15548997 ;;
+  success|started) color=5763719 ;;
+  *) color=5793266 ;;
+esac
+
 escape_json() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
-meta_escaped=$(escape_json "$meta")
 title_escaped=$(escape_json "$title")
+details_value=$(escape_json "$(printf '```yaml\n%s\n```' "$meta")")
 
 payload=$(cat <<EOF
-{"content":"**${title_escaped}**\n\`\`\`yaml\n${meta_escaped}\n\`\`\`"}
+{"embeds":[{"title":"${title_escaped}","color":${color},"timestamp":"${timestamp}","fields":[{"name":"Details","value":"${details_value}"}]}]}
 EOF
 )
 

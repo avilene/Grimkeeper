@@ -1,10 +1,13 @@
+export function isRecoverableInteractionResponseError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") return false;
+  if (!("code" in error)) return false;
+  const code = error.code;
+  return code === 40060 || code === "InteractionNotReplied";
+}
+
+/** @deprecated Use isRecoverableInteractionResponseError */
 export function isInteractionAlreadyAcknowledged(error: unknown): boolean {
-  return (
-    error !== null &&
-    typeof error === "object" &&
-    "code" in error &&
-    error.code === 40060
-  );
+  return isRecoverableInteractionResponseError(error);
 }
 
 export async function withAcknowledgedFallback(
@@ -15,7 +18,7 @@ export async function withAcknowledgedFallback(
       await attempts[i]();
       return;
     } catch (error) {
-      if (!isInteractionAlreadyAcknowledged(error) || i === attempts.length - 1) {
+      if (!isRecoverableInteractionResponseError(error) || i === attempts.length - 1) {
         throw error;
       }
     }

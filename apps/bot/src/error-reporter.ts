@@ -1,12 +1,16 @@
-import type { Client, TextChannel } from "discord.js";
+import { EmbedBuilder, type APIEmbed, type Client, type TextChannel } from "discord.js";
 
 import { getBotClient } from "./discord-client.js";
 import { log, logError, serializeError } from "./logger.js";
 
-const DISCORD_MESSAGE_LIMIT = 2000;
 const DEDUPE_WINDOW_MS = 60_000;
 const MIN_SEND_INTERVAL_MS = 1_500;
 const MAX_QUEUE_SIZE = 50;
+const EMBED_FIELD_LIMIT = 1024;
+
+const COLOR_ERROR = 0xed4245;
+const COLOR_LIFECYCLE = 0x57f287;
+const COLOR_INFO = 0x5865f2;
 
 type PendingReport = {
   source: string;
@@ -37,18 +41,59 @@ function formatContextValue(value: unknown): string {
   }
 }
 
-function codeBlock(language: string, body: string): string {
-  const fence = "```";
-  return `${fence}${language}\n${body}\n${fence}`;
+function truncateField(value: string, max = EMBED_FIELD_LIMIT): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 14)}\n… (truncated)`;
 }
 
-function truncateBlock(language: string, body: string, maxChars: number): string {
-  if (body.length <= maxChars) {
-    return codeBlock(language, body);
+function yamlField(meta: Record<string, unknown>): string {
+  const lines = Object.entries(meta)
+    .filter(([key, value]) => value !== undefined && key !== "time")
+    .map(([key, value]) => `${key}: ${formatContextValue(value)}`);
+  return truncateField(`\`\`\`yaml\n${lines.join("\n")}\n\`\`\``);
+}
+
+function codeField(body: string): string {
+  return truncateField(`\`\`\`\n${body}\n\`\`\``);
+}
+
+function embedColorForSource(source: string, hasError: boolean): number {
+  if (hasError || source.includes("failed") || source.startsWith("process.")) {
+    return COLOR_ERROR;
   }
-  const suffix = "\n… (truncated)";
-  const budget = Math.max(0, maxChars - language.length - suffix.length - 8);
-  return codeBlock(language, `${body.slice(0, budget)}${suffix}`);
+  if (source.endsWith(".started") || source === "bot.ready") {
+    return COLOR_LIFECYCLE;
+  }
+  return COLOR_INFO;
+}
+
+function parseEmbedTimestamp(meta: Record<string, unknown>): Date {
+  if (typeof meta.time === "string") {
+    const parsed = Date.parse(meta.time);
+    if (!Number.isNaN(parsed)) return new Date(parsed);
+  }
+  return new Date();
+}
+
+export function buildDiscordLogEmbed(
+  source: string,
+  meta: Record<string, unknown>,
+  options: { message?: string; stack?: string } = {},
+): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setTitle(source)
+    .setColor(embedColorForSource(source, Boolean(options.message)))
+    .setTimestamp(parseEmbedTimestamp(meta))
+    .addFields({ name: "Details", value: yamlField({ source, ...meta }), inline: false });
+
+  if (options.message) {
+    embed.addFields({ name: "Message", value: codeField(options.message), inline: false });
+  }
+  if (options.stack) {
+    embed.addFields({ name: "Stack", value: codeField(options.stack), inline: false });
+  }
+
+  return embed;
 }
 
 function extractErrorMessage(error: unknown, serialized: Record<string, unknown>): string {
@@ -95,53 +140,45 @@ function extractErrorMeta(
   return meta;
 }
 
-function formatMetaBlock(meta: Record<string, unknown>): string {
-  const lines = Object.entries(meta)
-    .filter(([, value]) => value !== undefined)
-    .map(([key, value]) => `${key}: ${formatContextValue(value)}`);
-  return codeBlock("yaml", lines.join("\n"));
-}
-
-export function formatErrorForDiscord(
+export function buildErrorLogEmbed(
   source: string,
   error: unknown,
   context: Record<string, unknown> = {},
-): string {
+): EmbedBuilder {
   const serialized = serializeError(error);
   const message = extractErrorMessage(error, serialized);
   const meta = extractErrorMeta(source, error, serialized, context);
-
-  const parts = [`**[${source}]**`, formatMetaBlock(meta), truncateBlock("", message, 700)];
-
-  if (typeof serialized.stack === "string") {
-    parts.push(truncateBlock("", serialized.stack, 900));
-  }
-
-  let text = parts.join("\n");
-  if (text.length > DISCORD_MESSAGE_LIMIT) {
-    const stack = typeof serialized.stack === "string" ? serialized.stack : "";
-    const withoutStack = parts.slice(0, 3).join("\n");
-    const remaining = DISCORD_MESSAGE_LIMIT - withoutStack.length - 30;
-    if (remaining > 80 && stack) {
-      text = `${withoutStack}\n${truncateBlock("", stack, remaining)}`;
-    } else {
-      text = `${withoutStack}\n… (truncated)`;
-    }
-  }
-
-  return text.slice(0, DISCORD_MESSAGE_LIMIT);
+  const stack = typeof serialized.stack === "string" ? serialized.stack : undefined;
+  return buildDiscordLogEmbed(source, meta, { message, stack });
 }
 
-export function formatLifecycleForDiscord(
+export function buildLifecycleLogEmbed(
   source: string,
   context: Record<string, unknown> = {},
-): string {
+): EmbedBuilder {
   const meta: Record<string, unknown> = {
     time: new Date().toISOString(),
     source,
     ...context,
   };
-  return `**[${source}]**\n${formatMetaBlock(meta)}`.slice(0, DISCORD_MESSAGE_LIMIT);
+  return buildDiscordLogEmbed(source, meta);
+}
+
+/** @deprecated Use buildErrorLogEmbed */
+export function formatErrorForDiscord(
+  source: string,
+  error: unknown,
+  context: Record<string, unknown> = {},
+): string {
+  return JSON.stringify(buildErrorLogEmbed(source, error, context).toJSON());
+}
+
+/** @deprecated Use buildLifecycleLogEmbed */
+export function formatLifecycleForDiscord(
+  source: string,
+  context: Record<string, unknown> = {},
+): string {
+  return JSON.stringify(buildLifecycleLogEmbed(source, context).toJSON());
 }
 
 function fingerprint(source: string, error: unknown): string {
@@ -186,7 +223,7 @@ function scheduleFlush(): void {
   }, MIN_SEND_INTERVAL_MS);
 }
 
-async function sendToErrorChannel(client: Client, content: string): Promise<void> {
+async function sendToErrorChannel(client: Client, embed: APIEmbed): Promise<void> {
   const channelId = getErrorChannelId();
   if (!channelId) return;
 
@@ -198,7 +235,7 @@ async function sendToErrorChannel(client: Client, content: string): Promise<void
     return;
   }
 
-  await (channel as TextChannel).send({ content }).catch((sendError: unknown) => {
+  await (channel as TextChannel).send({ embeds: [embed] }).catch((sendError: unknown) => {
     logError("warn", "errorReporter.channel.sendFailed", sendError, { channelId });
   });
 }
@@ -222,8 +259,8 @@ export async function flushDiscordReports(client?: Client | null): Promise<void>
   if (!report) return;
 
   lastSentAt = now;
-  const content = formatErrorForDiscord(report.source, report.error, report.context);
-  await sendToErrorChannel(resolvedClient, content);
+  const embed = buildErrorLogEmbed(report.source, report.error, report.context).toJSON();
+  await sendToErrorChannel(resolvedClient, embed);
 
   if (pendingReports.length > 0) {
     scheduleFlush();
@@ -238,7 +275,7 @@ export async function notifyLifecycle(
   log("info", source, context);
   const resolvedClient = client ?? getBotClient();
   if (!resolvedClient?.isReady() || !getErrorChannelId()) return;
-  await sendToErrorChannel(resolvedClient, formatLifecycleForDiscord(source, context));
+  await sendToErrorChannel(resolvedClient, buildLifecycleLogEmbed(source, context).toJSON());
 }
 
 export async function reportError(

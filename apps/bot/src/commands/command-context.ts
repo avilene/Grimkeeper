@@ -1006,15 +1006,22 @@ export async function replyOrEditInteraction(
   interaction: CommandInteraction,
   payload: { content?: string; embeds?: EmbedBuilder[]; flags?: number },
 ): Promise<void> {
+  if (!interaction.deferred && !interaction.replied) {
+    await deferInteractionReply(interaction, {
+      ephemeral: payload.flags === MessageFlags.Ephemeral,
+    });
+  }
+
   const attempts: Array<() => Promise<unknown>> = [];
   if (interaction.deferred) {
     attempts.push(() => interaction.editReply(payload));
+    attempts.push(() => interaction.followUp(payload));
   } else if (interaction.replied) {
     attempts.push(() => interaction.followUp(payload));
   } else {
     attempts.push(() => interaction.reply(payload));
-    attempts.push(() => interaction.editReply(payload));
     attempts.push(() => interaction.followUp(payload));
+    attempts.push(() => interaction.editReply(payload));
   }
   await withAcknowledgedFallback(attempts);
 }
@@ -1039,12 +1046,13 @@ export async function replyEngineError(
   const attempts: Array<() => Promise<unknown>> = [];
   if (interaction.deferred) {
     attempts.push(() => interaction.editReply({ content: message }));
+    attempts.push(() => interaction.followUp({ content: message, flags: MessageFlags.Ephemeral }));
   } else if (interaction.replied) {
     attempts.push(() => interaction.followUp({ content: message, flags: MessageFlags.Ephemeral }));
   } else {
     attempts.push(() => interaction.reply({ content: message, flags: MessageFlags.Ephemeral }));
-    attempts.push(() => interaction.editReply({ content: message }));
     attempts.push(() => interaction.followUp({ content: message, flags: MessageFlags.Ephemeral }));
+    attempts.push(() => interaction.editReply({ content: message }));
   }
   await withAcknowledgedFallback(attempts);
 }
