@@ -2,6 +2,7 @@ import type { Client } from "discord.js";
 import { claimReminderForFire, listDueReminders } from "@grimkeeper/database";
 
 import { buildReminderPingMention, buildReminderFireContent } from "./commands/command-context.js";
+import { logReminderAction } from "./action-log.js";
 import { formatReminderText } from "./reminder-message.js";
 import { reportError } from "./error-reporter.js";
 
@@ -32,6 +33,16 @@ export async function processDueReminders(client: Client): Promise<void> {
             );
           }
           await channel.send(content).catch(() => undefined);
+          logReminderAction("fired", {
+            reminderId: reminder.id,
+            gameId: reminder.gameId ?? undefined,
+            guildId: reminder.guildId,
+            channelId: reminder.channelId,
+            message: reminder.message,
+            emoji: reminder.emoji ?? undefined,
+            pingPlayers: reminder.pingPlayers,
+            pingRoleId: reminder.pingRoleId ?? undefined,
+          });
         }
       } catch (error) {
         void reportError("reminder.fire.failed", error, {

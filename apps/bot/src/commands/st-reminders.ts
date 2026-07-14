@@ -14,6 +14,7 @@ import {
 } from "@grimkeeper/database";
 
 import { getReminderPingRoleId } from "../access.js";
+import { logReminderAction } from "../action-log.js";
 import { formatReminderDuration, parseReminderDuration, parseReminderHours } from "../reminder-duration.js";
 import { discordTimestamp, formatReminderText, parseReminderEmoji } from "../reminder-message.js";
 import {
@@ -131,6 +132,20 @@ export class StReminderCommands {
       pingRoleId: pingRoleId ?? null,
     });
 
+    logReminderAction("created", {
+      reminderId: created.id,
+      scope: scope.kind,
+      gameId: scope.kind === "game" ? scope.gameId : undefined,
+      guildId: interaction.guildId,
+      channelId: reminderChannelId,
+      fireAt: fireAt.toISOString(),
+      minutes,
+      message: message.trim(),
+      emoji: emoji ?? undefined,
+      pingRoleId: pingRoleId ?? undefined,
+      userId: interaction.user.id,
+    });
+
     await replyOrEditInteraction(interaction, {
       content: `Reminder set in ${formatReminderDuration(minutes)} for ${where}${pingNote}: “${formatReminderText(message, emoji)}” (id: \`${created.id.slice(0, 8)}\`)`,
       ...EPHEMERAL,
@@ -241,6 +256,19 @@ export class StReminderCommands {
     const threadNote = createdInThread ? " (created in thread, fires in parent channel)" : "";
     const pingLabel = pingRoleId ? `<@&${pingRoleId}>` : "player role";
 
+    logReminderAction("created", {
+      scope: scope.kind,
+      gameId: scope.kind === "game" ? scope.gameId : undefined,
+      guildId: interaction.guildId,
+      channelId: targetChannelId,
+      count: hours.length,
+      hours,
+      message: trimmedMessage,
+      emoji: emoji ?? undefined,
+      pingRoleId: pingRoleId ?? undefined,
+      userId: interaction.user.id,
+    });
+
     await replyOrEditInteraction(interaction, {
       content: [
         `Set **${hours.length}** reminder${hours.length === 1 ? "" : "s"} in <#${targetChannelId}> pinging ${pingLabel}${threadNote}:`,
@@ -263,6 +291,12 @@ export class StReminderCommands {
 
     const { scope } = access;
     const pending = await listPendingReminders(scope);
+    logReminderAction("listed", {
+      scope: scope.kind,
+      gameId: scope.kind === "game" ? scope.gameId : undefined,
+      count: pending.length,
+      userId: interaction.user.id,
+    });
     if (pending.length === 0) {
       await replyOrEditInteraction(interaction, { content: "No pending reminders.", ...EPHEMERAL });
       return;
@@ -344,6 +378,14 @@ export class StReminderCommands {
     );
 
     const remaining = await countPendingReminders(reminderScope);
+    logReminderAction("cancelled", {
+      scope: reminderScope.kind,
+      gameId: reminderScope.kind === "game" ? reminderScope.gameId : undefined,
+      cancelled,
+      remaining,
+      filterScope: scope,
+      userId: interaction.user.id,
+    });
     await replyOrEditInteraction(interaction, {
       content:
         cancelled === 0
@@ -390,6 +432,14 @@ export class StReminderCommands {
     }
 
     const remaining = await countPendingReminders(reminderScope);
+    logReminderAction("cancelled", {
+      scope: reminderScope.kind,
+      gameId: reminderScope.kind === "game" ? reminderScope.gameId : undefined,
+      cancelled,
+      remaining,
+      idPrefix: trimmedId,
+      userId: interaction.user.id,
+    });
     await replyOrEditInteraction(interaction, {
       content: `Cancelled **${cancelled}** reminder${cancelled === 1 ? "" : "s"}. **${remaining}** still pending.`,
       ...EPHEMERAL,

@@ -25,6 +25,7 @@ import { loadCommandModules } from "./load-commands.js";
 import { log } from "./logger.js";
 import { deferStReminderCommand } from "./interactions/early-defer.js";
 import { tryMarkInteractionOnce } from "./interactions/interaction-dedup.js";
+import { logCommandInvoked } from "./action-log.js";
 import { startReminderScheduler } from "./reminder-scheduler.js";
 
 await loadCommandModules();
@@ -62,6 +63,8 @@ client.on("interactionCreate", (interaction) => {
   if (!tryMarkInteractionOnce(interaction.id)) return;
 
   void (async () => {
+    logCommandInvoked(interaction);
+
     await deferStReminderCommand(interaction);
 
     if (!isMinimalMode() && (interaction.isButton() || interaction.isModalSubmit())) {
