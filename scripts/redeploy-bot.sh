@@ -18,6 +18,6 @@ fi
 
 printf '[%s] [redeploy] Pulling %s (trigger=%s)\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GRIMKEEPER_IMAGE" "$trigger"
 docker compose pull bot
-DEPLOY_TRIGGER="$trigger" docker compose up -d --no-build bot
+DEPLOY_TRIGGER="$trigger" docker compose up -d --no-build --force-recreate bot
 docker compose ps bot
 printf '[%s] [redeploy] Complete\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
