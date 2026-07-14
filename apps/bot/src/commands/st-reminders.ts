@@ -177,7 +177,7 @@ export class StReminderCommands {
     hoursInput: string,
     @SlashOption({
       name: "ping_roles",
-      description: "Roles to ping — @mentions or IDs, space/comma separated (defaults to REMINDER_PING_ROLE_ID or game players)",
+      description: "Roles to ping (@mentions or IDs). Defaults to REMINDER_PING_ROLE_ID or players.",
       type: ApplicationCommandOptionType.String,
       required: false,
     })
