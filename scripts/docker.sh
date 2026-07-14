@@ -72,7 +72,7 @@ case "$cmd" in
     if [ -n "$GRIMKEEPER_IMAGE" ]; then
       echo "Pulling $GRIMKEEPER_IMAGE (no build on this machine)..."
       docker compose pull bot
-      docker compose up -d --no-build
+      DEPLOY_TRIGGER=manual docker compose up -d --no-build
     else
       if lockfile_changed; then
         echo "Lockfile changed — running pnpm install during build."
@@ -82,12 +82,12 @@ case "$cmd" in
       echo "Building locally (set GRIMKEEPER_IMAGE in .env to skip this on droplet)..."
       docker compose build bot
       record_lockfile_hash
-      docker compose up -d
+      DEPLOY_TRIGGER=manual docker compose up -d
     fi
     docker compose ps
     ;;
   restart)
-    docker compose restart
+    DEPLOY_TRIGGER=restart docker compose up -d --no-build bot
     docker compose ps
     ;;
   logs)
@@ -97,7 +97,7 @@ case "$cmd" in
     echo "Force full local rebuild (pnpm install + compile)..."
     docker compose build --no-cache bot
     record_lockfile_hash
-    docker compose up -d
+    DEPLOY_TRIGGER=manual docker compose up -d
     docker compose ps
     ;;
   -h|--help|help)

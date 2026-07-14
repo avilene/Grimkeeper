@@ -9,6 +9,7 @@ services:
       DATABASE_URL: file:/app/data/grimkeeper.db
       DEV_MODE: ${DEV_MODE:-false}
       BOT_MODE: ${BOT_MODE:-full}
+      DEPLOY_TRIGGER: ${DEPLOY_TRIGGER:-unknown}
     volumes:
       - grimkeeper-data:/app/data
 

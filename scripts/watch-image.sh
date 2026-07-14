@@ -77,7 +77,7 @@ handle_digest() {
     if [ "$AUTO_REDEPLOY" = "true" ]; then
       watch_log "Auto-redeploying..."
       docker compose pull bot
-      docker compose up -d --no-build bot
+      DEPLOY_TRIGGER=auto docker compose up -d --no-build bot
       docker compose ps bot
       watch_log "Redeploy complete"
     fi

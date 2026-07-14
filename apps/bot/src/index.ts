@@ -65,6 +65,8 @@ client.once(Events.ClientReady, async () => {
       id: client.user?.id,
       botMode: isMinimalMode() ? "minimal" : "full",
       commandsRegistered,
+      deployTrigger: process.env.DEPLOY_TRIGGER ?? "unknown",
+      image: process.env.GRIMKEEPER_IMAGE,
       hostname: process.env.HOSTNAME,
     },
     client,
