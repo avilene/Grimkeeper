@@ -1,0 +1,24 @@
+[
+  {
+    "id": "redeploy",
+    "execute-command": "/bin/sh",
+    "pass-arguments-to-command": [
+      {
+        "source": "string",
+        "name": "/app/scripts/redeploy-bot.sh"
+      },
+      {
+        "source": "string",
+        "name": "webhook"
+      }
+    ],
+    "command-working-directory": "/app",
+    "include-command-output-in-response": true,
+    "trigger-rule": {
+      "match": {
+        "type": "payload-hmac-sha256",
+        "secret": "{{ getenv \"DEPLOY_WEBHOOK_SECRET\" }}"
+      }
+    }
+  }
+]

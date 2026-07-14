@@ -76,9 +76,7 @@ handle_digest() {
     notify_new_build "$previous" "$current"
     if [ "$AUTO_REDEPLOY" = "true" ]; then
       watch_log "Auto-redeploying..."
-      docker compose pull bot
-      DEPLOY_TRIGGER=auto docker compose up -d --no-build bot
-      docker compose ps bot
+      sh scripts/redeploy-bot.sh auto
       watch_log "Redeploy complete"
     fi
   else

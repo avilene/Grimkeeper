@@ -32,24 +32,22 @@ services:
       logging: "promtail"
       logging_jobname: "grimkeeper-bot"
 
-  # Optional — poll GHCR for new :latest digest and auto-redeploy:
-  #   docker compose --profile deploy up -d watcher
-  watcher:
+  # Optional — receive GitHub Actions deploy webhook and auto-redeploy:
+  #   docker compose --profile deploy up -d deploy-hook
+  # GitHub repo secrets: DEPLOY_WEBHOOK_URL, DEPLOY_WEBHOOK_SECRET
+  deploy-hook:
     profiles: ["deploy"]
-    image: docker:27-cli
+    build: ./ops/deploy-hook
     restart: unless-stopped
     env_file:
       - .env
     environment:
-      IMAGE_WATCH_INTERVAL: ${IMAGE_WATCH_INTERVAL:-300}
-      AUTO_REDEPLOY: ${AUTO_REDEPLOY:-true}
+      DEPLOY_WEBHOOK_SECRET: ${DEPLOY_WEBHOOK_SECRET:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./:/app:ro
-      - grimkeeper-deploy:/app/.deploy
-    working_dir: /app
-    entrypoint: ["/bin/sh", "scripts/watch-image.sh"]
+    ports:
+      - "${DEPLOY_WEBHOOK_PORT:-9000}:9000"
 
 volumes:
   grimkeeper-data:
-  grimkeeper-deploy:

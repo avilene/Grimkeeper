@@ -52,10 +52,15 @@ Build notifications:
   - GitHub repo secret: DISCORD_BUILD_WEBHOOK_URL (Discord channel webhook)
   - Each push to main posts build success/failure to that channel
 
-Auto-deploy when GHCR :latest changes:
-  - pnpm docker:watch              # poll every 5m, notify only
+Auto-deploy after GitHub Actions build (webhook — no polling):
+  1. In .env: DEPLOY_WEBHOOK_SECRET=<random>
+  2. docker compose --profile deploy up -d deploy-hook
+  3. GitHub repo secrets: DEPLOY_WEBHOOK_SECRET (same), DEPLOY_WEBHOOK_URL=http://DROPLET:9000/hooks/redeploy
+  4. Open port 9000 (or put nginx in front with TLS)
+
+Legacy poll-based deploy (if you cannot expose a webhook port):
+  - pnpm docker:watch
   - AUTO_REDEPLOY=true pnpm docker:watch
-  - docker compose --profile deploy up -d watcher   # background on droplet
 
 Examples:
   pnpm docker:redeploy
@@ -70,9 +75,7 @@ cmd="${1:-redeploy}"
 case "$cmd" in
   redeploy|up)
     if [ -n "$GRIMKEEPER_IMAGE" ]; then
-      echo "Pulling $GRIMKEEPER_IMAGE (no build on this machine)..."
-      docker compose pull bot
-      DEPLOY_TRIGGER=manual docker compose up -d --no-build
+      sh scripts/redeploy-bot.sh manual
     else
       if lockfile_changed; then
         echo "Lockfile changed — running pnpm install during build."
