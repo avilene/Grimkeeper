@@ -10,6 +10,7 @@ export {
   createGameReminder,
   listDueReminders,
   markReminderFired,
+  claimReminderForFire,
   cancelGameReminders,
   cancelReminders,
   countPendingReminders,

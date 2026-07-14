@@ -19,6 +19,9 @@ export function parseReminderDuration(input: string): number | null {
 }
 
 const MAX_REMINDER_HOURS_BATCH = 25;
+const MIN_REMINDER_HOURS = 0.5;
+const MAX_REMINDER_HOURS = 24;
+const HOUR_OFFSET = /^\d+(\.\d+)?$/;
 
 export function parseReminderHours(input: string): number[] | null {
   const trimmed = input.trim();
@@ -28,9 +31,9 @@ export function parseReminderHours(input: string): number[] | null {
   const hours: number[] = [];
 
   for (const part of parts) {
-    if (!/^\d+$/.test(part)) return null;
+    if (!HOUR_OFFSET.test(part)) return null;
     const value = Number(part);
-    if (!Number.isInteger(value) || value < 1 || value > 24) return null;
+    if (!Number.isFinite(value) || value < MIN_REMINDER_HOURS || value > MAX_REMINDER_HOURS) return null;
     hours.push(value);
   }
 

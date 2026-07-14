@@ -276,13 +276,19 @@ export function resolveReminderTargetChannel(interaction: CommandInteraction): s
 
 export async function requireReminderAccess(interaction: CommandInteraction): Promise<ReminderAccess | null> {
   if (!interaction.guildId) {
-    await interaction.reply({ content: "This command must be used in a server.", flags: MessageFlags.Ephemeral });
+    await replyOrEditInteraction(interaction, {
+      content: "This command must be used in a server.",
+      flags: MessageFlags.Ephemeral,
+    });
     return null;
   }
 
   const targetChannelId = resolveReminderTargetChannel(interaction);
   if (!targetChannelId) {
-    await interaction.reply({ content: "This command must be used in a channel or thread.", flags: MessageFlags.Ephemeral });
+    await replyOrEditInteraction(interaction, {
+      content: "This command must be used in a channel or thread.",
+      flags: MessageFlags.Ephemeral,
+    });
     return null;
   }
 
@@ -303,7 +309,7 @@ export async function requireReminderAccess(interaction: CommandInteraction): Pr
   }
 
   if (!(await canManageChannelReminders(interaction))) {
-    await interaction.reply({
+    await replyOrEditInteraction(interaction, {
       content:
         "No active game access. Set channel reminders with `REMINDER_ROLE_IDS`, or add your user/role to `ALLOWED_USER_IDS` / `ALLOWED_ROLE_IDS`.",
       flags: MessageFlags.Ephemeral,

@@ -35,12 +35,19 @@ describe("parseReminderHours", () => {
     expect(parseReminderHours("  4   8  12 ")).toEqual([4, 8, 12]);
   });
 
+  it("parses fractional hour offsets", () => {
+    expect(parseReminderHours("0.5 1 2")).toEqual([0.5, 1, 2]);
+    expect(parseReminderHours("1.5 4")).toEqual([1.5, 4]);
+  });
+
   it("dedupes and sorts", () => {
     expect(parseReminderHours("12 4 8 4 12")).toEqual([4, 8, 12]);
+    expect(parseReminderHours("0.5 1 0.5")).toEqual([0.5, 1]);
   });
 
   it("rejects invalid input", () => {
     expect(parseReminderHours("")).toBeNull();
+    expect(parseReminderHours("0.25")).toBeNull();
     expect(parseReminderHours("0 4")).toBeNull();
     expect(parseReminderHours("25")).toBeNull();
     expect(parseReminderHours("4h")).toBeNull();

@@ -54,6 +54,15 @@ export async function markReminderFired(id: string) {
   });
 }
 
+/** Atomically mark a due reminder as fired; returns false if another worker already claimed it. */
+export async function claimReminderForFire(id: string): Promise<boolean> {
+  const result = await prisma.gameReminder.updateMany({
+    where: { id, fired: false },
+    data: { fired: true },
+  });
+  return result.count > 0;
+}
+
 export async function cancelGameReminders(gameId: string) {
   return cancelReminders({ kind: "game", gameId });
 }

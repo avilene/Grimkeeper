@@ -1,29 +1,40 @@
 import type { Client } from "discord.js";
-import { listDueReminders, markReminderFired } from "@grimkeeper/database";
+import { claimReminderForFire, listDueReminders } from "@grimkeeper/database";
 
 import { buildReminderPingMention, buildReminderFireContent } from "./commands/command-context.js";
 import { reportError } from "./error-reporter.js";
 
+let processingDueReminders = false;
+
 export async function processDueReminders(client: Client): Promise<void> {
-  const due = await listDueReminders();
-  for (const reminder of due) {
-    try {
-      const channel = await client.channels.fetch(reminder.channelId).catch(() => null);
-      if (channel?.isTextBased() && !channel.isDMBased()) {
-        let content = `⏰ ${reminder.message}`;
-        if (reminder.pingPlayers) {
-          const ping = await buildReminderPingMention(reminder);
-          content = buildReminderFireContent(ping, reminder.message, reminder.fireAt);
+  if (processingDueReminders) return;
+  processingDueReminders = true;
+
+  try {
+    const due = await listDueReminders();
+    for (const reminder of due) {
+      try {
+        const claimed = await claimReminderForFire(reminder.id);
+        if (!claimed) continue;
+
+        const channel = await client.channels.fetch(reminder.channelId).catch(() => null);
+        if (channel?.isTextBased() && !channel.isDMBased()) {
+          let content = `⏰ ${reminder.message}`;
+          if (reminder.pingPlayers) {
+            const ping = await buildReminderPingMention(reminder);
+            content = buildReminderFireContent(ping, reminder.message, reminder.fireAt);
+          }
+          await channel.send(content).catch(() => undefined);
         }
-        await channel.send(content).catch(() => undefined);
+      } catch (error) {
+        void reportError("reminder.fire.failed", error, {
+          reminderId: reminder.id,
+          gameId: reminder.gameId,
+        });
       }
-      await markReminderFired(reminder.id);
-    } catch (error) {
-      void reportError("reminder.fire.failed", error, {
-        reminderId: reminder.id,
-        gameId: reminder.gameId,
-      });
     }
+  } finally {
+    processingDueReminders = false;
   }
 }
 

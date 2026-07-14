@@ -16,7 +16,17 @@ import {
 import { getReminderPingRoleId } from "../access.js";
 import { formatReminderDuration, parseReminderDuration, parseReminderHours } from "../reminder-duration.js";
 import { discordTimestamp } from "../reminder-message.js";
-import { requireReminderAccess } from "./command-context.js";
+import {
+  deferInteractionReply,
+  replyOrEditInteraction,
+  requireReminderAccess,
+} from "./command-context.js";
+
+const EPHEMERAL = { flags: MessageFlags.Ephemeral };
+
+async function beginReminderCommand(interaction: CommandInteraction): Promise<void> {
+  await deferInteractionReply(interaction, { ephemeral: true });
+}
 
 @Discord()
 @SlashGroup({ name: "st", description: "Storyteller commands for an active game" })
@@ -55,6 +65,8 @@ export class StReminderCommands {
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
+    await beginReminderCommand(interaction);
+
     const access = await requireReminderAccess(interaction);
     if (!access) return;
     if (!interaction.guildId) return;
@@ -62,9 +74,9 @@ export class StReminderCommands {
     const { scope, game, engine, targetChannelId } = access;
     const minutes = parseReminderDuration(inDuration);
     if (!minutes) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "Duration must be like `5m`, `10`, or `1h` (max 24h).",
-        flags: MessageFlags.Ephemeral,
+        ...EPHEMERAL,
       });
       return;
     }
@@ -82,14 +94,15 @@ export class StReminderCommands {
     const pingRoleId = pingRole?.id ?? (scope.kind === "channel" ? getReminderPingRoleId() : null);
 
     if (scope.kind === "channel" && !pingRoleId) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "Provide a `ping_role` or set `REMINDER_PING_ROLE_ID` for channel reminders.",
-        flags: MessageFlags.Ephemeral,
+        ...EPHEMERAL,
       });
       return;
     }
 
-    await createReminder({
+    const pingNote = pingRoleId ? `, pinging <@&${pingRoleId}>` : "";
+    const created = await createReminder({
       gameId: scope.kind === "game" ? scope.gameId : null,
       guildId: interaction.guildId,
       channelId: reminderChannelId,
@@ -100,10 +113,9 @@ export class StReminderCommands {
       pingRoleId: pingRoleId ?? null,
     });
 
-    const pingNote = pingRoleId ? `, pinging <@&${pingRoleId}>` : "";
-    await interaction.reply({
-      content: `Reminder set in ${formatReminderDuration(minutes)} for ${where}${pingNote}: “${message.trim()}”`,
-      flags: MessageFlags.Ephemeral,
+    await replyOrEditInteraction(interaction, {
+      content: `Reminder set in ${formatReminderDuration(minutes)} for ${where}${pingNote}: “${message.trim()}” (id: \`${created.id.slice(0, 8)}\`)`,
+      ...EPHEMERAL,
     });
   }
 
@@ -121,7 +133,7 @@ export class StReminderCommands {
     message: string,
     @SlashOption({
       name: "hours",
-      description: "Space-separated hours from now (e.g. 4 8 12 16 20 22 23 24)",
+      description: "Space-separated hours from now, decimals ok (e.g. 0.5 4 8 12)",
       type: ApplicationCommandOptionType.String,
       required: true,
     })
@@ -136,6 +148,8 @@ export class StReminderCommands {
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
+    await beginReminderCommand(interaction);
+
     const access = await requireReminderAccess(interaction);
     if (!access) return;
     if (!interaction.guildId) return;
@@ -143,10 +157,10 @@ export class StReminderCommands {
     const { scope, targetChannelId } = access;
     const hours = parseReminderHours(hoursInput);
     if (!hours) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content:
-          "Hours must be space-separated integers from 1–24 (e.g. `4 8 12 16 20 22 23 24`), max 25 offsets.",
-        flags: MessageFlags.Ephemeral,
+          "Hours must be space-separated numbers from 0.5–24 (e.g. `0.5 4 8 12`), max 25 offsets.",
+        ...EPHEMERAL,
       });
       return;
     }
@@ -154,9 +168,9 @@ export class StReminderCommands {
     if (scope.kind === "channel") {
       const channelPingRoleId = pingRole?.id ?? getReminderPingRoleId();
       if (!channelPingRoleId) {
-        await interaction.reply({
+        await replyOrEditInteraction(interaction, {
           content: "Provide a `ping_role` or set `REMINDER_PING_ROLE_ID` for channel reminders.",
-          flags: MessageFlags.Ephemeral,
+          ...EPHEMERAL,
         });
         return;
       }
@@ -191,7 +205,7 @@ export class StReminderCommands {
     const threadNote = createdInThread ? " (created in thread, fires in parent channel)" : "";
     const pingLabel = pingRoleId ? `<@&${pingRoleId}>` : "player role";
 
-    await interaction.reply({
+    await replyOrEditInteraction(interaction, {
       content: [
         `Set **${hours.length}** reminder${hours.length === 1 ? "" : "s"} in <#${targetChannelId}> pinging ${pingLabel}${threadNote}:`,
         `“${trimmedMessage}”`,
@@ -200,19 +214,21 @@ export class StReminderCommands {
         "",
         `**${totalPending}** reminder${totalPending === 1 ? "" : "s"} pending for ${scopeLabel}. Run again anytime to add more.`,
       ].join("\n"),
-      flags: MessageFlags.Ephemeral,
+      ...EPHEMERAL,
     });
   }
 
   @Slash({ name: "reminders", description: "List pending reminders for this game or channel" })
   async reminders(interaction: CommandInteraction): Promise<void> {
+    await beginReminderCommand(interaction);
+
     const access = await requireReminderAccess(interaction);
     if (!access) return;
 
     const { scope } = access;
     const pending = await listPendingReminders(scope);
     if (pending.length === 0) {
-      await interaction.reply({ content: "No pending reminders.", flags: MessageFlags.Ephemeral });
+      await replyOrEditInteraction(interaction, { content: "No pending reminders.", ...EPHEMERAL });
       return;
     }
 
@@ -226,7 +242,7 @@ export class StReminderCommands {
       return `- \`${reminder.id.slice(0, 8)}\` ${when} in <#${reminder.channelId}>${pingNote}: ${reminder.message}`;
     });
 
-    await interaction.reply({
+    await replyOrEditInteraction(interaction, {
       embeds: [
         new EmbedBuilder()
           .setTitle("Pending reminders")
@@ -234,7 +250,7 @@ export class StReminderCommands {
             `${lines.join("\n")}\n\nDelete one with \`/st delete-reminder id:<prefix>\` or clear with \`/st clear-reminders\`.`,
           ),
       ],
-      flags: MessageFlags.Ephemeral,
+      ...EPHEMERAL,
     });
   }
 
@@ -260,22 +276,24 @@ export class StReminderCommands {
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
+    await beginReminderCommand(interaction);
+
     const access = await requireReminderAccess(interaction);
     if (!access) return;
 
     const { scope: reminderScope, targetChannelId } = access;
     if (scope === "message" && !message?.trim()) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "Provide the `message` option when using scope `message`.",
-        flags: MessageFlags.Ephemeral,
+        ...EPHEMERAL,
       });
       return;
     }
 
     if (scope === "channel" && !interaction.channelId) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "This command must be used in a channel or thread when scope is `channel`.",
-        flags: MessageFlags.Ephemeral,
+        ...EPHEMERAL,
       });
       return;
     }
@@ -290,12 +308,12 @@ export class StReminderCommands {
     );
 
     const remaining = await countPendingReminders(reminderScope);
-    await interaction.reply({
+    await replyOrEditInteraction(interaction, {
       content:
         cancelled === 0
           ? "No matching pending reminders to cancel."
           : `Cancelled **${cancelled}** reminder${cancelled === 1 ? "" : "s"}. **${remaining}** still pending.`,
-      flags: MessageFlags.Ephemeral,
+      ...EPHEMERAL,
     });
   }
 
@@ -311,29 +329,34 @@ export class StReminderCommands {
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
+    await beginReminderCommand(interaction);
+
     const access = await requireReminderAccess(interaction);
     if (!access) return;
 
     const { scope: reminderScope } = access;
     const trimmedId = idPrefix.trim();
     if (!trimmedId) {
-      await interaction.reply({ content: "Provide a reminder ID prefix.", flags: MessageFlags.Ephemeral });
+      await replyOrEditInteraction(interaction, {
+        content: "Provide a reminder ID prefix.",
+        ...EPHEMERAL,
+      });
       return;
     }
 
     const cancelled = await cancelReminders(reminderScope, { idPrefix: trimmedId });
     if (cancelled === 0) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: `No pending reminder found with ID prefix \`${trimmedId}\`. Check \`/st reminders\`.`,
-        flags: MessageFlags.Ephemeral,
+        ...EPHEMERAL,
       });
       return;
     }
 
     const remaining = await countPendingReminders(reminderScope);
-    await interaction.reply({
+    await replyOrEditInteraction(interaction, {
       content: `Cancelled **${cancelled}** reminder${cancelled === 1 ? "" : "s"}. **${remaining}** still pending.`,
-      flags: MessageFlags.Ephemeral,
+      ...EPHEMERAL,
     });
   }
 }
