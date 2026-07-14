@@ -15,7 +15,7 @@ import {
 
 import { getReminderPingRoleId } from "../access.js";
 import { formatReminderDuration, parseReminderDuration, parseReminderHours } from "../reminder-duration.js";
-import { discordTimestamp } from "../reminder-message.js";
+import { discordTimestamp, formatReminderText, parseReminderEmoji } from "../reminder-message.js";
 import {
   deferInteractionReply,
   replyOrEditInteraction,
@@ -62,6 +62,13 @@ export class StReminderCommands {
       required: false,
     })
     pingRole: Role | undefined,
+    @SlashOption({
+      name: "emoji",
+      description: "Optional emoji prefix (e.g. 🔔 or a custom server emoji)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    emojiInput: string | undefined,
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
@@ -101,12 +108,23 @@ export class StReminderCommands {
       return;
     }
 
+    const emoji = parseReminderEmoji(emojiInput);
+    if (emojiInput?.trim() && !emoji) {
+      await replyOrEditInteraction(interaction, {
+        content: "Emoji must be a single unicode emoji or custom emoji (e.g. `🔔` or `<:name:id>`).",
+        ...EPHEMERAL,
+      });
+      return;
+    }
+
     const pingNote = pingRoleId ? `, pinging <@&${pingRoleId}>` : "";
     const created = await createReminder({
       gameId: scope.kind === "game" ? scope.gameId : null,
       guildId: interaction.guildId,
       channelId: reminderChannelId,
       message: message.trim(),
+      emoji,
+      sourceKey: interaction.id,
       fireAt,
       createdBy: interaction.user.id,
       pingPlayers: Boolean(pingRoleId),
@@ -114,7 +132,7 @@ export class StReminderCommands {
     });
 
     await replyOrEditInteraction(interaction, {
-      content: `Reminder set in ${formatReminderDuration(minutes)} for ${where}${pingNote}: “${message.trim()}” (id: \`${created.id.slice(0, 8)}\`)`,
+      content: `Reminder set in ${formatReminderDuration(minutes)} for ${where}${pingNote}: “${formatReminderText(message, emoji)}” (id: \`${created.id.slice(0, 8)}\`)`,
       ...EPHEMERAL,
     });
   }
@@ -145,6 +163,13 @@ export class StReminderCommands {
       required: false,
     })
     pingRole: Role | undefined,
+    @SlashOption({
+      name: "emoji",
+      description: "Optional emoji prefix (e.g. 🔔 or a custom server emoji)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    emojiInput: string | undefined,
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
@@ -177,6 +202,15 @@ export class StReminderCommands {
     }
 
     const trimmedMessage = message.trim();
+    const emoji = parseReminderEmoji(emojiInput);
+    if (emojiInput?.trim() && !emoji) {
+      await replyOrEditInteraction(interaction, {
+        content: "Emoji must be a single unicode emoji or custom emoji (e.g. `🔔` or `<:name:id>`).",
+        ...EPHEMERAL,
+      });
+      return;
+    }
+
     const now = Date.now();
     const createdInThread = interaction.channel?.isThread() ?? false;
     const pingRoleId = pingRole?.id ?? (scope.kind === "channel" ? getReminderPingRoleId() : null);
@@ -188,6 +222,8 @@ export class StReminderCommands {
           guildId: interaction.guildId!,
           channelId: targetChannelId,
           message: trimmedMessage,
+          emoji,
+          sourceKey: `${interaction.id}:${hour}`,
           fireAt: new Date(now + hour * 3_600_000),
           createdBy: interaction.user.id,
           pingPlayers: true,
@@ -208,7 +244,7 @@ export class StReminderCommands {
     await replyOrEditInteraction(interaction, {
       content: [
         `Set **${hours.length}** reminder${hours.length === 1 ? "" : "s"} in <#${targetChannelId}> pinging ${pingLabel}${threadNote}:`,
-        `“${trimmedMessage}”`,
+        `“${formatReminderText(trimmedMessage, emoji)}”`,
         "",
         ...scheduleLines,
         "",
@@ -239,7 +275,7 @@ export class StReminderCommands {
           ? ` (pings <@&${reminder.pingRoleId}>)`
           : " (pings players)"
         : "";
-      return `- \`${reminder.id.slice(0, 8)}\` ${when} in <#${reminder.channelId}>${pingNote}: ${reminder.message}`;
+      return `- \`${reminder.id.slice(0, 8)}\` ${when} in <#${reminder.channelId}>${pingNote}: ${formatReminderText(reminder.message, reminder.emoji)}`;
     });
 
     await replyOrEditInteraction(interaction, {

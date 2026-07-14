@@ -23,6 +23,8 @@ import {
 } from "./error-reporter.js";
 import { loadCommandModules } from "./load-commands.js";
 import { log } from "./logger.js";
+import { deferStReminderCommand } from "./interactions/early-defer.js";
+import { tryMarkInteractionOnce } from "./interactions/interaction-dedup.js";
 import { startReminderScheduler } from "./reminder-scheduler.js";
 
 await loadCommandModules();
@@ -57,8 +59,12 @@ client.once(Events.ClientReady, async () => {
 });
 
 client.on("interactionCreate", (interaction) => {
+  if (!tryMarkInteractionOnce(interaction.id)) return;
+
   void (async () => {
-    if (!isMinimalMode()) {
+    await deferStReminderCommand(interaction);
+
+    if (!isMinimalMode() && (interaction.isButton() || interaction.isModalSubmit())) {
       const { handleVoteButton, handleVoteModalSubmit } = await import("./interactions/day-vote.js");
       if (interaction.isButton()) {
         const handled = await handleVoteButton(interaction);

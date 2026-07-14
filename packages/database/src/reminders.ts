@@ -1,3 +1,4 @@
+import { Prisma } from "./generated/prisma/client.js";
 import { prisma } from "./client.js";
 
 export type ReminderScope =
@@ -9,6 +10,8 @@ export interface CreateReminderInput {
   guildId: string;
   channelId: string;
   message: string;
+  emoji?: string | null;
+  sourceKey?: string | null;
   fireAt: Date;
   createdBy: string;
   pingPlayers?: boolean;
@@ -23,12 +26,33 @@ function scopeWhere(scope: ReminderScope) {
 }
 
 export async function createReminder(input: CreateReminderInput) {
-  return prisma.gameReminder.create({
-    data: {
-      ...input,
-      gameId: input.gameId ?? null,
-    },
-  });
+  if (input.sourceKey) {
+    const existing = await prisma.gameReminder.findUnique({
+      where: { sourceKey: input.sourceKey },
+    });
+    if (existing) return existing;
+  }
+
+  try {
+    return await prisma.gameReminder.create({
+      data: {
+        ...input,
+        gameId: input.gameId ?? null,
+        sourceKey: input.sourceKey ?? null,
+      },
+    });
+  } catch (error) {
+    if (
+      input.sourceKey &&
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return prisma.gameReminder.findUniqueOrThrow({
+        where: { sourceKey: input.sourceKey },
+      });
+    }
+    throw error;
+  }
 }
 
 /** @deprecated Use createReminder */

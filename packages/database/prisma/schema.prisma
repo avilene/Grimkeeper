@@ -91,6 +91,8 @@ model GameReminder {
   guildId     String
   channelId   String
   message     String
+  emoji       String?
+  sourceKey   String?  @unique
   fireAt      DateTime
   fired       Boolean  @default(false)
   pingPlayers Boolean  @default(false)
