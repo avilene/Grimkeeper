@@ -132,6 +132,18 @@ export function formatErrorForDiscord(
   return text.slice(0, DISCORD_MESSAGE_LIMIT);
 }
 
+export function formatLifecycleForDiscord(
+  source: string,
+  context: Record<string, unknown> = {},
+): string {
+  const meta: Record<string, unknown> = {
+    time: new Date().toISOString(),
+    source,
+    ...context,
+  };
+  return `**[${source}]**\n${formatMetaBlock(meta)}`.slice(0, DISCORD_MESSAGE_LIMIT);
+}
+
 function fingerprint(source: string, error: unknown): string {
   const serialized = serializeError(error);
   const message = typeof serialized.error === "string" ? serialized.error : String(error);
@@ -216,6 +228,17 @@ export async function flushDiscordReports(client?: Client | null): Promise<void>
   if (pendingReports.length > 0) {
     scheduleFlush();
   }
+}
+
+export async function notifyLifecycle(
+  source: string,
+  context: Record<string, unknown> = {},
+  client?: Client | null,
+): Promise<void> {
+  log("info", source, context);
+  const resolvedClient = client ?? getBotClient();
+  if (!resolvedClient?.isReady() || !getErrorChannelId()) return;
+  await sendToErrorChannel(resolvedClient, formatLifecycleForDiscord(source, context));
 }
 
 export async function reportError(

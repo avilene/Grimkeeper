@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { formatErrorForDiscord, getErrorChannelId } from "./error-reporter.js";
+import { formatErrorForDiscord, formatLifecycleForDiscord, getErrorChannelId } from "./error-reporter.js";
 
 describe("getErrorChannelId", () => {
   const original = process.env.ERROR_CHANNEL_ID;
@@ -51,5 +51,21 @@ describe("formatErrorForDiscord", () => {
     const text = formatErrorForDiscord("process.uncaughtException", error);
     expect(text.length).toBeLessThanOrEqual(2000);
     expect(text).toContain("truncated");
+  });
+});
+
+describe("formatLifecycleForDiscord", () => {
+  it("includes source and yaml meta without error stack", () => {
+    const text = formatLifecycleForDiscord("bot.started", {
+      tag: "Grimkeeper#1234",
+      botMode: "minimal",
+      commandsRegistered: true,
+    });
+    expect(text).toContain("**[bot.started]**");
+    expect(text).toContain("```yaml");
+    expect(text).toContain("source: bot.started");
+    expect(text).toContain("tag: Grimkeeper#1234");
+    expect(text).toContain("commandsRegistered: true");
+    expect(text).not.toContain("Error:");
   });
 });

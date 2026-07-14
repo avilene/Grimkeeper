@@ -274,6 +274,17 @@ export function resolveReminderTargetChannel(interaction: CommandInteraction): s
   return interaction.channelId;
 }
 
+export function buildGameReminderChannelIds(
+  game: { channelId: string },
+  targetChannelId: string,
+  engine: GameEngine | null,
+): string[] {
+  const channelIds = new Set([targetChannelId, game.channelId]);
+  const dayThreadId = engine?.getState().day?.discordThreadId;
+  if (dayThreadId) channelIds.add(dayThreadId);
+  return [...channelIds];
+}
+
 export async function requireReminderAccess(interaction: CommandInteraction): Promise<ReminderAccess | null> {
   if (!interaction.guildId) {
     await replyOrEditInteraction(interaction, {
@@ -299,8 +310,9 @@ export async function requireReminderAccess(interaction: CommandInteraction): Pr
     const isAllowlistOverride = await isInExplicitAllowlist(interaction);
 
     if (isStoryteller || isAllowlistOverride) {
+      const channelIds = buildGameReminderChannelIds(game, targetChannelId, engine);
       return {
-        scope: { kind: "game", gameId: game.id },
+        scope: { kind: "game", gameId: game.id, channelId: targetChannelId, channelIds },
         targetChannelId,
         game,
         engine,

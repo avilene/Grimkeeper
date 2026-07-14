@@ -18,12 +18,13 @@ import { isMinimalMode } from "./bot-mode.js";
 import { setBotClient } from "./discord-client.js";
 import {
   flushDiscordReports,
+  notifyLifecycle,
   registerClientErrorHandlers,
   reportError,
 } from "./error-reporter.js";
 import { loadCommandModules } from "./load-commands.js";
 import { log } from "./logger.js";
-import { deferStReminderCommand } from "./interactions/early-defer.js";
+import { startEarlyDefer } from "./interactions/early-defer.js";
 import { tryMarkInteractionOnce } from "./interactions/interaction-dedup.js";
 import { logCommandInvoked } from "./action-log.js";
 import { startReminderScheduler } from "./reminder-scheduler.js";
@@ -49,12 +50,25 @@ registerClientErrorHandlers(client);
 client.once(Events.ClientReady, async () => {
   setBotClient(client);
   startReminderScheduler(client);
+  let commandsRegistered = false;
   try {
     await client.initApplicationCommands();
+    commandsRegistered = true;
     log("info", "commands.register.ok", { botMode: isMinimalMode() ? "minimal" : "full" });
   } catch (error) {
     await reportError("commands.register.failed", error, { botMode: isMinimalMode() ? "minimal" : "full" });
   }
+  await notifyLifecycle(
+    "bot.started",
+    {
+      tag: client.user?.tag,
+      id: client.user?.id,
+      botMode: isMinimalMode() ? "minimal" : "full",
+      commandsRegistered,
+      hostname: process.env.HOSTNAME,
+    },
+    client,
+  );
   await flushDiscordReports(client);
   log("info", "bot.ready", { tag: client.user?.tag, id: client.user?.id, botMode: isMinimalMode() ? "minimal" : "full" });
 });
@@ -62,10 +76,11 @@ client.once(Events.ClientReady, async () => {
 client.on("interactionCreate", (interaction) => {
   if (!tryMarkInteractionOnce(interaction.id)) return;
 
-  void (async () => {
-    logCommandInvoked(interaction);
+  const deferTask = startEarlyDefer(interaction);
 
-    await deferStReminderCommand(interaction);
+  void (async () => {
+    await deferTask;
+    logCommandInvoked(interaction);
 
     if (!isMinimalMode() && (interaction.isButton() || interaction.isModalSubmit())) {
       const { handleVoteButton, handleVoteModalSubmit } = await import("./interactions/day-vote.js");
@@ -80,6 +95,14 @@ client.on("interactionCreate", (interaction) => {
     }
     await client.executeInteraction(interaction);
   })().catch((error: unknown) => {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === 10062
+    ) {
+      return;
+    }
     void reportError("interaction.failed", error, {
       command: interaction.isChatInputCommand() ? interaction.commandName : interaction.type,
       guildId: interaction.guildId,

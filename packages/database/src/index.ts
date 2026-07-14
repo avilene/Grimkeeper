@@ -13,6 +13,7 @@ export {
   claimReminderForFire,
   cancelGameReminders,
   cancelReminders,
+  cancelReminderByIdPrefix,
   countPendingReminders,
   listPendingReminders,
   type ReminderScope,

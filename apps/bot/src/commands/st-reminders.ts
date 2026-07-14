@@ -8,6 +8,7 @@ import {
 import { Discord, Slash, SlashChoice, SlashGroup, SlashOption } from "discordx";
 import {
   cancelReminders,
+  cancelReminderByIdPrefix,
   countPendingReminders,
   createReminder,
   listPendingReminders,
@@ -255,7 +256,7 @@ export class StReminderCommands {
     });
     const seriesEndLine = `Final reminder ${formatReminderFireIn(seriesEndAt, now)} (${discordTimestamp(seriesEndAt, "F")})`;
     const totalPending = await countPendingReminders(scope);
-    const scopeLabel = scope.kind === "game" ? "this game" : `<#${targetChannelId}>`;
+    const scopeLabel = `<#${targetChannelId}>`;
     const threadNote = createdInThread ? " (created in thread, fires in parent channel)" : "";
     const pingLabel = pingRoleId ? `<@&${pingRoleId}>` : "player role";
 
@@ -431,7 +432,7 @@ export class StReminderCommands {
       return;
     }
 
-    const cancelled = await cancelReminders(reminderScope, { idPrefix: trimmedId });
+    const cancelled = await cancelReminderByIdPrefix(reminderScope, trimmedId);
     if (cancelled === 0) {
       await replyOrEditInteraction(interaction, {
         content: `No pending reminder found with ID prefix \`${trimmedId}\`. Check \`/st reminders\`.`,
