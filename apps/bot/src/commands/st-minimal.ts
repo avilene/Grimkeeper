@@ -13,7 +13,6 @@ import {
   addRoleToUser,
   cleanupGameRoles,
   createPlayerStThreads,
-  deferInteractionReply,
   getGameRoles,
   getStorytellerThread,
   loadEngine,
@@ -34,8 +33,6 @@ export class StCommandsMinimal {
     if (!(await requireCommandAccess(interaction))) return;
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
-
-    await deferInteractionReply(interaction, { ephemeral: true });
 
     try {
       const engine = await loadEngine(game.id);

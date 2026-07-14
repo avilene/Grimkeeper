@@ -50,6 +50,14 @@ export function startEarlyDefer(interaction: Interaction): Promise<void> {
   return command.deferReply({ flags: MessageFlags.Ephemeral }).then(
     () => undefined,
     (error: unknown) => {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === 40060
+      ) {
+        return undefined;
+      }
       log("warn", "interaction.defer.failed", {
         command: command.commandName,
         subcommand: command.options.getSubcommand(false) ?? undefined,

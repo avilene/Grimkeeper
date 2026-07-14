@@ -977,9 +977,21 @@ export async function deferInteractionReply(
   options: { ephemeral?: boolean } = {},
 ): Promise<void> {
   if (interaction.deferred || interaction.replied) return;
-  await interaction.deferReply(
-    options.ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
-  );
+  try {
+    await interaction.deferReply(
+      options.ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
+    );
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === 40060
+    ) {
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function replyOrEditInteraction(

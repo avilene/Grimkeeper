@@ -19,16 +19,11 @@ import { logReminderAction } from "../action-log.js";
 import { formatReminderDuration, parseReminderDuration, parseReminderHours } from "../reminder-duration.js";
 import { discordTimestamp, formatReminderText, parseReminderEmoji } from "../reminder-message.js";
 import {
-  deferInteractionReply,
   replyOrEditInteraction,
   requireReminderAccess,
 } from "./command-context.js";
 
 const EPHEMERAL = { flags: MessageFlags.Ephemeral };
-
-async function beginReminderCommand(interaction: CommandInteraction): Promise<void> {
-  await deferInteractionReply(interaction, { ephemeral: true });
-}
 
 @Discord()
 @SlashGroup({ name: "st", description: "Storyteller commands for an active game" })
@@ -74,7 +69,6 @@ export class StReminderCommands {
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
-    await beginReminderCommand(interaction);
 
     const access = await requireReminderAccess(interaction);
     if (!access) return;
@@ -189,7 +183,6 @@ export class StReminderCommands {
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
-    await beginReminderCommand(interaction);
 
     const access = await requireReminderAccess(interaction);
     if (!access) return;
@@ -287,8 +280,6 @@ export class StReminderCommands {
 
   @Slash({ name: "reminders", description: "List pending reminders for this game or channel" })
   async reminders(interaction: CommandInteraction): Promise<void> {
-    await beginReminderCommand(interaction);
-
     const access = await requireReminderAccess(interaction);
     if (!access) return;
 
@@ -349,7 +340,6 @@ export class StReminderCommands {
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
-    await beginReminderCommand(interaction);
 
     const access = await requireReminderAccess(interaction);
     if (!access) return;
@@ -410,7 +400,6 @@ export class StReminderCommands {
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
-    await beginReminderCommand(interaction);
 
     const access = await requireReminderAccess(interaction);
     if (!access) return;
