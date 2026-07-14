@@ -13,12 +13,12 @@ export function isInteractionAlreadyAcknowledged(error: unknown): boolean {
 export async function withAcknowledgedFallback(
   attempts: Array<() => Promise<unknown>>,
 ): Promise<void> {
-  for (let i = 0; i < attempts.length; i++) {
+  for (const attempt of attempts) {
     try {
-      await attempts[i]();
+      await attempt();
       return;
     } catch (error) {
-      if (!isRecoverableInteractionResponseError(error) || i === attempts.length - 1) {
+      if (!isRecoverableInteractionResponseError(error)) {
         throw error;
       }
     }

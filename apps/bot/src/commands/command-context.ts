@@ -1011,13 +1011,16 @@ export async function deferInteractionReply(
 export function buildInteractionResponseAttempts(
   interaction: Pick<CommandInteraction, "reply" | "editReply" | "followUp">,
   payload: { content?: string; embeds?: EmbedBuilder[]; flags?: number },
+  options: { allowReply?: boolean } = {},
 ): Array<() => Promise<unknown>> {
-  // editReply first: early defer may have acknowledged on Discord before local flags update.
-  return [
+  const attempts: Array<() => Promise<unknown>> = [
     () => interaction.editReply(payload),
     () => interaction.followUp(payload),
-    () => interaction.reply(payload),
   ];
+  if (options.allowReply !== false) {
+    attempts.push(() => interaction.reply(payload));
+  }
+  return attempts;
 }
 
 export async function replyOrEditInteraction(
@@ -1030,7 +1033,9 @@ export async function replyOrEditInteraction(
     });
   }
 
-  await withAcknowledgedFallback(buildInteractionResponseAttempts(interaction, payload));
+  await withAcknowledgedFallback(
+    buildInteractionResponseAttempts(interaction, payload, { allowReply: false }),
+  );
 }
 
 export async function replyEngineError(
