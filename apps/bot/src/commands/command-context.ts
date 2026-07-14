@@ -41,6 +41,7 @@ import { dayThreadName } from "../day-thread.js";
 import { getBotClient } from "../discord-client.js";
 import { buildReminderFireContent } from "../reminder-message.js";
 import { reportError } from "../error-reporter.js";
+import { isInteractionAlreadyAcknowledged, withAcknowledgedFallback } from "../interactions/interaction-response.js";
 import { logGameEvent } from "../game-events-log.js";
 import { refreshGameStatusForEngine } from "../game-status.js";
 import { buildRoleDmEmbed } from "../role-embed.js";
@@ -989,14 +990,7 @@ export async function deferInteractionReply(
       options.ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
     );
   } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === 40060
-    ) {
-      return;
-    }
+    if (isInteractionAlreadyAcknowledged(error)) return;
     throw error;
   }
 }
@@ -1005,15 +999,17 @@ export async function replyOrEditInteraction(
   interaction: CommandInteraction,
   payload: { content?: string; embeds?: EmbedBuilder[]; flags?: number },
 ): Promise<void> {
+  const attempts: Array<() => Promise<unknown>> = [];
   if (interaction.deferred) {
-    await interaction.editReply(payload);
-    return;
+    attempts.push(() => interaction.editReply(payload));
+  } else if (interaction.replied) {
+    attempts.push(() => interaction.followUp(payload));
+  } else {
+    attempts.push(() => interaction.reply(payload));
+    attempts.push(() => interaction.editReply(payload));
+    attempts.push(() => interaction.followUp(payload));
   }
-  if (interaction.replied) {
-    await interaction.followUp(payload);
-    return;
-  }
-  await interaction.reply(payload);
+  await withAcknowledgedFallback(attempts);
 }
 
 export async function replyEngineError(
@@ -1033,11 +1029,16 @@ export async function replyEngineError(
       userId: "user" in interaction ? (interaction as CommandInteraction).user.id : undefined,
     });
   }
+  const payload = { content: message, flags: MessageFlags.Ephemeral };
+  const attempts: Array<() => Promise<unknown>> = [];
   if (interaction.deferred) {
-    await interaction.editReply({ content: message });
+    attempts.push(() => interaction.editReply({ content: message }));
   } else if (interaction.replied) {
-    await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
+    attempts.push(() => interaction.followUp(payload));
   } else {
-    await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+    attempts.push(() => interaction.reply(payload));
+    attempts.push(() => interaction.editReply({ content: message }));
+    attempts.push(() => interaction.followUp(payload));
   }
+  await withAcknowledgedFallback(attempts);
 }

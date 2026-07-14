@@ -25,6 +25,7 @@ import {
 import { loadCommandModules } from "./load-commands.js";
 import { log } from "./logger.js";
 import { startEarlyDefer } from "./interactions/early-defer.js";
+import { isInteractionAlreadyAcknowledged } from "./interactions/interaction-response.js";
 import { tryMarkInteractionOnce } from "./interactions/interaction-dedup.js";
 import { logCommandInvoked } from "./action-log.js";
 import { startReminderScheduler } from "./reminder-scheduler.js";
@@ -101,7 +102,7 @@ client.on("interactionCreate", (interaction) => {
       error &&
       typeof error === "object" &&
       "code" in error &&
-      error.code === 10062
+      (error.code === 10062 || isInteractionAlreadyAcknowledged(error))
     ) {
       return;
     }

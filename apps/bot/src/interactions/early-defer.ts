@@ -1,6 +1,7 @@
 import { type ChatInputCommandInteraction, Interaction, MessageFlags } from "discord.js";
 
 import { isMinimalMode } from "../bot-mode.js";
+import { isInteractionAlreadyAcknowledged } from "./interaction-response.js";
 import { log } from "../logger.js";
 
 const ST_REMINDER_SUBCOMMANDS = new Set([
@@ -50,12 +51,7 @@ export function startEarlyDefer(interaction: Interaction): Promise<void> {
   return command.deferReply({ flags: MessageFlags.Ephemeral }).then(
     () => undefined,
     (error: unknown) => {
-      if (
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        error.code === 40060
-      ) {
+      if (isInteractionAlreadyAcknowledged(error)) {
         return undefined;
       }
       log("warn", "interaction.defer.failed", {
