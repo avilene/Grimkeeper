@@ -56,6 +56,7 @@ Auto-deploy after GitHub Actions build (webhook — no polling):
   1. In .env: DEPLOY_WEBHOOK_SECRET=<random>
   2. In .env: DEPLOY_HOOK_IMAGE=ghcr.io/YOUR_USER/Grimkeeper-deploy-hook:latest
   3. docker compose --profile deploy pull deploy-hook && docker compose --profile deploy up -d deploy-hook
+     (CI only rebuilds deploy-hook when ops/deploy-hook/ changes; redeploy-bot.sh is mounted from the repo)
   4. GitHub repo secrets: DEPLOY_WEBHOOK_SECRET (same), DEPLOY_WEBHOOK_URL=http://DROPLET:9000/hooks/redeploy
   5. Open port 9000 (or put nginx in front with TLS)
 

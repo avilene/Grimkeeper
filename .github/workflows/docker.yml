@@ -13,6 +13,19 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy-hook: ${{ steps.filter.outputs.deploy-hook }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            deploy-hook:
+              - 'ops/deploy-hook/**'
+
   build-and-push:
     runs-on: ubuntu-latest
     steps:
@@ -40,6 +53,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   build-and-push-deploy-hook:
+    needs: changes
+    if: needs.changes.outputs.deploy-hook == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
