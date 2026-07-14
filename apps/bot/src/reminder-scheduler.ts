@@ -3,7 +3,7 @@ import { claimReminderForFire, listDueReminders } from "@grimkeeper/database";
 
 import { buildReminderPingMention, buildReminderFireContent } from "./commands/command-context.js";
 import { logReminderAction } from "./action-log.js";
-import { formatReminderText } from "./reminder-message.js";
+import { formatFiredReminderBody } from "./reminder-message.js";
 import { reportError } from "./error-reporter.js";
 
 let schedulerStarted = false;
@@ -22,7 +22,13 @@ export async function processDueReminders(client: Client): Promise<void> {
 
         const channel = await client.channels.fetch(reminder.channelId).catch(() => null);
         if (channel?.isTextBased() && !channel.isDMBased()) {
-          let content = formatReminderText(reminder.message, reminder.emoji);
+          const body = formatFiredReminderBody(
+            reminder.message,
+            reminder.fireAt,
+            reminder.emoji,
+            reminder.seriesEndAt,
+          );
+          let content = body;
           if (reminder.pingPlayers) {
             const ping = await buildReminderPingMention(reminder);
             content = buildReminderFireContent(
@@ -30,6 +36,7 @@ export async function processDueReminders(client: Client): Promise<void> {
               reminder.message,
               reminder.fireAt,
               reminder.emoji,
+              reminder.seriesEndAt,
             );
           }
           await channel.send(content).catch(() => undefined);

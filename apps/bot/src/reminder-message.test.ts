@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildReminderFireContent,
   discordTimestamp,
+  formatFiredReminderBody,
   formatReminderText,
   parseReminderEmoji,
+  reminderEndAt,
 } from "./reminder-message.js";
 
 describe("discordTimestamp", () => {
@@ -37,19 +39,45 @@ describe("formatReminderText", () => {
   });
 });
 
+describe("reminderEndAt", () => {
+  it("prefers series end for batch reminders", () => {
+    const fireAt = new Date("2026-07-14T08:20:00Z");
+    const seriesEndAt = new Date("2026-07-14T08:40:00Z");
+    expect(reminderEndAt(fireAt, seriesEndAt)).toBe(seriesEndAt);
+  });
+});
+
+describe("formatFiredReminderBody", () => {
+  it("appends a Discord relative timestamp for the max end time", () => {
+    const fireAt = new Date("2026-07-14T08:20:00Z");
+    const seriesEndAt = new Date("2026-07-14T08:40:00Z");
+    const content = formatFiredReminderBody("Noms and whispers close", fireAt, null, seriesEndAt);
+    expect(content).toBe(
+      `Noms and whispers close ${discordTimestamp(seriesEndAt, "R")}`,
+    );
+  });
+});
+
 describe("buildReminderFireContent", () => {
-  it("includes player ping and relative scheduled time", () => {
-    const fireAt = new Date("2026-07-14T16:00:00Z");
-    const content = buildReminderFireContent("<@&123>", "noms close", fireAt, "🔔");
-    expect(content).toContain("<@&123>");
-    expect(content).toContain("🔔 noms close");
-    expect(content).toContain(`<t:${Math.floor(fireAt.getTime() / 1000)}:R>`);
+  it("includes player ping and relative timestamp", () => {
+    const fireAt = new Date("2026-07-14T08:20:00Z");
+    const seriesEndAt = new Date("2026-07-14T08:40:00Z");
+    const content = buildReminderFireContent(
+      "<@&123>",
+      "Noms and whispers close",
+      fireAt,
+      "🔔",
+      seriesEndAt,
+    );
+    expect(content).toBe(
+      `<@&123> 🔔 Noms and whispers close ${discordTimestamp(seriesEndAt, "R")}`,
+    );
   });
 
-  it("omits ping and emoji when unavailable", () => {
-    const fireAt = new Date("2026-07-14T16:00:00Z");
-    expect(buildReminderFireContent(null, "noms close", fireAt)).toBe(
-      `noms close (<t:${Math.floor(fireAt.getTime() / 1000)}:R>)`,
+  it("uses fireAt when there is no series end", () => {
+    const fireAt = new Date("2026-07-14T08:40:00Z");
+    expect(buildReminderFireContent(null, "Noms and whispers close", fireAt)).toBe(
+      `Noms and whispers close ${discordTimestamp(fireAt, "R")}`,
     );
   });
 });

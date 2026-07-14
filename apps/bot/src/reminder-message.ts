@@ -19,12 +19,29 @@ export function formatReminderText(message: string, emoji?: string | null): stri
   return `${prefix}${message.trim()}`;
 }
 
+/** Series end time, or this reminder's fireAt when solo. */
+export function reminderEndAt(fireAt: Date, seriesEndAt?: Date | null): Date {
+  return seriesEndAt ?? fireAt;
+}
+
+export function formatFiredReminderBody(
+  message: string,
+  fireAt: Date,
+  emoji?: string | null,
+  seriesEndAt?: Date | null,
+): string {
+  const base = formatReminderText(message, emoji);
+  const endAt = reminderEndAt(fireAt, seriesEndAt);
+  return `${base} ${discordTimestamp(endAt, "R")}`;
+}
+
 export function buildReminderFireContent(
   playerPing: string | null,
   message: string,
   fireAt: Date,
   emoji?: string | null,
+  seriesEndAt?: Date | null,
 ): string {
-  const body = `${formatReminderText(message, emoji)} (${discordTimestamp(fireAt, "R")})`;
+  const body = formatFiredReminderBody(message, fireAt, emoji, seriesEndAt);
   return playerPing ? `${playerPing} ${body}` : body;
 }
