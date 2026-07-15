@@ -22,6 +22,8 @@ export const GameEventType = {
   SeatsClosed: "SeatsClosed",
   SeatPicked: "SeatPicked",
   GameEnded: "GameEnded",
+  TownSetup: "TownSetup",
+  PlayerAliveChanged: "PlayerAliveChanged",
 } as const;
 
 export type GameEventType = (typeof GameEventType)[keyof typeof GameEventType];

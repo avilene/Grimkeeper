@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { GameEngine, GameCommandKind, GameEventType, type GameEvent, DEV_MIN_PLAYERS, resolveStandardScript, StandardEdition } from "./index.js";
 
 const gameId = "game-1";
@@ -755,5 +755,190 @@ describe("GameEngine", () => {
     for (const event of resolveEvents) engine.apply(event);
 
     expect(engine.getNominationById(nomination.id)?.status).toBe("resolved_fail");
+  });
+
+  function setupTownEngine(playerCount = 4): GameEngine {
+    const engine = GameEngine.fromEvents(gameId, baseEvents());
+    const players = Array.from({ length: playerCount }, (_, index) => ({
+      playerId: `town-player-${index + 1}`,
+      discordUserId: `town-user-${index + 1}`,
+      displayName: `Town Player ${index + 1}`,
+    }));
+    const events = engine.handle({
+      kind: GameCommandKind.SetupTown,
+      gameId,
+      channelId: "town-channel",
+      players,
+      minPlayers: 2,
+    });
+    for (const event of events) engine.apply(event);
+    return engine;
+  }
+
+  it("sets up town with ordered seats and townMode", () => {
+    const engine = setupTownEngine(3);
+    const state = engine.getState();
+
+    expect(state.phase).toBe("day");
+    expect(state.dayNumber).toBe(1);
+    expect(state.townMode).toBe(true);
+    expect(state.players).toHaveLength(3);
+    expect(state.players.map((player) => player.seat)).toEqual([1, 2, 3]);
+    expect(state.players.every((player) => player.alive && !player.roleId)).toBe(true);
+    expect(state.day?.nominationsOpen).toBe(true);
+    expect(state.day?.discordThreadId).toBeNull();
+  });
+
+  it("allows town-mode nominations again after prior nominations are resolved", () => {
+    const engine = setupTownEngine(4);
+    const players = engine.getState().players;
+
+    const first = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "First accusation.",
+    });
+    for (const event of first) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    const resolveEvents = engine.handle({
+      kind: GameCommandKind.ResolveNomination,
+      gameId,
+    });
+    for (const event of resolveEvents) engine.apply(event);
+    expect(engine.getNominationById(nomination.id)?.status).toBe("resolved_fail");
+
+    const second = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[2]!.id,
+      accusation: "Second accusation.",
+    });
+    expect(second).toHaveLength(1);
+    for (const event of second) engine.apply(event);
+    expect(engine.getState().day?.nominations).toHaveLength(2);
+  });
+
+  it("blocks town-mode nominations only while another is open", () => {
+    const engine = setupTownEngine(4);
+    const players = engine.getState().players;
+
+    const first = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Open accusation.",
+    });
+    for (const event of first) engine.apply(event);
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId,
+        nominatorId: players[0]!.id,
+        nomineeId: players[2]!.id,
+        accusation: "Duplicate nominator.",
+      }),
+    ).toThrow("open nomination");
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId,
+        nominatorId: players[2]!.id,
+        nomineeId: players[1]!.id,
+        accusation: "Duplicate nominee.",
+      }),
+    ).toThrow("open nomination");
+  });
+
+  it("sets a 24h vote deadline on nominations", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));
+
+    const engine = setupTownEngine(3);
+    const [nominator, nominee] = engine.getState().players;
+    const events = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: nominator!.id,
+      nomineeId: nominee!.id,
+      accusation: "Suspicious.",
+    });
+    for (const event of events) engine.apply(event);
+
+    const nomination = engine.getState().day!.nominations[0]!;
+    expect(nomination.voteDeadlineAt).toBe("2026-07-02T12:00:00.000Z");
+
+    vi.useRealTimers();
+  });
+
+  it("rejects player votes after the nomination deadline", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));
+
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Late vote test.",
+    });
+    for (const event of nominationEvents) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    vi.setSystemTime(new Date("2026-07-02T12:00:01.000Z"));
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.CastVote,
+        gameId,
+        nominationId: nomination.id,
+        voterId: players[2]!.id,
+        choice: "yes",
+      }),
+    ).toThrow("Voting has closed");
+
+    vi.useRealTimers();
+  });
+
+  it("toggles player alive state with SetPlayerAlive", () => {
+    const engine = setupTownEngine(3);
+    const player = engine.getState().players[0]!;
+
+    const deadEvents = engine.handle({
+      kind: GameCommandKind.SetPlayerAlive,
+      gameId,
+      playerId: player.id,
+      alive: false,
+    });
+    expect(deadEvents).toHaveLength(1);
+    for (const event of deadEvents) engine.apply(event);
+    expect(engine.getPlayerById(player.id)?.alive).toBe(false);
+
+    const aliveEvents = engine.handle({
+      kind: GameCommandKind.SetPlayerAlive,
+      gameId,
+      playerId: player.id,
+      alive: true,
+    });
+    expect(aliveEvents).toHaveLength(1);
+    for (const event of aliveEvents) engine.apply(event);
+    expect(engine.getPlayerById(player.id)?.alive).toBe(true);
+
+    expect(
+      engine.handle({
+        kind: GameCommandKind.SetPlayerAlive,
+        gameId,
+        playerId: player.id,
+        alive: true,
+      }),
+    ).toHaveLength(0);
   });
 });

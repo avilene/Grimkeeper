@@ -4,14 +4,16 @@ import {
   CommandInteraction,
   EmbedBuilder,
   MessageFlags,
+  User,
 } from "discord.js";
 import { Discord, Slash, SlashChoice, SlashGroup, SlashOption } from "discordx";
 import { getActiveGameForGuild, prisma } from "@grimkeeper/database";
 import { GameCommandKind, GameEngine } from "@grimkeeper/engine";
 
 import { isDevMode } from "../dev.js";
-import { MINIMAL_MIN_PLAYERS } from "../bot-mode.js";
 import { type StandardEditionChoice } from "../edition-choices.js";
+import { postNominationToChannel, updateNominationMessage } from "../day-thread.js";
+import { castVoteFromSlash } from "../interactions/day-vote.js";
 import {
   GAME_DISCORD_ROLES_ENABLED,
   addRoleToUser,
@@ -26,7 +28,11 @@ import {
   removeRoleFromUser,
   replyEngineError,
   replyOrEditInteraction,
+  requireActivePlayerGame,
   requireCommandAccess,
+  requireTownVotingChannel,
+  resolveVotingChannel,
+  syncGameProjection,
 } from "./command-context.js";
 
 @Discord()
@@ -131,7 +137,7 @@ export class GameCommandsMinimal {
         new EmbedBuilder()
           .setTitle("Grimkeeper game created")
           .setDescription(
-            `Script: **${script.name}** (${script.roles.length} characters).\nPlayers can join with \`/game join\`. Storyteller can start once there are at least ${MINIMAL_MIN_PLAYERS} players with \`/st start\`.${roleHint}${threadHint}${devHint}`,
+            `Script: **${script.name}** (${script.roles.length} characters).\nStoryteller: run \`/st setup-town\` with ordered @mentions to set up players and open voting.${roleHint}${threadHint}${devHint}`,
           )
           .addFields({ name: "Game ID", value: gameId }),
       ],
@@ -283,6 +289,270 @@ export class GameCommandsMinimal {
           .setDescription(lines.join("\n")),
       ],
       flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({ name: "nominate", description: "Nominate another player for execution (town channel only)" })
+  async nominate(
+    @SlashOption({
+      name: "player",
+      description: "Player to nominate",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    nominee: User,
+    @SlashOption({
+      name: "accusation",
+      description: "Your accusation against this player",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    accusation: string,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+
+    const context = await requireActivePlayerGame(interaction);
+    if (!context) return;
+
+    const { game, engine, player: nominator } = context;
+    if (!(await requireTownVotingChannel(interaction, game, engine))) return;
+
+    const target = engine.getPlayerByDiscordId(nominee.id);
+    if (!target) {
+      await replyOrEditInteraction(interaction, {
+        content: "That user is not in this game.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      const events = engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId: game.id,
+        nominatorId: nominator.id,
+        nomineeId: target.id,
+        accusation,
+      });
+      await persistEvents(engine, events);
+
+      const nominationEvent = events.find((event) => event.type === "NominationMade");
+      const nominationId =
+        nominationEvent && "nominationId" in nominationEvent
+          ? nominationEvent.nominationId
+          : engine.getState().day?.nominations.at(-1)?.id;
+
+      const channel = interaction.guild
+        ? await resolveVotingChannel(interaction.guild, game, engine)
+        : null;
+      if (channel && nominationId) {
+        await postNominationToChannel(engine, game.id, channel, nominationId);
+      }
+
+      await replyOrEditInteraction(interaction, {
+        content: `<@${nominator.discordUserId}> nominates <@${target.discordUserId}>.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "defend", description: "Add your defense to a nomination against you (town channel only)" })
+  async defend(
+    @SlashOption({
+      name: "text",
+      description: "Your defense",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    defenseText: string,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+
+    const context = await requireActivePlayerGame(interaction);
+    if (!context) return;
+
+    const { game, engine, player } = context;
+    if (!(await requireTownVotingChannel(interaction, game, engine))) return;
+
+    const nomination = engine
+      .getState()
+      .day?.nominations.find(
+        (candidate) => candidate.nomineeId === player.id && candidate.status === "open",
+      );
+    if (!nomination) {
+      await replyOrEditInteraction(interaction, {
+        content: "You do not have an open nomination to defend.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      const events = engine.handle({
+        kind: GameCommandKind.AddDefense,
+        gameId: game.id,
+        playerId: player.id,
+        nominationId: nomination.id,
+        defense: defenseText,
+      });
+      await persistEvents(engine, events);
+
+      const channel = interaction.guild
+        ? await resolveVotingChannel(interaction.guild, game, engine)
+        : null;
+      if (channel) {
+        await updateNominationMessage(engine, game.id, channel, nomination.id);
+      }
+
+      await replyOrEditInteraction(interaction, {
+        content: "Defense recorded.",
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "vote", description: "Vote on a nomination (town channel only)" })
+  async vote(
+    @SlashOption({
+      name: "nominee",
+      description: "The nominated player you are voting on",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    nominee: User,
+    @SlashOption({
+      name: "choice",
+      description: "Your vote",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    choice: "yes" | "no" | "conditional",
+    @SlashOption({
+      name: "reason",
+      description: "Required for conditional votes",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    reason: string | undefined,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+
+    const context = await requireActivePlayerGame(interaction);
+    if (!context) return;
+
+    const { game, engine, player: voter } = context;
+    if (!(await requireTownVotingChannel(interaction, game, engine))) return;
+
+    const target = engine.getPlayerByDiscordId(nominee.id);
+    if (!target) {
+      await replyOrEditInteraction(interaction, {
+        content: "That user is not in this game.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const nomination = engine
+      .getState()
+      .day?.nominations.find(
+        (candidate) => candidate.nomineeId === target.id && candidate.status === "open",
+      );
+    if (!nomination) {
+      await replyOrEditInteraction(interaction, {
+        content: "That player does not have an open nomination.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      const { engine: updatedEngine, events } = await castVoteFromSlash(
+        game.id,
+        voter.id,
+        nomination.id,
+        choice,
+        reason?.trim() ?? null,
+      );
+      await persistEvents(updatedEngine, events);
+      await syncGameProjection(game.id, updatedEngine);
+
+      const day = updatedEngine.getState().day;
+      const isSecret = day?.voteVisibility === "secret";
+      const isSt = updatedEngine.isStoryteller(interaction.user.id);
+
+      const channel = interaction.guild
+        ? await resolveVotingChannel(interaction.guild, game, updatedEngine)
+        : null;
+      if (channel) {
+        await updateNominationMessage(updatedEngine, game.id, channel, nomination.id, {
+          revealSecret: isSt,
+        });
+      }
+
+      if (isSecret && !isSt) {
+        await replyOrEditInteraction(interaction, {
+          content: "Vote recorded.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const tally = updatedEngine.formatNominationTally(nomination.id, { revealSecret: true });
+      await replyOrEditInteraction(interaction, {
+        content: `Vote recorded (${choice}). ${tally}`,
+        flags: isSecret ? MessageFlags.Ephemeral : undefined,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "roster", description: "Show seat order and alive/dead status" })
+  async roster(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    if (!interaction.guildId) {
+      await replyOrEditInteraction(interaction, {
+        content: "This command must be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const game = await getActiveGameForGuild(interaction.guildId);
+    if (!game) {
+      await replyOrEditInteraction(interaction, {
+        content: "No active game found.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const engine = await loadEngine(game.id);
+    const state = engine.getState();
+    if (!state.townMode || state.phase !== "day") {
+      await replyOrEditInteraction(interaction, {
+        content: "Town is not set up yet. Storyteller must run `/st setup-town`.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await replyOrEditInteraction(interaction, {
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("Town roster")
+          .setDescription(engine.getSeatingChart().join("\n")),
+      ],
     });
   }
 }

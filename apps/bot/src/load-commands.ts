@@ -7,6 +7,7 @@ export async function loadCommandModules(): Promise<void> {
 
   if (isMinimalMode()) {
     await import("./commands/game-minimal.js");
+    await import("./commands/st-minimal.js");
     await import("./commands/st-reminders.js");
     await import("./commands/dev-minimal.js");
     log("info", "commands.load.done", { botMode: "minimal", groups: ["game", "st", "dev"] });

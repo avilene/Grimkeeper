@@ -127,6 +127,24 @@ export interface NominationMadeEvent extends GameEventBase {
   nomineeId: string;
   accusation?: string;
   order?: number;
+  voteDeadlineAt?: string;
+}
+
+export interface TownSetupEvent extends GameEventBase {
+  type: typeof GameEventType.TownSetup;
+  channelId: string;
+  players: Array<{
+    playerId: string;
+    discordUserId: string;
+    displayName: string;
+    seat: number;
+  }>;
+}
+
+export interface PlayerAliveChangedEvent extends GameEventBase {
+  type: typeof GameEventType.PlayerAliveChanged;
+  playerId: string;
+  alive: boolean;
 }
 
 export interface SeatPickedEvent extends GameEventBase {
@@ -182,7 +200,9 @@ export type GameEvent =
   | SeatsOpenedEvent
   | SeatsClosedEvent
   | SeatPickedEvent
-  | GameEndedEvent;
+  | GameEndedEvent
+  | TownSetupEvent
+  | PlayerAliveChangedEvent;
 
 export interface PlayerState {
   id: string;
@@ -203,6 +223,7 @@ export interface NominationRecord {
   defense: string | null;
   order: number;
   status: NominationStatus;
+  voteDeadlineAt: string | null;
 }
 
 export interface VoteRecord {
@@ -242,6 +263,7 @@ export interface GameState {
   players: PlayerState[];
   day: DayPhaseState | null;
   seatsOpen: boolean;
+  townMode: boolean;
   winner: "good" | "evil" | null;
 }
 
@@ -414,6 +436,27 @@ export interface PromoteStorytellerCommand {
   discordUserId: string;
 }
 
+export interface SetupTownPlayerInput {
+  playerId: string;
+  discordUserId: string;
+  displayName: string;
+}
+
+export interface SetupTownCommand {
+  kind: typeof GameCommandKind.SetupTown;
+  gameId: string;
+  channelId: string;
+  players: SetupTownPlayerInput[];
+  minPlayers?: number;
+}
+
+export interface SetPlayerAliveCommand {
+  kind: typeof GameCommandKind.SetPlayerAlive;
+  gameId: string;
+  playerId: string;
+  alive: boolean;
+}
+
 export type GameCommand =
   | CreateGameCommand
   | AddPlayerCommand
@@ -440,10 +483,13 @@ export type GameCommand =
   | CloseSeatsCommand
   | PickSeatCommand
   | EndGameCommand
-  | PromoteStorytellerCommand;
+  | PromoteStorytellerCommand
+  | SetupTownCommand
+  | SetPlayerAliveCommand;
 
 export const DEFAULT_MIN_PLAYERS = 5;
 export const DEV_MIN_PLAYERS = 3;
+export const NOMINATION_VOTE_DEADLINE_MS = 24 * 3_600_000;
 
 export class GameEngineError extends Error {
   constructor(message: string) {
@@ -466,6 +512,7 @@ function emptyState(gameId: string): GameState {
     players: [],
     day: null,
     seatsOpen: false,
+    townMode: false,
     winner: null,
   };
 }
@@ -693,14 +740,30 @@ export class GameEngine {
         if (!command.accusation.trim()) {
           throw new GameEngineError("An accusation is required.");
         }
-        if (
+        if (this.state.townMode) {
+          if (
+            this.state.day!.nominations.some(
+              (nomination) =>
+                nomination.nominatorId === command.nominatorId && nomination.status === "open",
+            )
+          ) {
+            throw new GameEngineError("You already have an open nomination.");
+          }
+          if (
+            this.state.day!.nominations.some(
+              (nomination) =>
+                nomination.nomineeId === command.nomineeId && nomination.status === "open",
+            )
+          ) {
+            throw new GameEngineError("That player already has an open nomination.");
+          }
+        } else if (
           this.state.day!.nominations.some(
             (nomination) => nomination.nominatorId === command.nominatorId,
           )
         ) {
           throw new GameEngineError("You have already made a nomination today.");
-        }
-        if (
+        } else if (
           this.state.day!.nominations.some((nomination) => nomination.nomineeId === command.nomineeId)
         ) {
           throw new GameEngineError("That player has already been nominated today.");
@@ -743,6 +806,12 @@ export class GameEngine {
         }
         if (command.choice === "conditional" && !command.reason?.trim()) {
           throw new GameEngineError("Conditional votes require a reason.");
+        }
+        if (
+          nomination.voteDeadlineAt &&
+          Date.now() >= new Date(nomination.voteDeadlineAt).getTime()
+        ) {
+          throw new GameEngineError("Voting has closed on this nomination.");
         }
         if (!voter.alive) {
           if (voter.ghostVoteUsed) {
@@ -823,6 +892,31 @@ export class GameEngine {
         this.assertAlivePlayer(command.playerId, "That player is already dead.");
         break;
       }
+      case GameCommandKind.SetupTown: {
+        if (this.state.phase === "ended") {
+          throw new GameEngineError("Game has already ended.");
+        }
+        const minPlayers = command.minPlayers ?? DEFAULT_MIN_PLAYERS;
+        if (command.players.length < minPlayers) {
+          throw new GameEngineError(`At least ${minPlayers} players are required to set up town.`);
+        }
+        const discordIds = new Set<string>();
+        for (const player of command.players) {
+          if (discordIds.has(player.discordUserId)) {
+            throw new GameEngineError("Duplicate players in town setup.");
+          }
+          discordIds.add(player.discordUserId);
+        }
+        break;
+      }
+      case GameCommandKind.SetPlayerAlive:
+        if (this.state.phase === "ended") {
+          throw new GameEngineError("Game has already ended.");
+        }
+        if (!this.getPlayerById(command.playerId)) {
+          throw new GameEngineError("Player is not in this game.");
+        }
+        break;
       case GameCommandKind.OpenSeats:
         this.assertPhase("setup", "Seats can only be opened during setup.");
         if (this.state.seatsOpen) {
@@ -992,6 +1086,7 @@ export class GameEngine {
       case GameCommandKind.MakeNomination: {
         const order = (this.state.day?.nominations.length ?? 0) + 1;
         const nominationId = randomUUID();
+        const voteDeadlineAt = new Date(Date.now() + NOMINATION_VOTE_DEADLINE_MS).toISOString();
         return [
           {
             type: GameEventType.NominationMade,
@@ -1001,6 +1096,7 @@ export class GameEngine {
             nomineeId: command.nomineeId,
             accusation: command.accusation.trim(),
             order,
+            voteDeadlineAt,
             timestamp: new Date().toISOString(),
           },
         ];
@@ -1149,6 +1245,36 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
+      case GameCommandKind.SetupTown:
+        return [
+          {
+            type: GameEventType.TownSetup,
+            gameId: command.gameId,
+            channelId: command.channelId,
+            players: command.players.map((player, index) => ({
+              playerId: player.playerId,
+              discordUserId: player.discordUserId,
+              displayName: player.displayName,
+              seat: index + 1,
+            })),
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.SetPlayerAlive: {
+        const player = this.getPlayerById(command.playerId)!;
+        if (player.alive === command.alive) {
+          return [];
+        }
+        return [
+          {
+            type: GameEventType.PlayerAliveChanged,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            alive: command.alive,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
     }
   }
 
@@ -1235,6 +1361,7 @@ export class GameEngine {
           defense: null,
           order: event.order ?? this.state.day.nominations.length + 1,
           status: "open",
+          voteDeadlineAt: event.voteDeadlineAt ?? null,
         });
         break;
       }
@@ -1326,6 +1453,31 @@ export class GameEngine {
         this.state.phase = "ended";
         this.state.winner = event.winner;
         break;
+      case GameEventType.TownSetup:
+        this.state.channelId = event.channelId;
+        this.state.players = event.players.map((player) => ({
+          id: player.playerId,
+          discordUserId: player.discordUserId,
+          displayName: player.displayName,
+          seat: player.seat,
+          roleId: null,
+          alive: true,
+          isFake: player.discordUserId.startsWith("dev:"),
+          ghostVoteUsed: false,
+        }));
+        this.state.phase = "day";
+        this.state.dayNumber = 1;
+        this.state.townMode = true;
+        this.state.seatsOpen = false;
+        this.state.day = createEmptyDayState(1);
+        break;
+      case GameEventType.PlayerAliveChanged: {
+        const player = this.state.players.find((candidate) => candidate.id === event.playerId);
+        if (player) {
+          player.alive = event.alive;
+        }
+        break;
+      }
     }
   }
 

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("loadCommandModules", () => {
@@ -22,5 +25,13 @@ describe("loadCommandModules", () => {
     process.env.BOT_MODE = "full";
     const { loadCommandModules } = await import("./load-commands.js");
     await expect(loadCommandModules()).resolves.toBeUndefined();
+  });
+
+  it("imports st-minimal in minimal mode", () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "load-commands.ts"),
+      "utf8",
+    );
+    expect(source).toContain('./commands/st-minimal.js');
   });
 });

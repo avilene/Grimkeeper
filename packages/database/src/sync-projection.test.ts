@@ -17,6 +17,7 @@ function baseState(overrides: Partial<GameState> = {}): GameState {
     players: [],
     day: createEmptyDayState(1),
     seatsOpen: false,
+    townMode: false,
     winner: null,
     ...overrides,
   };

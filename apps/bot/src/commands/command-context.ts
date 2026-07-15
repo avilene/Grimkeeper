@@ -932,6 +932,58 @@ export async function openStorytellerThread(
   return thread;
 }
 
+export async function resolveVotingChannel(
+  guild: Guild,
+  game: { channelId: string },
+  engine: GameEngine,
+): Promise<import("../day-thread.js").DayDiscussionChannel | null> {
+  const state = engine.getState();
+  if (state.townMode) {
+    const channel = await guild.channels.fetch(game.channelId).catch(() => null);
+    if (channel?.isTextBased() && !channel.isDMBased()) {
+      return channel as import("../day-thread.js").DayDiscussionChannel;
+    }
+    return null;
+  }
+
+  const dayThreadId = state.day?.discordThreadId;
+  if (!dayThreadId) return null;
+  const thread = await guild.channels.fetch(dayThreadId).catch(() => null);
+  if (thread?.isThread()) {
+    return thread as import("../day-thread.js").DayDiscussionChannel;
+  }
+  return null;
+}
+
+export async function requireTownVotingChannel(
+  interaction: CommandInteraction,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+): Promise<boolean> {
+  const state = engine.getState();
+  if (!state.townMode) {
+    return requireDayThread(interaction, game, engine);
+  }
+
+  if (state.phase !== "day" || !state.day) {
+    await replyOrEditInteraction(interaction, {
+      content: "Town voting is not open yet. The storyteller must run `/st setup-town`.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return false;
+  }
+
+  if (interaction.channelId !== game.channelId) {
+    await replyOrEditInteraction(interaction, {
+      content: `Nomination and voting commands must be used in the town channel: <#${game.channelId}>.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return false;
+  }
+
+  return true;
+}
+
 export async function requireDayThread(
   interaction: CommandInteraction,
   game: { id: string; channelId: string },

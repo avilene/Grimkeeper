@@ -25,6 +25,8 @@ export const GameCommandKind = {
   PickSeat: "PickSeat",
   EndGame: "EndGame",
   PromoteStoryteller: "PromoteStoryteller",
+  SetupTown: "SetupTown",
+  SetPlayerAlive: "SetPlayerAlive",
 } as const;
 
 export type GameCommandKind = (typeof GameCommandKind)[keyof typeof GameCommandKind];

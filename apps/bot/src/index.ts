@@ -85,7 +85,7 @@ client.on("interactionCreate", (interaction) => {
     await deferTask;
     logCommandInvoked(interaction);
 
-    if (!isMinimalMode() && (interaction.isButton() || interaction.isModalSubmit())) {
+    if (interaction.isButton() || interaction.isModalSubmit()) {
       const { handleVoteButton, handleVoteModalSubmit } = await import("./interactions/day-vote.js");
       if (interaction.isButton()) {
         const handled = await handleVoteButton(interaction);

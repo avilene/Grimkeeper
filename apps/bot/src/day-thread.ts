@@ -18,6 +18,7 @@ import {
 } from "@grimkeeper/engine";
 
 import { isDevMode } from "./dev.js";
+import { discordTimestamp } from "./reminder-message.js";
 
 export const VOTE_BUTTON_PREFIX = "gk:vote:";
 export const VOTE_MODAL_PREFIX = "gk:vote-modal:";
@@ -145,6 +146,14 @@ export function buildNominationEmbed(
     },
   ];
 
+  if (nomination.voteDeadlineAt) {
+    fields.push({
+      name: "Votes close",
+      value: discordTimestamp(new Date(nomination.voteDeadlineAt), "R"),
+      inline: true,
+    });
+  }
+
   return new EmbedBuilder()
     .setTitle(
       `Nomination #${nomination.order}: ${nominee?.displayName ?? "Unknown"}`,
@@ -161,6 +170,12 @@ export function buildVoteActionRow(
   nomination: NominationRecord,
 ): ActionRowBuilder<ButtonBuilder> | null {
   if (nomination.status !== "open") return null;
+  if (
+    nomination.voteDeadlineAt &&
+    Date.now() >= new Date(nomination.voteDeadlineAt).getTime()
+  ) {
+    return null;
+  }
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(voteButtonCustomId(gameId, nomination.id))
@@ -220,6 +235,15 @@ export async function updateNominationMessage(
 }
 
 export async function postNominationToDayThread(
+  engine: GameEngine,
+  gameId: string,
+  channel: DayDiscussionChannel,
+  nominationId: string,
+): Promise<Message | null> {
+  return postNominationToChannel(engine, gameId, channel, nominationId);
+}
+
+export async function postNominationToChannel(
   engine: GameEngine,
   gameId: string,
   channel: DayDiscussionChannel,

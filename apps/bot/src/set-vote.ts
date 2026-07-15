@@ -8,11 +8,12 @@ import {
   persistEvents,
   replyEngineError,
   resolvePlayerRef,
+  resolveVotingChannel,
   syncGameProjection,
 } from "./commands/command-context.js";
 import {
   buildDayIntroEmbed,
-  postNominationToDayThread,
+  postNominationToChannel,
   updateNominationMessage,
   type DayDiscussionChannel,
 } from "./day-thread.js";
@@ -89,18 +90,15 @@ export async function runSetPlayerVote(options: {
     await persistEvents(engine, events);
     await syncGameProjection(gameId, engine);
 
-    const dayThreadId = engine.getState().day?.discordThreadId;
-    if (dayThreadId && guild) {
-      const thread = await guild.channels.fetch(dayThreadId).catch(() => null);
-      if (thread?.isThread()) {
-        await updateNominationMessage(
-          engine,
-          gameId,
-          thread as DayDiscussionChannel,
-          nomination.id,
-          { revealSecret: true },
-        );
-      }
+    const votingChannel = guild ? await resolveVotingChannel(guild, { channelId: engine.getState().channelId }, engine) : null;
+    if (votingChannel) {
+      await updateNominationMessage(
+        engine,
+        gameId,
+        votingChannel,
+        nomination.id,
+        { revealSecret: true },
+      );
     }
 
     const tally = engine.formatNominationTally(nomination.id, { revealSecret: true });
@@ -144,16 +142,10 @@ export async function runDevNominate(options: {
     await persistEvents(engine, events);
 
     const nominationId = engine.getState().day?.nominations.at(-1)?.id;
-    const dayThreadId = engine.getState().day?.discordThreadId;
-    if (nominationId && dayThreadId && guild) {
-      const thread = await guild.channels.fetch(dayThreadId).catch(() => null);
-      if (thread?.isThread()) {
-        await postNominationToDayThread(
-          engine,
-          gameId,
-          thread as DayDiscussionChannel,
-          nominationId,
-        );
+    if (nominationId && guild) {
+      const channel = await resolveVotingChannel(guild, { channelId: engine.getState().channelId }, engine);
+      if (channel) {
+        await postNominationToChannel(engine, gameId, channel, nominationId);
       }
     }
 

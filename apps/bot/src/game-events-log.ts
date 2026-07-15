@@ -81,6 +81,10 @@ function eventFields(event: GameEvent): Record<string, unknown> {
       return {};
     case GameEventType.SeatPicked:
       return { playerId: event.playerId, seat: event.seat };
+    case GameEventType.TownSetup:
+      return { playerCount: event.players.length, channelId: event.channelId };
+    case GameEventType.PlayerAliveChanged:
+      return { playerId: event.playerId, alive: event.alive };
   }
 }
 
