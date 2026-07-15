@@ -47,6 +47,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./:/app:ro
+      # Host `docker login ghcr.io` credentials — required for private image pulls from the hook.
+      - ${DOCKER_CONFIG_DIR:-/root/.docker}:/root/.docker:ro
     ports:
       - "${DEPLOY_WEBHOOK_PORT:-9000}:9000"
 

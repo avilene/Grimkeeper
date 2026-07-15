@@ -98,10 +98,19 @@ jobs:
           fi
           body=$(printf '{"event":"docker-push","ref":"refs/heads/main","sha":"%s"}' "${{ github.sha }}")
           sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$DEPLOY_WEBHOOK_SECRET" | awk '{print $2}')
-          if curl -fsS -X POST "$DEPLOY_WEBHOOK_URL" \
+          response="$(curl -sS -w "\n__HTTP_CODE__:%{http_code}" -X POST "$DEPLOY_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
             -H "X-Hub-Signature-256: sha256=$sig" \
-            -d "$body"; then
+            -d "$body")"
+          http_code="$(printf '%s' "$response" | sed -n 's/^__HTTP_CODE__://p' | tail -1)"
+          response_body="$(printf '%s' "$response" | sed '/^__HTTP_CODE__:/d')"
+          echo "Deploy webhook HTTP ${http_code}"
+          if [ -n "$response_body" ]; then
+            echo "Deploy webhook response:"
+            printf '%s\n' "$response_body"
+          fi
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ] \
+            && ! printf '%s' "$response_body" | grep -qiE 'error|failed|exit status'; then
             echo "Deploy webhook succeeded."
           else
             echo "Deploy webhook failed."
