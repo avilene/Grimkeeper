@@ -6,17 +6,14 @@ import {
   MessageFlags,
   User,
 } from "discord.js";
-import { Discord, Slash, SlashGroup, SlashOption } from "discordx";
+import { Discord, Slash, SlashChoice, SlashGroup, SlashOption } from "discordx";
 import { prisma } from "@grimkeeper/database";
 import { GameCommandKind } from "@grimkeeper/engine";
 
 import { minPlayersForMode } from "../bot-mode.js";
-import {
-  postNominationToChannel,
-  updateNominationMessage,
-  type DayDiscussionChannel,
-} from "../day-thread.js";
+import { formatVoteVisibility } from "../day-thread.js";
 import { upsertPinnedGameStatus } from "../game-status.js";
+import { upsertStVoteTracker } from "../st-vote-tracker.js";
 import { runSetPlayerVote } from "../set-vote.js";
 import { parseUserMentionsFromString } from "../town-setup.js";
 import {
@@ -24,10 +21,12 @@ import {
   addRoleToUser,
   cleanupGameRoles,
   createPlayerStThreads,
+  createTownVoteThread,
   getGameRoles,
   getStorytellerThread,
   loadEngine,
   persistEvents,
+  refreshNominationEverywhere,
   removeRoleFromUser,
   replyEngineError,
   replyOrEditInteraction,
@@ -274,7 +273,19 @@ export class StCommandsMinimal {
       }
 
       const threadSummary = await createPlayerStThreads(interaction, game, engine);
+
+      const voteThread = await createTownVoteThread(guild, game, engine);
+      if (voteThread) {
+        const openEvents = engine.handle({
+          kind: GameCommandKind.OpenDay,
+          gameId: game.id,
+          discordThreadId: voteThread.id,
+        });
+        await persistEvents(engine, openEvents);
+      }
+
       await upsertPinnedGameStatus(guild, game.channelId, engine);
+      await upsertStVoteTracker(guild, game.channelId, engine);
 
       await replyOrEditInteraction(interaction, {
         content: [
@@ -283,7 +294,10 @@ export class StCommandsMinimal {
           threadSummary.created > 0 || threadSummary.failed > 0
             ? `Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.`
             : "",
-          "Players can `/game nominate` in this channel.",
+          voteThread
+            ? `Voting thread: <#${voteThread.id}> — nominate and vote there (or ballot privately in your ST thread).`
+            : "Players can `/game nominate` in this channel.",
+          "ST vote tracker is pinned in your kib thread — lock votes from there.",
         ]
           .filter(Boolean)
           .join("\n"),
@@ -327,8 +341,12 @@ export class StCommandsMinimal {
       const channel = interaction.guild
         ? await resolveVotingChannel(interaction.guild, game, engine)
         : null;
+      if (interaction.guild) {
+        await refreshNominationEverywhere(interaction.guild, game, engine, next.id, {
+          revealSecret: true,
+        });
+      }
       if (channel) {
-        await updateNominationMessage(engine, game.id, channel, next.id, { revealSecret: true });
         await channel
           .send(
             `Nomination #${next.order} for **${nominee?.displayName ?? "Unknown"}** ${passed ? "**passed**" : "**failed**"} (${yesVotes}/${livingCount} living, ${tally}).` +
@@ -396,13 +414,15 @@ export class StCommandsMinimal {
       await persistEvents(engine, events);
       await syncGameProjection(game.id, engine);
 
+      if (interaction.guild) {
+        await refreshNominationEverywhere(interaction.guild, game, engine, nomination.id, {
+          revealSecret: true,
+        });
+      }
       const channel = interaction.guild
         ? await resolveVotingChannel(interaction.guild, game, engine)
         : null;
       if (channel) {
-        await updateNominationMessage(engine, game.id, channel, nomination.id, {
-          revealSecret: true,
-        });
         await channel
           .send(`**${target.displayName}** was executed.`)
           .catch(() => undefined);
@@ -470,6 +490,77 @@ export class StCommandsMinimal {
 
       await replyOrEditInteraction(interaction, {
         content: `Marked **${target.displayName}** as **${markAlive ? "alive" : "dead"}**.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({
+    name: "votes",
+    description: "Refresh the ST vote tracker in the kib thread (who voted what + lock buttons)",
+  })
+  async votes(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    if (!interaction.guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const message = await upsertStVoteTracker(interaction.guild, game.channelId, engine);
+      const thread = await getStorytellerThread(interaction.guild, game.channelId);
+      await replyOrEditInteraction(interaction, {
+        content: message
+          ? `Vote tracker updated in ${thread ? `<#${thread.id}>` : "your kib thread"}.`
+          : "Could not post the vote tracker (is the kib thread available?).",
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({
+    name: "vote-visibility",
+    description: "Set public or secret vote tallies (Organ Grinder mode)",
+  })
+  async voteVisibility(
+    @SlashChoice({ name: "Public tallies", value: "public" })
+    @SlashChoice({ name: "Secret tallies", value: "secret" })
+    @SlashOption({
+      name: "mode",
+      description: "public shows tallies; secret hides them from players",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    mode: "public" | "secret",
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const events = engine.handle({
+        kind: GameCommandKind.SetVoteVisibility,
+        gameId: game.id,
+        visibility: mode,
+      });
+      await persistEvents(engine, events);
+
+      const voting = interaction.guild
+        ? await resolveVotingChannel(interaction.guild, game, engine)
+        : null;
+      await voting
+        ?.send(`Vote visibility is now **${formatVoteVisibility(mode)}**.`)
+        .catch(() => undefined);
+
+      await replyOrEditInteraction(interaction, {
+        content: `Vote visibility set to **${formatVoteVisibility(mode)}**.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

@@ -941,4 +941,90 @@ describe("GameEngine", () => {
       }),
     ).toHaveLength(0);
   });
+
+  it("locks player votes until unlocked; ST set-vote still works", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Lock test.",
+    });
+    for (const event of nominationEvents) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    const firstVote = engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: players[2]!.id,
+      choice: "yes",
+    });
+    for (const event of firstVote) engine.apply(event);
+
+    const lockEvents = engine.handle({
+      kind: GameCommandKind.LockNominationVotes,
+      gameId,
+      nominationId: nomination.id,
+    });
+    for (const event of lockEvents) engine.apply(event);
+    expect(engine.getNominationById(nomination.id)?.votesLocked).toBe(true);
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.CastVote,
+        gameId,
+        nominationId: nomination.id,
+        voterId: players[0]!.id,
+        choice: "no",
+      }),
+    ).toThrow("Votes are locked");
+
+    const override = engine.handle({
+      kind: GameCommandKind.SetPlayerVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: players[2]!.id,
+      choice: "no",
+    });
+    for (const event of override) engine.apply(event);
+    expect(engine.formatNominationVoteRoll(nomination.id)).toContain("no");
+  });
+
+  it("orders vote roll starting after the nominee by seat", () => {
+    const engine = setupTownEngine(4);
+    const players = engine.getState().players;
+    // seats 1..4 = players[0]..[3]; nominee seat 2 → order: 3,4,1,2
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Order test.",
+    });
+    for (const event of nominationEvents) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    const order = engine.getVoteLockInOrder(players[1]!.id).map((player) => player.seat);
+    expect(order).toEqual([3, 4, 1, 2]);
+
+    for (const [index, player] of engine.getVoteLockInOrder(players[1]!.id).entries()) {
+      const events = engine.handle({
+        kind: GameCommandKind.CastVote,
+        gameId,
+        nominationId: nomination.id,
+        voterId: player.id,
+        choice: index % 2 === 0 ? "yes" : "no",
+      });
+      for (const event of events) engine.apply(event);
+    }
+
+    const roll = engine.formatNominationVoteRoll(nomination.id);
+    const firstLine = roll.split("\n")[0]!;
+    expect(firstLine).toContain(players[2]!.displayName);
+    expect(firstLine).toContain("seat 3");
+    expect(roll.split("\n").at(-1)).toContain(players[1]!.displayName);
+  });
 });

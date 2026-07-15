@@ -147,6 +147,16 @@ export interface PlayerAliveChangedEvent extends GameEventBase {
   alive: boolean;
 }
 
+export interface NominationVotesLockedEvent extends GameEventBase {
+  type: typeof GameEventType.NominationVotesLocked;
+  nominationId: string;
+}
+
+export interface NominationVotesUnlockedEvent extends GameEventBase {
+  type: typeof GameEventType.NominationVotesUnlocked;
+  nominationId: string;
+}
+
 export interface SeatPickedEvent extends GameEventBase {
   type: typeof GameEventType.SeatPicked;
   playerId: string;
@@ -202,7 +212,9 @@ export type GameEvent =
   | SeatPickedEvent
   | GameEndedEvent
   | TownSetupEvent
-  | PlayerAliveChangedEvent;
+  | PlayerAliveChangedEvent
+  | NominationVotesLockedEvent
+  | NominationVotesUnlockedEvent;
 
 export interface PlayerState {
   id: string;
@@ -224,6 +236,7 @@ export interface NominationRecord {
   order: number;
   status: NominationStatus;
   voteDeadlineAt: string | null;
+  votesLocked: boolean;
 }
 
 export interface VoteRecord {
@@ -457,6 +470,18 @@ export interface SetPlayerAliveCommand {
   alive: boolean;
 }
 
+export interface LockNominationVotesCommand {
+  kind: typeof GameCommandKind.LockNominationVotes;
+  gameId: string;
+  nominationId: string;
+}
+
+export interface UnlockNominationVotesCommand {
+  kind: typeof GameCommandKind.UnlockNominationVotes;
+  gameId: string;
+  nominationId: string;
+}
+
 export type GameCommand =
   | CreateGameCommand
   | AddPlayerCommand
@@ -485,7 +510,9 @@ export type GameCommand =
   | EndGameCommand
   | PromoteStorytellerCommand
   | SetupTownCommand
-  | SetPlayerAliveCommand;
+  | SetPlayerAliveCommand
+  | LockNominationVotesCommand
+  | UnlockNominationVotesCommand;
 
 export const DEFAULT_MIN_PLAYERS = 5;
 export const DEV_MIN_PLAYERS = 3;
@@ -813,6 +840,9 @@ export class GameEngine {
         ) {
           throw new GameEngineError("Voting has closed on this nomination.");
         }
+        if (nomination.votesLocked) {
+          throw new GameEngineError("Votes are locked on this nomination. Ask the storyteller to unlock.");
+        }
         if (!voter.alive) {
           if (voter.ghostVoteUsed) {
             throw new GameEngineError("You have already used your ghost vote.");
@@ -917,6 +947,30 @@ export class GameEngine {
           throw new GameEngineError("Player is not in this game.");
         }
         break;
+      case GameCommandKind.LockNominationVotes: {
+        this.assertPhase("day", "Votes can only be locked during the day.");
+        this.assertDayState();
+        const nomination = this.getNominationById(command.nominationId);
+        if (!nomination || nomination.status !== "open") {
+          throw new GameEngineError("That nomination is not open.");
+        }
+        if (nomination.votesLocked) {
+          throw new GameEngineError("Votes are already locked on this nomination.");
+        }
+        break;
+      }
+      case GameCommandKind.UnlockNominationVotes: {
+        this.assertPhase("day", "Votes can only be unlocked during the day.");
+        this.assertDayState();
+        const nomination = this.getNominationById(command.nominationId);
+        if (!nomination || nomination.status !== "open") {
+          throw new GameEngineError("That nomination is not open.");
+        }
+        if (!nomination.votesLocked) {
+          throw new GameEngineError("Votes are not locked on this nomination.");
+        }
+        break;
+      }
       case GameCommandKind.OpenSeats:
         this.assertPhase("setup", "Seats can only be opened during setup.");
         if (this.state.seatsOpen) {
@@ -1275,6 +1329,24 @@ export class GameEngine {
           },
         ];
       }
+      case GameCommandKind.LockNominationVotes:
+        return [
+          {
+            type: GameEventType.NominationVotesLocked,
+            gameId: command.gameId,
+            nominationId: command.nominationId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      case GameCommandKind.UnlockNominationVotes:
+        return [
+          {
+            type: GameEventType.NominationVotesUnlocked,
+            gameId: command.gameId,
+            nominationId: command.nominationId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
     }
   }
 
@@ -1362,6 +1434,7 @@ export class GameEngine {
           order: event.order ?? this.state.day.nominations.length + 1,
           status: "open",
           voteDeadlineAt: event.voteDeadlineAt ?? null,
+          votesLocked: false,
         });
         break;
       }
@@ -1478,6 +1551,20 @@ export class GameEngine {
         }
         break;
       }
+      case GameEventType.NominationVotesLocked: {
+        const nomination = this.getNominationById(event.nominationId);
+        if (nomination) {
+          nomination.votesLocked = true;
+        }
+        break;
+      }
+      case GameEventType.NominationVotesUnlocked: {
+        const nomination = this.getNominationById(event.nominationId);
+        if (nomination) {
+          nomination.votesLocked = false;
+        }
+        break;
+      }
     }
   }
 
@@ -1537,13 +1624,96 @@ export class GameEngine {
     return `Yes: ${tally.yes} | No: ${tally.no} | Conditional: ${tally.conditional}`;
   }
 
+  /** Storyteller vote roll — seat order starting after the nominee, ending with the nominee. */
+  formatNominationVoteRoll(nominationId: string): string {
+    const day = this.state.day;
+    const nomination = this.getNominationById(nominationId);
+    if (!day || !nomination) return "—";
+
+    const ordered = this.getVoteLockInOrder(nomination.nomineeId);
+    if (ordered.length === 0) return "_No seated players._";
+
+    const votesByVoter = new Map(
+      day.votes
+        .filter((vote) => vote.nominationId === nominationId)
+        .map((vote) => [vote.voterId, vote] as const),
+    );
+
+    const lines = ordered.map((player, index) => {
+      const seat = player.seat != null ? `seat ${player.seat}` : "unseated";
+      const vote = votesByVoter.get(player.id);
+      const deadTag = player.alive ? "" : " [dead]";
+      let status: string;
+      if (vote) {
+        const reason = vote.reason ? ` — ${vote.reason}` : "";
+        const ghostTag = !player.alive ? " (ghost)" : "";
+        status = `**${vote.choice}**${ghostTag}${reason}`;
+      } else if (!player.alive && player.ghostVoteUsed) {
+        status = "_ghost used (no vote this nomination)_";
+      } else if (!player.alive) {
+        status = "_ghost available — pending_";
+      } else {
+        status = "_pending_";
+      }
+      return `${index + 1}. ${player.displayName}${deadTag} (${seat}): ${status}`;
+    });
+
+    return lines.join("\n");
+  }
+
+  /** Summary of dead players and whether their ghost vote remains. */
+  formatGhostVoteStatus(): string {
+    const dead = this.state.players
+      .filter((player) => !player.alive)
+      .sort((a, b) => (a.seat ?? 999) - (b.seat ?? 999));
+    if (dead.length === 0) return "_Nobody dead._";
+    return dead
+      .map((player) => {
+        const seat = player.seat != null ? `seat ${player.seat}` : "unseated";
+        const ghost = player.ghostVoteUsed ? "**used**" : "**available**";
+        return `• ${player.displayName} (${seat}): ghost ${ghost}`;
+      })
+      .join("\n");
+  }
+
+  /**
+   * Voting / lock-in order around the circle: first player after the nominee by seat,
+   * wrapping until the nominee votes last.
+   */
+  getVoteLockInOrder(nomineeId: string): PlayerState[] {
+    const seated = this.state.players
+      .filter((player) => player.seat != null)
+      .sort((a, b) => (a.seat ?? 0) - (b.seat ?? 0));
+    if (seated.length === 0) return [];
+
+    const nomineeIndex = seated.findIndex((player) => player.id === nomineeId);
+    if (nomineeIndex < 0) {
+      return seated;
+    }
+
+    const start = (nomineeIndex + 1) % seated.length;
+    const ordered: PlayerState[] = [];
+    for (let offset = 0; offset < seated.length; offset++) {
+      ordered.push(seated[(start + offset) % seated.length]!);
+    }
+    return ordered;
+  }
+
   getSeatingChart(): string[] {
     const seatCount = this.state.players.length;
     const lines: string[] = [];
 
     for (let seat = 1; seat <= seatCount; seat++) {
       const occupant = this.state.players.find((player) => player.seat === seat);
-      lines.push(`Seat ${seat}: ${occupant?.displayName ?? "—"}`);
+      if (!occupant) {
+        lines.push(`Seat ${seat}: —`);
+        continue;
+      }
+      let status = occupant.alive ? "alive" : "dead";
+      if (!occupant.alive) {
+        status += occupant.ghostVoteUsed ? ", ghost used" : ", ghost available";
+      }
+      lines.push(`Seat ${seat}: ${occupant.displayName} (${status})`);
     }
 
     const unseated = this.state.players.filter((player) => player.seat === null);

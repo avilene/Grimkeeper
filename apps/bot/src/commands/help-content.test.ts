@@ -24,7 +24,7 @@ describe("help content", () => {
     const st = buildStHelpEmbeds()[0]!;
 
     expect(game.data.title).toBe("Game commands");
-    expect(game.data.fields?.some((field) => field.name === "Town (channel only)")).toBe(true);
+    expect(game.data.fields?.some((field) => field.name === "Nominations & votes")).toBe(true);
     expect(st.data.title).toContain("minimal mode");
     expect(st.data.description).toContain("/st setup-town");
   });

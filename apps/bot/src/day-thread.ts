@@ -66,6 +66,10 @@ export function dayThreadName(dayNumber: number): string {
   return `Day ${dayNumber} — Town Square`.slice(0, 100);
 }
 
+export function townVoteThreadName(): string {
+  return "Town Voting";
+}
+
 export function parsePauseDurationMinutes(input: string): number | null {
   const trimmed = input.trim().toLowerCase();
   const match = trimmed.match(/^(\d+)\s*(m|min|mins|minute|minutes)?$/);
@@ -75,10 +79,10 @@ export function parsePauseDurationMinutes(input: string): number | null {
   return minutes;
 }
 
-function nominationStatusLabel(status: NominationRecord["status"]): string {
+function nominationStatusLabel(status: NominationRecord["status"], votesLocked?: boolean): string {
   switch (status) {
     case "open":
-      return "Open";
+      return votesLocked ? "Open (votes locked)" : "Open";
     case "resolved_pass":
       return "Passed";
     case "resolved_fail":
@@ -136,7 +140,7 @@ export function buildNominationEmbed(
     },
     {
       name: "Status",
-      value: nominationStatusLabel(nomination.status),
+      value: nominationStatusLabel(nomination.status, nomination.votesLocked),
       inline: true,
     },
     {
@@ -170,6 +174,7 @@ export function buildVoteActionRow(
   nomination: NominationRecord,
 ): ActionRowBuilder<ButtonBuilder> | null {
   if (nomination.status !== "open") return null;
+  if (nomination.votesLocked) return null;
   if (
     nomination.voteDeadlineAt &&
     Date.now() >= new Date(nomination.voteDeadlineAt).getTime()
@@ -197,7 +202,7 @@ export type DayDiscussionChannel =
 export async function findNominationMessage(
   channel: DayDiscussionChannel,
   nominationId: string,
-  limit = 50,
+  limit = 100,
 ): Promise<Message | null> {
   const messages = await channel.messages.fetch({ limit }).catch(() => null);
   if (!messages) return null;
@@ -224,7 +229,12 @@ export async function updateNominationMessage(
     null;
   if (!message) return;
 
-  const embed = buildNominationEmbed(engine, nomination, options);
+  // Never reveal secret tallies on shared/public nomination embeds.
+  const embedOptions =
+    engine.getState().day?.voteVisibility === "secret"
+      ? { revealSecret: false }
+      : options;
+  const embed = buildNominationEmbed(engine, nomination, embedOptions);
   const row = buildVoteActionRow(gameId, nomination);
   await message
     .edit({
@@ -232,6 +242,21 @@ export async function updateNominationMessage(
       components: row ? [row] : [],
     })
     .catch(() => undefined);
+}
+
+export async function updateNominationMessagesInChannels(
+  engine: GameEngine,
+  gameId: string,
+  channels: DayDiscussionChannel[],
+  nominationId: string,
+  options?: { revealSecret?: boolean },
+): Promise<void> {
+  const seen = new Set<string>();
+  for (const channel of channels) {
+    if (seen.has(channel.id)) continue;
+    seen.add(channel.id);
+    await updateNominationMessage(engine, gameId, channel, nominationId, options);
+  }
 }
 
 export async function postNominationToDayThread(
@@ -248,11 +273,17 @@ export async function postNominationToChannel(
   gameId: string,
   channel: DayDiscussionChannel,
   nominationId: string,
+  options?: { privateBallot?: boolean },
 ): Promise<Message | null> {
   const nomination = engine.getNominationById(nominationId);
   if (!nomination) return null;
 
   const embed = buildNominationEmbed(engine, nomination);
+  if (options?.privateBallot) {
+    embed.setDescription(
+      `${embed.data.description ?? ""}\n\n_Private ballot — your vote confirmation stays in this thread._`,
+    );
+  }
   const row = buildVoteActionRow(gameId, nomination);
   return channel
     .send({

@@ -58,6 +58,47 @@ describe("buildAliveDeadLines", () => {
     expect(alive).toContain("<@user-1>");
     expect(alive).toContain("<@user-2>");
     expect(dead).toContain("<@user-3>");
+    expect(dead).toContain("ghost **available**");
+  });
+
+  it("marks ghost used on dead players after a ghost vote", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(3));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+    engine.apply({
+      type: GameEventType.PlayerDied,
+      gameId,
+      playerId: "player-3",
+      cause: "night",
+      timestamp: new Date().toISOString(),
+    });
+    engine.apply({
+      type: GameEventType.NominationMade,
+      gameId,
+      nominationId: "nom-1",
+      nominatorId: "player-1",
+      nomineeId: "player-2",
+      accusation: "test",
+      order: 1,
+      timestamp: new Date().toISOString(),
+    });
+    engine.apply({
+      type: GameEventType.VoteCast,
+      gameId,
+      nominationId: "nom-1",
+      voterId: "player-3",
+      choice: "yes",
+      reason: null,
+      timestamp: new Date().toISOString(),
+    });
+
+    const { dead, daySummary } = buildAliveDeadLines(engine);
+    expect(dead).toContain("ghost **used**");
+    expect(daySummary).toContain("Ghost votes left: **0**");
   });
 
   it("includes day nomination summary during day phase", () => {

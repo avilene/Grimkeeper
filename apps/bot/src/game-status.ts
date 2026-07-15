@@ -15,23 +15,30 @@ export function buildAliveDeadLines(engine: GameEngine): { alive: string; dead: 
   const formatPlayer = (player: (typeof state.players)[number]) =>
     player.isFake ? player.displayName : `<@${player.discordUserId}>`;
 
+  const formatDeadPlayer = (player: (typeof state.players)[number]) => {
+    const ghost = player.ghostVoteUsed ? "ghost **used**" : "ghost **available**";
+    return `• ${formatPlayer(player)} — ${ghost}`;
+  };
+
   const alive =
     alivePlayers.length > 0
       ? alivePlayers.map((player) => `• ${formatPlayer(player)}`).join("\n")
       : "—";
   const dead =
     deadPlayers.length > 0
-      ? deadPlayers.map((player) => `• ${formatPlayer(player)}`).join("\n")
+      ? deadPlayers.map((player) => formatDeadPlayer(player)).join("\n")
       : "—";
 
   let daySummary = "Not in day phase.";
   if (state.phase === "day" && state.day) {
     const openNominations = state.day.nominations.filter((nomination) => nomination.status === "open").length;
+    const ghostsAvailable = deadPlayers.filter((player) => !player.ghostVoteUsed).length;
     daySummary = [
       `Day **${state.dayNumber}**`,
       `Nominations: **${state.day.nominations.length}** (${openNominations} open)`,
       `Voting: **${state.day.nominationsOpen ? "open" : "closed"}**`,
       `Execution today: **${state.day.executionUsed ? "yes" : "no"}**`,
+      `Ghost votes left: **${ghostsAvailable}**`,
     ].join(" · ");
   }
 

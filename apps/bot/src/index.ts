@@ -87,7 +87,10 @@ client.on("interactionCreate", (interaction) => {
 
     if (interaction.isButton() || interaction.isModalSubmit()) {
       const { handleVoteButton, handleVoteModalSubmit } = await import("./interactions/day-vote.js");
+      const { handleLockVotesButton } = await import("./interactions/lock-votes.js");
       if (interaction.isButton()) {
+        const handledLock = await handleLockVotesButton(interaction);
+        if (handledLock) return;
         const handled = await handleVoteButton(interaction);
         if (handled) return;
       }

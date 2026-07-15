@@ -85,6 +85,10 @@ function eventFields(event: GameEvent): Record<string, unknown> {
       return { playerCount: event.players.length, channelId: event.channelId };
     case GameEventType.PlayerAliveChanged:
       return { playerId: event.playerId, alive: event.alive };
+    case GameEventType.NominationVotesLocked:
+      return { nominationId: event.nominationId };
+    case GameEventType.NominationVotesUnlocked:
+      return { nominationId: event.nominationId };
   }
 }
 

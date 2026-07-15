@@ -12,7 +12,6 @@ import { GameCommandKind, GameEngine } from "@grimkeeper/engine";
 
 import { isDevMode } from "../dev.js";
 import { type StandardEditionChoice } from "../edition-choices.js";
-import { postNominationToChannel, updateNominationMessage } from "../day-thread.js";
 import { castVoteFromSlash } from "../interactions/day-vote.js";
 import {
   GAME_DISCORD_ROLES_ENABLED,
@@ -25,13 +24,14 @@ import {
   loadEngine,
   loadScriptForCreate,
   persistEvents,
+  postNominationEverywhere,
+  refreshNominationEverywhere,
   removeRoleFromUser,
   replyEngineError,
   replyOrEditInteraction,
   requireActivePlayerGame,
   requireCommandAccess,
   requireTownVotingChannel,
-  resolveVotingChannel,
   syncGameProjection,
 } from "./command-context.js";
 
@@ -292,7 +292,7 @@ export class GameCommandsMinimal {
     });
   }
 
-  @Slash({ name: "nominate", description: "Nominate another player for execution (town channel only)" })
+  @Slash({ name: "nominate", description: "Nominate another player for execution (town or voting thread)" })
   async nominate(
     @SlashOption({
       name: "player",
@@ -344,23 +344,38 @@ export class GameCommandsMinimal {
           ? nominationEvent.nominationId
           : engine.getState().day?.nominations.at(-1)?.id;
 
-      const channel = interaction.guild
-        ? await resolveVotingChannel(interaction.guild, game, engine)
-        : null;
-      if (channel && nominationId) {
-        await postNominationToChannel(engine, game.id, channel, nominationId);
+      if (interaction.guild && nominationId) {
+        const posted = await postNominationEverywhere(
+          interaction.guild,
+          game,
+          engine,
+          nominationId,
+        );
+        const voteThreadId = engine.getState().day?.discordThreadId;
+        await replyOrEditInteraction(interaction, {
+          content: [
+            `<@${nominator.discordUserId}> nominates <@${target.discordUserId}>.`,
+            voteThreadId ? `Posted in <#${voteThreadId}>` : "",
+            posted.privateBallots > 0
+              ? `and ${posted.privateBallots} private ST ballots.`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" "),
+          flags: MessageFlags.Ephemeral,
+        });
+      } else {
+        await replyOrEditInteraction(interaction, {
+          content: `<@${nominator.discordUserId}> nominates <@${target.discordUserId}>.`,
+          flags: MessageFlags.Ephemeral,
+        });
       }
-
-      await replyOrEditInteraction(interaction, {
-        content: `<@${nominator.discordUserId}> nominates <@${target.discordUserId}>.`,
-        flags: MessageFlags.Ephemeral,
-      });
     } catch (error) {
       await replyEngineError(interaction, error);
     }
   }
 
-  @Slash({ name: "defend", description: "Add your defense to a nomination against you (town channel only)" })
+  @Slash({ name: "defend", description: "Add your defense to a nomination against you" })
   async defend(
     @SlashOption({
       name: "text",
@@ -403,11 +418,8 @@ export class GameCommandsMinimal {
       });
       await persistEvents(engine, events);
 
-      const channel = interaction.guild
-        ? await resolveVotingChannel(interaction.guild, game, engine)
-        : null;
-      if (channel) {
-        await updateNominationMessage(engine, game.id, channel, nomination.id);
+      if (interaction.guild) {
+        await refreshNominationEverywhere(interaction.guild, game, engine, nomination.id);
       }
 
       await replyOrEditInteraction(interaction, {
@@ -419,7 +431,7 @@ export class GameCommandsMinimal {
     }
   }
 
-  @Slash({ name: "vote", description: "Vote on a nomination (town channel only)" })
+  @Slash({ name: "vote", description: "Vote on an open nomination (voting thread or private ST thread)" })
   async vote(
     @SlashOption({
       name: "nominee",
@@ -490,18 +502,19 @@ export class GameCommandsMinimal {
       const isSecret = day?.voteVisibility === "secret";
       const isSt = updatedEngine.isStoryteller(interaction.user.id);
 
-      const channel = interaction.guild
-        ? await resolveVotingChannel(interaction.guild, game, updatedEngine)
-        : null;
-      if (channel) {
-        await updateNominationMessage(updatedEngine, game.id, channel, nomination.id, {
-          revealSecret: isSt,
-        });
+      if (interaction.guild) {
+        await refreshNominationEverywhere(
+          interaction.guild,
+          game,
+          updatedEngine,
+          nomination.id,
+          { revealSecret: false },
+        );
       }
 
       if (isSecret && !isSt) {
         await replyOrEditInteraction(interaction, {
-          content: "Vote recorded.",
+          content: "Vote recorded privately.",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -510,7 +523,7 @@ export class GameCommandsMinimal {
       const tally = updatedEngine.formatNominationTally(nomination.id, { revealSecret: true });
       await replyOrEditInteraction(interaction, {
         content: `Vote recorded (${choice}). ${tally}`,
-        flags: isSecret ? MessageFlags.Ephemeral : undefined,
+        flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       await replyEngineError(interaction, error);

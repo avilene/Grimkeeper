@@ -6,17 +6,13 @@ import {
   findOpenNominationForNominee,
   loadEngine,
   persistEvents,
+  postNominationEverywhere,
+  refreshNominationEverywhere,
   replyEngineError,
   resolvePlayerRef,
-  resolveVotingChannel,
   syncGameProjection,
 } from "./commands/command-context.js";
-import {
-  buildDayIntroEmbed,
-  postNominationToChannel,
-  updateNominationMessage,
-  type DayDiscussionChannel,
-} from "./day-thread.js";
+import { buildDayIntroEmbed } from "./day-thread.js";
 
 export async function runSetPlayerVote(options: {
   interaction: CommandInteraction;
@@ -90,14 +86,12 @@ export async function runSetPlayerVote(options: {
     await persistEvents(engine, events);
     await syncGameProjection(gameId, engine);
 
-    const votingChannel = guild ? await resolveVotingChannel(guild, { channelId: engine.getState().channelId }, engine) : null;
-    if (votingChannel) {
-      await updateNominationMessage(
+    if (guild) {
+      await refreshNominationEverywhere(
+        guild,
+        { id: gameId, channelId: engine.getState().channelId },
         engine,
-        gameId,
-        votingChannel,
         nomination.id,
-        { revealSecret: true },
       );
     }
 
@@ -143,10 +137,12 @@ export async function runDevNominate(options: {
 
     const nominationId = engine.getState().day?.nominations.at(-1)?.id;
     if (nominationId && guild) {
-      const channel = await resolveVotingChannel(guild, { channelId: engine.getState().channelId }, engine);
-      if (channel) {
-        await postNominationToChannel(engine, gameId, channel, nominationId);
-      }
+      await postNominationEverywhere(
+        guild,
+        { id: gameId, channelId: engine.getState().channelId },
+        engine,
+        nominationId,
+      );
     }
 
     await interaction.reply({

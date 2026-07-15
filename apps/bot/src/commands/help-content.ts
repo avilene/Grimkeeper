@@ -17,7 +17,8 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
         .setDescription(
           [
             "Player commands for minimal-mode town voting.",
-            "Nominations and votes happen in the **town channel** after the storyteller runs `/st setup-town`.",
+            "Nominations and votes happen in the **Town Voting** thread after `/st setup-town`.",
+            "You can also cast a **private ballot** from your personal ST thread.",
             "",
             "Storytellers: see **`/st help`** for setup and day control.",
           ].join("\n"),
@@ -33,20 +34,21 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
             ].join("\n\n"),
           },
           {
-            name: "Town (channel only)",
+            name: "Nominations & votes",
             value: [
-              cmd("/game nominate", "Nominate another player with an accusation."),
+              cmd("/game nominate", "Nominate another player (town or voting thread)."),
               cmd("/game defend", "Add your defense to an open nomination against you."),
-              cmd("/game vote", "Vote yes / no / conditional on an open nomination."),
+              cmd("/game vote", "Vote yes / no / conditional on any open nomination."),
               cmd("/game roster", "Show seat order and alive/dead status."),
             ].join("\n\n"),
           },
           {
-            name: "Voting",
+            name: "Voting venues",
             value: [
-              "Use the **Vote** button on nomination embeds, or `/game vote`.",
-              "Each nomination shows **Votes close** — 24 hours from posting.",
-              "After the deadline, player votes are closed (ST can override with `/st set-vote`).",
+              "**Town Voting** thread — shared embeds + Vote buttons; public results when visibility is public.",
+              "**Personal ST thread** — private ballot (Vote button); confirmations stay ephemeral.",
+              "You can vote on **any** open nomination; embeds update tallies after each vote.",
+              "Use `/st vote-visibility` for public vs secret tallies.",
             ].join("\n"),
           },
         ),
@@ -105,7 +107,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             "**Quick start**",
             `1. \`/game create\` in the town channel`,
             `2. \`/st setup-town players:\` @mentions in **seat order** (min ${minPlayers} players)`,
-            "3. Players nominate and vote in the town channel",
+            "3. Players nominate and vote in **Town Voting** (or privately in ST threads)",
             "4. \`/st resolve-next\` → \`/st execute\` if passed",
           ].join("\n"),
         )
@@ -113,7 +115,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           {
             name: "Setup & town",
             value: [
-              cmd("/st setup-town", "Set roster + seats from ordered @mentions, create player threads, open voting."),
+              cmd("/st setup-town", "Set roster + seats, create ST threads + Town Voting thread."),
               cmd("/st end", "End the game."),
             ].join("\n\n"),
           },
@@ -123,6 +125,8 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
               cmd("/st resolve-next", "Resolve the oldest open nomination (majority pass/fail)."),
               cmd("/st execute", "Execute a player after their nomination passed."),
               cmd("/st set-vote", "Manually set a player's vote on a nomination."),
+              cmd("/st vote-visibility", "Public or secret vote tallies."),
+              cmd("/st votes", "Refresh the ST vote tracker in the kib thread."),
             ].join("\n\n"),
           },
           {
@@ -149,7 +153,9 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           {
             name: "Notes",
             value: [
-              "No day threads in minimal mode — everything runs in the town channel.",
+              "Votes live in the **Town Voting** private thread (all players + ST).",
+              "Private ballots are also posted to each personal ST thread.",
+              "ST: pin a **vote tracker** in kib (`/st votes`) with full rolls + Lock/Unlock buttons.",
               "A player can only have **one open nomination** at a time (as nominator or nominee).",
               "Seat order = mention order in `/st setup-town`.",
             ].join("\n"),

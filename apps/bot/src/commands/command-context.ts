@@ -37,7 +37,14 @@ import {
 import { canUseBot, canManageChannelReminders, getAdminRoleIds, getReminderPingRoleId, isInExplicitAllowlist } from "../access.js";
 import { isMinimalMode } from "../bot-mode.js";
 import { isDevMode } from "../dev.js";
-import { dayThreadName } from "../day-thread.js";
+import {
+  dayThreadName,
+  townVoteThreadName,
+  postNominationToChannel,
+  updateNominationMessagesInChannels,
+  addDayThreadMembers,
+  type DayDiscussionChannel,
+} from "../day-thread.js";
 import { getBotClient } from "../discord-client.js";
 import { buildReminderFireContent } from "../reminder-message.js";
 import { reportError } from "../error-reporter.js";
@@ -956,29 +963,189 @@ export async function resolveVotingChannel(
   guild: Guild,
   game: { channelId: string },
   engine: GameEngine,
-): Promise<import("../day-thread.js").DayDiscussionChannel | null> {
+): Promise<DayDiscussionChannel | null> {
   const state = engine.getState();
+  const dayThreadId = state.day?.discordThreadId;
+
+  if (dayThreadId) {
+    const thread = await guild.channels.fetch(dayThreadId).catch(() => null);
+    if (thread?.isThread()) {
+      return thread as DayDiscussionChannel;
+    }
+  }
+
   if (state.townMode) {
     const channel = await guild.channels.fetch(game.channelId).catch(() => null);
     if (channel?.isTextBased() && !channel.isDMBased()) {
-      return channel as import("../day-thread.js").DayDiscussionChannel;
+      return channel as DayDiscussionChannel;
     }
     return null;
   }
 
-  const dayThreadId = state.day?.discordThreadId;
-  if (!dayThreadId) return null;
-  const thread = await guild.channels.fetch(dayThreadId).catch(() => null);
-  if (thread?.isThread()) {
-    return thread as import("../day-thread.js").DayDiscussionChannel;
-  }
   return null;
+}
+
+export async function listPersonalPlayerThreads(
+  guild: Guild,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+): Promise<DayDiscussionChannel[]> {
+  const threads: DayDiscussionChannel[] = [];
+  for (const player of engine.getState().players) {
+    if (isFakePlayer(player.discordUserId)) continue;
+    const thread = await findPersonalPlayerThread(
+      guild,
+      game.channelId,
+      game.id,
+      player.displayName,
+    );
+    if (thread && !thread.archived) {
+      threads.push(thread as DayDiscussionChannel);
+    }
+  }
+  return threads;
+}
+
+export async function isPersonalPlayerThreadChannel(
+  guild: Guild,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+  channelId: string,
+): Promise<boolean> {
+  const threads = await listPersonalPlayerThreads(guild, game, engine);
+  return threads.some((thread) => thread.id === channelId);
+}
+
+export async function collectNominationUpdateChannels(
+  guild: Guild,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+): Promise<DayDiscussionChannel[]> {
+  const channels: DayDiscussionChannel[] = [];
+  const voting = await resolveVotingChannel(guild, game, engine);
+  if (voting) channels.push(voting);
+  if (engine.getState().townMode) {
+    channels.push(...(await listPersonalPlayerThreads(guild, game, engine)));
+  }
+  return channels;
+}
+
+export async function postNominationEverywhere(
+  guild: Guild,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+  nominationId: string,
+): Promise<{ voteThread: boolean; privateBallots: number }> {
+  const voting = await resolveVotingChannel(guild, game, engine);
+  let voteThread = false;
+  if (voting) {
+    voteThread = Boolean(await postNominationToChannel(engine, game.id, voting, nominationId));
+  }
+
+  let privateBallots = 0;
+  if (engine.getState().townMode) {
+    for (const thread of await listPersonalPlayerThreads(guild, game, engine)) {
+      const posted = await postNominationToChannel(engine, game.id, thread, nominationId, {
+        privateBallot: true,
+      });
+      if (posted) privateBallots++;
+    }
+    await refreshStVoteTrackerForGame(guild, game, engine);
+  }
+
+  return { voteThread, privateBallots };
+}
+
+export async function refreshNominationEverywhere(
+  guild: Guild,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+  nominationId: string,
+  options?: { revealSecret?: boolean },
+): Promise<void> {
+  const channels = await collectNominationUpdateChannels(guild, game, engine);
+  await updateNominationMessagesInChannels(engine, game.id, channels, nominationId, options);
+  await refreshStVoteTrackerForGame(guild, game, engine);
+}
+
+export async function refreshStVoteTrackerForGame(
+  guild: Guild,
+  game: { channelId: string },
+  engine: GameEngine,
+): Promise<void> {
+  if (!engine.getState().townMode) return;
+  const { upsertStVoteTracker } = await import("../st-vote-tracker.js");
+  await upsertStVoteTracker(guild, game.channelId, engine);
+}
+
+export async function createTownVoteThread(
+  guild: Guild,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+): Promise<AnyThreadChannel | null> {
+  const parent = await guild.channels.fetch(game.channelId).catch(() => null);
+  if (!isGameTextChannel(parent)) return null;
+
+  const threadName = townVoteThreadName();
+  const existing = await findTownVoteThread(guild, game.channelId);
+  let thread = existing;
+
+  if (!thread) {
+    try {
+      thread = await parent.threads.create({
+        name: threadName,
+        autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+        reason: `Town voting thread for game ${game.id}`,
+        ...( {
+          type: ChannelType.PrivateThread,
+          invitable: false,
+        } as Record<string, unknown>),
+      });
+      await thread
+        .send({
+          content: [
+            "**Town Voting** — nominations and votes happen here.",
+            "You can vote on **any open nomination** with the **Vote** button.",
+            "Prefer a private ballot? Use the Vote button in your personal ST thread.",
+            "Storyteller: `/st resolve-next`, `/st execute`, `/st vote-visibility`, `/st set-vote`.",
+          ].join("\n"),
+        })
+        .catch(() => undefined);
+    } catch {
+      return null;
+    }
+  }
+
+  if (thread.archived) {
+    await thread.setArchived(false, "Town setup; reopening vote thread.").catch(() => undefined);
+  }
+
+  await addDayThreadMembers(guild, thread.id, engine);
+  return thread;
+}
+
+export async function findTownVoteThread(
+  guild: Guild,
+  parentChannelId: string,
+): Promise<AnyThreadChannel | null> {
+  const expectedName = townVoteThreadName();
+  const active = await guild.channels.fetchActiveThreads().catch(() => null);
+  const activeThread = active?.threads.find(
+    (candidate) => candidate.parentId === parentChannelId && candidate.name === expectedName,
+  );
+  if (activeThread) return activeThread;
+
+  const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
+  if (!isGameTextChannel(parent)) return null;
+  const archived = await parent.threads.fetchArchived({ type: "private" }).catch(() => null);
+  return archived?.threads.find((candidate) => candidate.name === expectedName) ?? null;
 }
 
 export async function requireTownVotingChannel(
   interaction: CommandInteraction,
   game: { id: string; channelId: string },
   engine: GameEngine,
+  options?: { allowPersonalThread?: boolean },
 ): Promise<boolean> {
   const state = engine.getState();
   if (!state.townMode) {
@@ -993,15 +1160,31 @@ export async function requireTownVotingChannel(
     return false;
   }
 
-  if (interaction.channelId !== game.channelId) {
-    await replyOrEditInteraction(interaction, {
-      content: `Nomination and voting commands must be used in the town channel: <#${game.channelId}>.`,
-      flags: MessageFlags.Ephemeral,
-    });
-    return false;
+  const voteThreadId = state.day.discordThreadId;
+  const inTown = interaction.channelId === game.channelId;
+  const inVoteThread = Boolean(voteThreadId && interaction.channelId === voteThreadId);
+  let inPersonal = false;
+  if (options?.allowPersonalThread !== false && interaction.guild) {
+    inPersonal = await isPersonalPlayerThreadChannel(
+      interaction.guild,
+      game,
+      engine,
+      interaction.channelId,
+    );
   }
 
-  return true;
+  if (inTown || inVoteThread || inPersonal) {
+    return true;
+  }
+
+  const voteHint = voteThreadId
+    ? `the voting thread <#${voteThreadId}>`
+    : `the town channel <#${game.channelId}>`;
+  await replyOrEditInteraction(interaction, {
+    content: `Use this command in ${voteHint}, or your private ST thread.`,
+    flags: MessageFlags.Ephemeral,
+  });
+  return false;
 }
 
 export async function requireDayThread(
