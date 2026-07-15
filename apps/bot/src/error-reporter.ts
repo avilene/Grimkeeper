@@ -41,20 +41,29 @@ function formatContextValue(value: unknown): string {
   }
 }
 
-function truncateField(value: string, max = EMBED_FIELD_LIMIT): string {
-  if (value.length <= max) return value;
-  return `${value.slice(0, max - 14)}\n… (truncated)`;
+const TRUNCATED_SUFFIX = "\n… (truncated)";
+
+function wrapCodeBlock(body: string, max = EMBED_FIELD_LIMIT, language?: string): string {
+  const open = language ? `\`\`\`${language}\n` : "```\n";
+  const close = "\n```";
+  const maxBodyLength = max - open.length - close.length;
+  let content = body;
+  if (content.length > maxBodyLength) {
+    const sliceLength = Math.max(0, maxBodyLength - TRUNCATED_SUFFIX.length);
+    content = `${content.slice(0, sliceLength)}${TRUNCATED_SUFFIX}`;
+  }
+  return `${open}${content}${close}`;
 }
 
 function yamlField(meta: Record<string, unknown>): string {
   const lines = Object.entries(meta)
     .filter(([key, value]) => value !== undefined && key !== "time")
     .map(([key, value]) => `${key}: ${formatContextValue(value)}`);
-  return truncateField(`\`\`\`yaml\n${lines.join("\n")}\n\`\`\``);
+  return wrapCodeBlock(lines.join("\n"), EMBED_FIELD_LIMIT, "yaml");
 }
 
 function codeField(body: string): string {
-  return truncateField(`\`\`\`\n${body}\n\`\`\``);
+  return wrapCodeBlock(body);
 }
 
 function embedColorForSource(source: string, hasError: boolean): number {

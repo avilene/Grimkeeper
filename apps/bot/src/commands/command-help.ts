@@ -1,7 +1,7 @@
 import { CommandInteraction, EmbedBuilder } from "discord.js";
 import { Discord, Slash, SlashGroup } from "discordx";
 
-import { requireCommandAccess } from "./command-context.js";
+import { replyOrEditInteraction, requireCommandAccess } from "./command-context.js";
 import {
   buildDevHelpEmbeds,
   buildGameHelpEmbeds,
@@ -12,7 +12,7 @@ async function replyWithHelp(
   interaction: CommandInteraction,
   embeds: EmbedBuilder[],
 ): Promise<void> {
-  await interaction.reply({ embeds });
+  await replyOrEditInteraction(interaction, { embeds });
 }
 
 @Discord()

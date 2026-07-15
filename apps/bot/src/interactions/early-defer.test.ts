@@ -34,10 +34,12 @@ describe("shouldDeferStSlashCommand", () => {
     expect(shouldDeferStSlashCommand(chatCommand("st", "execute") as never)).toBe(false);
   });
 
-  it("defers all /st commands in minimal mode", () => {
+  it("defers all /st commands in minimal mode except help", () => {
     vi.mocked(isMinimalMode).mockReturnValue(true);
     expect(shouldDeferStSlashCommand(chatCommand("st", "reminders") as never)).toBe(true);
     expect(shouldDeferStSlashCommand(chatCommand("st", "execute") as never)).toBe(true);
+    expect(shouldDeferStSlashCommand(chatCommand("st", "help") as never)).toBe(false);
+    expect(shouldDeferStSlashCommand(chatCommand("st", "commands") as never)).toBe(false);
   });
 
   it("skips non-/st commands", () => {

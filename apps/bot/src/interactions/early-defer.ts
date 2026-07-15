@@ -13,15 +13,19 @@ const ST_REMINDER_SUBCOMMANDS = new Set([
   "edit-reminder",
 ]);
 
+const ST_FAST_SUBCOMMANDS = new Set(["help", "commands"]);
+
 const INTERACTION_DEFER_BUDGET_MS = 2_800;
 
 export function shouldDeferStSlashCommand(interaction: Interaction): boolean {
   if (!interaction.isChatInputCommand()) return false;
   if (interaction.commandName !== "st") return false;
 
+  const subcommand = interaction.options.getSubcommand(false);
+  if (subcommand !== null && ST_FAST_SUBCOMMANDS.has(subcommand)) return false;
+
   if (isMinimalMode()) return true;
 
-  const subcommand = interaction.options.getSubcommand(false);
   return subcommand !== null && ST_REMINDER_SUBCOMMANDS.has(subcommand);
 }
 

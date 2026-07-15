@@ -65,6 +65,7 @@ describe("buildErrorLogEmbed", () => {
     expect(data.fields?.[0]?.value).toContain("type: Error");
     const logField = data.fields?.[1]?.value ?? "";
     expect(logField).toMatch(/^```\n/);
+    expect(logField).toMatch(/\n```$/);
     expect(logField).toContain("source: interaction.failed");
     expect(logField).toContain("command: /st clear-reminders");
     expect(logField).toContain("message: boom");
@@ -86,6 +87,7 @@ describe("buildErrorLogEmbed", () => {
     const logField = embed.toJSON().fields?.find((field) => field.name === "Log");
     expect(logField?.value?.length).toBeLessThanOrEqual(1024);
     expect(logField?.value).toContain("truncated");
+    expect(logField?.value).toMatch(/\n```$/);
   });
 });
 
