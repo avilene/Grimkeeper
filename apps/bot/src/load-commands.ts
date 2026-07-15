@@ -9,6 +9,7 @@ export async function loadCommandModules(): Promise<void> {
     await import("./commands/game-minimal.js");
     await import("./commands/st-minimal.js");
     await import("./commands/st-reminders.js");
+    await import("./commands/command-help.js");
     await import("./commands/dev-minimal.js");
     log("info", "commands.load.done", { botMode: "minimal", groups: ["game", "st", "dev"] });
     return;
@@ -17,6 +18,7 @@ export async function loadCommandModules(): Promise<void> {
   await import("./commands/game.js");
   await import("./commands/st.js");
   await import("./commands/st-reminders.js");
+  await import("./commands/command-help.js");
   await import("./commands/dev.js");
   log("info", "commands.load.done", { botMode: "full", groups: ["game", "st", "dev"] });
 }
