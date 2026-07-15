@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   isStorytellerThread,
   kibThreadName,
+  personalPlayerThreadName,
   stPlayerThreadName,
   storytellerThreadName,
   STORYTELLER_THREAD_NAME,
@@ -29,6 +30,28 @@ describe("stPlayerThreadName", () => {
     const longName = "y".repeat(120);
     expect(stPlayerThreadName(longName)).toHaveLength(100);
     expect(stPlayerThreadName(longName).startsWith("ST ")).toBe(true);
+  });
+});
+
+describe("personalPlayerThreadName", () => {
+  const original = process.env.BOT_MODE;
+
+  afterEach(() => {
+    if (original === undefined) {
+      delete process.env.BOT_MODE;
+    } else {
+      process.env.BOT_MODE = original;
+    }
+  });
+
+  it("includes game id in minimal mode so games do not share threads", () => {
+    process.env.BOT_MODE = "minimal";
+    expect(personalPlayerThreadName("abcdef12-3456", "Alice")).toBe("ST Alice · abcdef");
+  });
+
+  it("includes game id in full mode", () => {
+    process.env.BOT_MODE = "full";
+    expect(personalPlayerThreadName("abcdef12-3456", "Alice")).toBe("player-alice-abcdef");
   });
 });
 

@@ -44,7 +44,8 @@ COPY --from=build /app/packages/engine/package.json ./packages/engine/package.js
 COPY --from=build /app/package.json ./package.json
 
 COPY scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
-RUN chmod +x ./scripts/docker-entrypoint.sh
+COPY scripts/wipe-db.sh ./scripts/wipe-db.sh
+RUN chmod +x ./scripts/docker-entrypoint.sh ./scripts/wipe-db.sh
 
 VOLUME ["/app/data"]
 ENV DATABASE_URL=file:/app/data/grimkeeper.db

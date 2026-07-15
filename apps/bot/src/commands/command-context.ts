@@ -34,7 +34,7 @@ import {
   type PlayerState,
 } from "@grimkeeper/engine";
 
-import { canUseBot, canManageChannelReminders, getReminderPingRoleId, isInExplicitAllowlist } from "../access.js";
+import { canUseBot, canManageChannelReminders, getAdminRoleIds, getReminderPingRoleId, isInExplicitAllowlist } from "../access.js";
 import { isMinimalMode } from "../bot-mode.js";
 import { isDevMode } from "../dev.js";
 import { dayThreadName } from "../day-thread.js";
@@ -548,15 +548,30 @@ export async function applyGameChannelPermissions(
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!channel || !("permissionOverwrites" in channel)) return;
 
-  const threadPermissions = {
+  // ST (+ admins): full thread control so they can join private player threads and invite helpers.
+  const stThreadPermissions = {
     CreatePublicThreads: true,
     CreatePrivateThreads: true,
     SendMessagesInThreads: true,
     ManageThreads: true,
   };
+  // Players must NOT have ManageThreads — with it, Discord lets them invite others into
+  // private threads even when invitable is false.
+  const playerThreadPermissions = {
+    CreatePublicThreads: false,
+    CreatePrivateThreads: false,
+    SendMessagesInThreads: true,
+    ManageThreads: false,
+  };
 
-  await channel.permissionOverwrites.edit(stRoleId, threadPermissions).catch(() => undefined);
-  await channel.permissionOverwrites.edit(playersRoleId, threadPermissions).catch(() => undefined);
+  await channel.permissionOverwrites.edit(stRoleId, stThreadPermissions).catch(() => undefined);
+  await channel.permissionOverwrites.edit(playersRoleId, playerThreadPermissions).catch(() => undefined);
+
+  for (const adminRoleId of getAdminRoleIds()) {
+    await channel.permissionOverwrites
+      .edit(adminRoleId, stThreadPermissions)
+      .catch(() => undefined);
+  }
 }
 
 export async function postToTownChannel(
@@ -632,11 +647,12 @@ export async function ensureGameThreads(
 }
 
 export function personalPlayerThreadName(gameId: string, displayName: string): string {
+  const shortGameId = gameId.slice(0, 6);
   if (isMinimalMode()) {
-    return stPlayerThreadName(displayName);
+    // Include game id so successive games in the same channel do not reuse stale threads.
+    return `ST ${displayName} · ${shortGameId}`.slice(0, 100);
   }
   const sanitized = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const shortGameId = gameId.slice(0, 6);
   return `player-${sanitized || "member"}-${shortGameId}`.slice(0, 100);
 }
 
@@ -754,7 +770,10 @@ export async function createPlayerStThreads(
 
     if (isMinimalMode()) {
       await thread
-        .send(`Private ST thread for <@${player.discordUserId}>.`)
+        .send({
+          content: `Private ST thread for <@${player.discordUserId}>. Only you, the storyteller, and server admins can access this thread.`,
+          allowedMentions: { users: [player.discordUserId] },
+        })
         .catch(() => undefined);
     }
 
@@ -870,9 +889,10 @@ export async function createPersonalPlayerThread(
     });
 
     await thread.members.add(userId).catch(() => undefined);
-    await thread.send(
-      `Hi <@${userId}>! This is your private game thread for Grimkeeper.`,
-    );
+    await thread.send({
+      content: `Hi <@${userId}>! This is your private game thread for Grimkeeper.\nOnly you, the storyteller, and server admins can see this thread — do not try to invite others.`,
+      allowedMentions: { users: [userId] },
+    });
     return thread;
   } catch {
     return null;

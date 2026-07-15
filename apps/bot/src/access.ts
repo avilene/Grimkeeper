@@ -84,3 +84,21 @@ export function getReminderPingRoleId(): string | null {
   const roleId = process.env.REMINDER_PING_ROLE_ID?.trim();
   return roleId || null;
 }
+
+/** Role IDs that can help in private ST/player threads (Manage Threads on game channels). */
+export function getAdminRoleIds(): Set<string> {
+  return parseList(process.env.ADMIN_ROLE_IDS);
+}
+
+export async function hasAdminRole(interaction: CommandInteraction): Promise<boolean> {
+  const adminRoleIds = getAdminRoleIds();
+  if (adminRoleIds.size === 0) return false;
+
+  const userId = interaction.user?.id;
+  if (!userId || !interaction.guildId) return false;
+
+  const member = await interaction.guild?.members.fetch(userId).catch(() => null);
+  if (!member) return false;
+
+  return member.roles.cache.some((role) => adminRoleIds.has(role.id));
+}
