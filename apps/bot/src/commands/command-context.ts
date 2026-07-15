@@ -243,19 +243,28 @@ export async function syncGameProjection(gameId: string, engine: GameEngine): Pr
 
 export async function requireStorytellerGame(interaction: CommandInteraction) {
   if (!interaction.guildId) {
-    await interaction.reply({ content: "This command must be used in a server.", flags: MessageFlags.Ephemeral });
+    await replyOrEditInteraction(interaction, {
+      content: "This command must be used in a server.",
+      flags: MessageFlags.Ephemeral,
+    });
     return null;
   }
 
   const game = await getActiveGameForGuild(interaction.guildId);
   if (!game) {
-    await interaction.reply({ content: "No active game found.", flags: MessageFlags.Ephemeral });
+    await replyOrEditInteraction(interaction, {
+      content: "No active game found.",
+      flags: MessageFlags.Ephemeral,
+    });
     return null;
   }
 
   const engine = await loadEngine(game.id);
   if (!engine.isStoryteller(interaction.user.id)) {
-    await interaction.reply({ content: "Only storytellers can run this command.", flags: MessageFlags.Ephemeral });
+    await replyOrEditInteraction(interaction, {
+      content: "Only storytellers can run this command.",
+      flags: MessageFlags.Ephemeral,
+    });
     return null;
   }
 
@@ -1107,7 +1116,8 @@ export async function createTownVoteThread(
             "**Town Voting** — nominations and votes happen here.",
             "You can vote on **any open nomination** with the **Vote** button.",
             "Prefer a private ballot? Use the Vote button in your personal ST thread.",
-            "Storyteller: `/st resolve-next`, `/st execute`, `/st vote-visibility`, `/st set-vote`.",
+            "Players: `/game do nominate` (or type `/game do` and filter).",
+            "Storyteller: kib **control panel**, or `/st do resolve-next` / `execute` / `vote-visibility`.",
           ].join("\n"),
         })
         .catch(() => undefined);
@@ -1154,7 +1164,7 @@ export async function requireTownVotingChannel(
 
   if (state.phase !== "day" || !state.day) {
     await replyOrEditInteraction(interaction, {
-      content: "Town voting is not open yet. The storyteller must run `/st setup-town`.",
+      content: "Town voting is not open yet. The storyteller must run `/st do setup-town`.",
       flags: MessageFlags.Ephemeral,
     });
     return false;

@@ -85,13 +85,22 @@ client.on("interactionCreate", (interaction) => {
     await deferTask;
     logCommandInvoked(interaction);
 
-    if (interaction.isButton() || interaction.isModalSubmit()) {
+    if (interaction.isButton() || interaction.isModalSubmit() || interaction.isUserSelectMenu()) {
       const { handleVoteButton, handleVoteModalSubmit } = await import("./interactions/day-vote.js");
       const { handleLockVotesButton } = await import("./interactions/lock-votes.js");
+      const { handleStPanelButton, handleStPanelUserSelect } = await import(
+        "./interactions/st-panel.js"
+      );
       if (interaction.isButton()) {
+        const handledPanel = await handleStPanelButton(interaction);
+        if (handledPanel) return;
         const handledLock = await handleLockVotesButton(interaction);
         if (handledLock) return;
         const handled = await handleVoteButton(interaction);
+        if (handled) return;
+      }
+      if (interaction.isUserSelectMenu()) {
+        const handled = await handleStPanelUserSelect(interaction);
         if (handled) return;
       }
       if (interaction.isModalSubmit()) {

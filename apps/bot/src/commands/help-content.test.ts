@@ -26,7 +26,7 @@ describe("help content", () => {
     expect(game.data.title).toBe("Game commands");
     expect(game.data.fields?.some((field) => field.name === "Nominations & votes")).toBe(true);
     expect(st.data.title).toContain("minimal mode");
-    expect(st.data.description).toContain("/st setup-town");
+    expect(st.data.description).toContain("/st do setup-town");
   });
 
   it("builds full-mode guides", () => {

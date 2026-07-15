@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import {
   ApplicationCommandOptionType,
+  AutocompleteInteraction,
   CommandInteraction,
-  EmbedBuilder,
   MessageFlags,
   User,
 } from "discord.js";
@@ -13,9 +13,11 @@ import { GameCommandKind } from "@grimkeeper/engine";
 import { minPlayersForMode } from "../bot-mode.js";
 import { formatVoteVisibility } from "../day-thread.js";
 import { upsertPinnedGameStatus } from "../game-status.js";
-import { upsertStVoteTracker } from "../st-vote-tracker.js";
 import { runSetPlayerVote } from "../set-vote.js";
+import { upsertStControlPanel } from "../st-control-panel.js";
+import { upsertStVoteTracker } from "../st-vote-tracker.js";
 import { parseUserMentionsFromString } from "../town-setup.js";
+import { respondDoAutocomplete, ST_DO_ACTIONS } from "./action-catalog.js";
 import {
   GAME_DISCORD_ROLES_ENABLED,
   addRoleToUser,
@@ -40,9 +42,198 @@ import {
 @SlashGroup({ name: "st", description: "Storyteller commands for an active game" })
 @SlashGroup("st")
 export class StCommandsMinimal {
-  @Slash({ name: "start", description: "Start the game and create private ST threads for each player" })
-  async start(interaction: CommandInteraction): Promise<void> {
+  @Slash({
+    name: "do",
+    description: "Run a storyteller action (type to filter — avoids a long subcommand list)",
+  })
+  async do(
+    @SlashOption({
+      name: "action",
+      description: "Action to run (start typing to filter)",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+      autocomplete: respondStDoAutocomplete,
+    })
+    action: string,
+    @SlashOption({
+      name: "player",
+      description: "Target player (execute, mark-dead)",
+      type: ApplicationCommandOptionType.User,
+      required: false,
+    })
+    player: User | undefined,
+    @SlashOption({
+      name: "user",
+      description: "Target user (add/remove spectator)",
+      type: ApplicationCommandOptionType.User,
+      required: false,
+    })
+    user: User | undefined,
+    @SlashOption({
+      name: "players",
+      description: "Ordered @mentions for setup-town",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    players: string | undefined,
+    @SlashOption({
+      name: "alive",
+      description: "For mark-dead: true = alive, false = dead (default false)",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    alive: boolean | undefined,
+    @SlashChoice({ name: "Public tallies", value: "public" })
+    @SlashChoice({ name: "Secret tallies", value: "secret" })
+    @SlashOption({
+      name: "mode",
+      description: "For vote-visibility: public or secret",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    mode: "public" | "secret" | undefined,
+    @SlashOption({
+      name: "choice",
+      description: "For set-vote: yes / no / conditional",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    choice: "yes" | "no" | "conditional" | undefined,
+    @SlashOption({
+      name: "voter",
+      description: "For set-vote: who is voting",
+      type: ApplicationCommandOptionType.User,
+      required: false,
+    })
+    voter: User | undefined,
+    @SlashOption({
+      name: "nominee",
+      description: "For set-vote: nominated player",
+      type: ApplicationCommandOptionType.User,
+      required: false,
+    })
+    nominee: User | undefined,
+    @SlashOption({
+      name: "reason",
+      description: "For set-vote conditional votes",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    reason: string | undefined,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
     if (!(await requireCommandAccess(interaction))) return;
+
+    const normalized = action.trim().toLowerCase();
+    const known = ST_DO_ACTIONS.some((entry) => entry.name === normalized);
+    if (!known) {
+      await replyOrEditInteraction(interaction, {
+        content: `Unknown action \`${action}\`. Start typing after \`action:\` to see options, or use \`/st help\`.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    switch (normalized) {
+      case "start":
+        await this.start(interaction);
+        return;
+      case "end":
+        await this.end(interaction);
+        return;
+      case "add-spectator":
+        if (!user) {
+          await missingOption(interaction, "user", "add-spectator");
+          return;
+        }
+        await this.addSpectator(user, interaction);
+        return;
+      case "remove-spectator":
+        if (!user) {
+          await missingOption(interaction, "user", "remove-spectator");
+          return;
+        }
+        await this.removeSpectator(user, interaction);
+        return;
+      case "setup-town":
+        if (!players?.trim()) {
+          await missingOption(interaction, "players", "setup-town");
+          return;
+        }
+        await this.setupTown(players, interaction);
+        return;
+      case "resolve-next":
+        await this.resolveNext(interaction);
+        return;
+      case "execute":
+        if (!player) {
+          await missingOption(interaction, "player", "execute");
+          return;
+        }
+        await this.execute(player, interaction);
+        return;
+      case "mark-dead":
+        if (!player) {
+          await missingOption(interaction, "player", "mark-dead");
+          return;
+        }
+        await this.markDead(player, alive, interaction);
+        return;
+      case "votes":
+        await this.votes(interaction);
+        return;
+      case "panel":
+        await this.panel(interaction);
+        return;
+      case "vote-visibility":
+        if (!mode) {
+          await missingOption(interaction, "mode", "vote-visibility");
+          return;
+        }
+        await this.voteVisibility(mode, interaction);
+        return;
+      case "set-vote":
+        if (!choice) {
+          await missingOption(interaction, "choice", "set-vote");
+          return;
+        }
+        await this.setVote(choice, voter, nominee, reason, interaction);
+        return;
+      default:
+        await replyOrEditInteraction(interaction, {
+          content: `Action \`${normalized}\` is not implemented.`,
+          flags: MessageFlags.Ephemeral,
+        });
+    }
+  }
+
+  @Slash({
+    name: "panel",
+    description: "Post or refresh the ST control panel (buttons) in the kib thread",
+  })
+  async panel(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    if (!interaction.guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const message = await upsertStControlPanel(interaction.guild, game.channelId, engine);
+      const thread = await getStorytellerThread(interaction.guild, game.channelId);
+      await replyOrEditInteraction(interaction, {
+        content: message
+          ? `ST control panel updated in ${thread ? `<#${thread.id}>` : "your kib thread"}.`
+          : "Could not post the control panel (is the kib thread available?).",
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async start(interaction: CommandInteraction): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
 
@@ -75,9 +266,7 @@ export class StCommandsMinimal {
     }
   }
 
-  @Slash({ name: "end", description: "End the game" })
   async end(interaction: CommandInteraction): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
     const guild = interaction.guild;
@@ -98,7 +287,7 @@ export class StCommandsMinimal {
       }
 
       const cleanupHint = GAME_DISCORD_ROLES_ENABLED ? " Game roles cleaned up." : "";
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: `Game ended.${cleanupHint}`,
       });
     } catch (error) {
@@ -106,20 +295,7 @@ export class StCommandsMinimal {
     }
   }
 
-  @Slash({ name: "add-spectator", description: "Assign spectator role and add user to the kib thread" })
-  async addSpectator(
-    @SlashOption({
-      name: "user",
-      description: "User to assign as spectator",
-      type: ApplicationCommandOptionType.User,
-      required: true,
-    })
-    user: User,
-    interaction?: CommandInteraction,
-  ): Promise<void> {
-    if (!interaction) return;
-    if (!(await requireCommandAccess(interaction))) return;
-
+  async addSpectator(user: User, interaction: CommandInteraction): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
     const guild = interaction.guild;
@@ -127,7 +303,7 @@ export class StCommandsMinimal {
 
     const gameRoles = await getGameRoles(guild, game.channelId);
     if (!gameRoles) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "Could not find game roles for this channel.",
         flags: MessageFlags.Ephemeral,
       });
@@ -138,7 +314,7 @@ export class StCommandsMinimal {
     const isPlayer = engine.getPlayerByDiscordId(user.id);
     const isSt = engine.isStoryteller(user.id);
     if (isPlayer || isSt) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "That user is already a player or storyteller in this game.",
         flags: MessageFlags.Ephemeral,
       });
@@ -153,26 +329,13 @@ export class StCommandsMinimal {
     }
 
     const threadHint = thread ? ` Added to <#${thread.id}>.` : " Could not add to kib thread.";
-    await interaction.reply({
+    await replyOrEditInteraction(interaction, {
       content: `Assigned spectator role to <@${user.id}>.${threadHint}`,
       flags: MessageFlags.Ephemeral,
     });
   }
 
-  @Slash({ name: "remove-spectator", description: "Remove spectator role from a user" })
-  async removeSpectator(
-    @SlashOption({
-      name: "user",
-      description: "User to remove as spectator",
-      type: ApplicationCommandOptionType.User,
-      required: true,
-    })
-    user: User,
-    interaction?: CommandInteraction,
-  ): Promise<void> {
-    if (!interaction) return;
-    if (!(await requireCommandAccess(interaction))) return;
-
+  async removeSpectator(user: User, interaction: CommandInteraction): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
     const guild = interaction.guild;
@@ -180,7 +343,7 @@ export class StCommandsMinimal {
 
     const gameRoles = await getGameRoles(guild, game.channelId);
     if (!gameRoles) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "Could not find game roles for this channel.",
         flags: MessageFlags.Ephemeral,
       });
@@ -188,29 +351,13 @@ export class StCommandsMinimal {
     }
 
     await removeRoleFromUser(guild, user.id, gameRoles.spectatorRole.id);
-    await interaction.reply({
+    await replyOrEditInteraction(interaction, {
       content: `Removed spectator role from <@${user.id}>.`,
       flags: MessageFlags.Ephemeral,
     });
   }
 
-  @Slash({
-    name: "setup-town",
-    description: "Set up town from ordered @mentions, create player threads, and open voting",
-  })
-  async setupTown(
-    @SlashOption({
-      name: "players",
-      description: "Players in seat order — @mentions separated by spaces",
-      type: ApplicationCommandOptionType.String,
-      required: true,
-    })
-    playersInput: string,
-    interaction?: CommandInteraction,
-  ): Promise<void> {
-    if (!interaction) return;
-    if (!(await requireCommandAccess(interaction))) return;
-
+  async setupTown(playersInput: string, interaction: CommandInteraction): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
     const guild = interaction.guild;
@@ -286,6 +433,7 @@ export class StCommandsMinimal {
 
       await upsertPinnedGameStatus(guild, game.channelId, engine);
       await upsertStVoteTracker(guild, game.channelId, engine);
+      await upsertStControlPanel(guild, game.channelId, engine);
 
       await replyOrEditInteraction(interaction, {
         content: [
@@ -296,8 +444,8 @@ export class StCommandsMinimal {
             : "",
           voteThread
             ? `Voting thread: <#${voteThread.id}> — nominate and vote there (or ballot privately in your ST thread).`
-            : "Players can `/game nominate` in this channel.",
-          "ST vote tracker is pinned in your kib thread — lock votes from there.",
+            : "Players can `/game do nominate` in this channel.",
+          "ST control panel + vote tracker are pinned in your kib thread.",
         ]
           .filter(Boolean)
           .join("\n"),
@@ -308,9 +456,7 @@ export class StCommandsMinimal {
     }
   }
 
-  @Slash({ name: "resolve-next", description: "Resolve the next nomination in queue order" })
   async resolveNext(interaction: CommandInteraction): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
 
@@ -345,12 +491,13 @@ export class StCommandsMinimal {
         await refreshNominationEverywhere(interaction.guild, game, engine, next.id, {
           revealSecret: true,
         });
+        await upsertStControlPanel(interaction.guild, game.channelId, engine);
       }
       if (channel) {
         await channel
           .send(
             `Nomination #${next.order} for **${nominee?.displayName ?? "Unknown"}** ${passed ? "**passed**" : "**failed**"} (${yesVotes}/${livingCount} living, ${tally}).` +
-              (passed ? " ST may run `/st execute`." : ""),
+              (passed ? " ST may run `/st do execute` (or use the control panel)." : ""),
           )
           .catch(() => undefined);
       }
@@ -364,19 +511,7 @@ export class StCommandsMinimal {
     }
   }
 
-  @Slash({ name: "execute", description: "Execute a player after a nomination passes" })
-  async execute(
-    @SlashOption({
-      name: "player",
-      description: "Player to execute",
-      type: ApplicationCommandOptionType.User,
-      required: true,
-    })
-    player: User,
-    interaction?: CommandInteraction,
-  ): Promise<void> {
-    if (!interaction) return;
-    if (!(await requireCommandAccess(interaction))) return;
+  async execute(player: User, interaction: CommandInteraction): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
 
@@ -430,6 +565,7 @@ export class StCommandsMinimal {
 
       if (interaction.guild) {
         await upsertPinnedGameStatus(interaction.guild, game.channelId, engine);
+        await upsertStControlPanel(interaction.guild, game.channelId, engine);
       }
 
       await replyOrEditInteraction(interaction, {
@@ -441,26 +577,11 @@ export class StCommandsMinimal {
     }
   }
 
-  @Slash({ name: "mark-dead", description: "Mark a player dead or alive (ST correction)" })
   async markDead(
-    @SlashOption({
-      name: "player",
-      description: "Player to update",
-      type: ApplicationCommandOptionType.User,
-      required: true,
-    })
     player: User,
-    @SlashOption({
-      name: "alive",
-      description: "Mark alive (true) or dead (false)",
-      type: ApplicationCommandOptionType.Boolean,
-      required: false,
-    })
     alive: boolean | undefined,
-    interaction?: CommandInteraction,
+    interaction: CommandInteraction,
   ): Promise<void> {
-    if (!interaction) return;
-    if (!(await requireCommandAccess(interaction))) return;
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
 
@@ -486,6 +607,7 @@ export class StCommandsMinimal {
 
       if (interaction.guild) {
         await upsertPinnedGameStatus(interaction.guild, game.channelId, engine);
+        await upsertStControlPanel(interaction.guild, game.channelId, engine);
       }
 
       await replyOrEditInteraction(interaction, {
@@ -497,12 +619,7 @@ export class StCommandsMinimal {
     }
   }
 
-  @Slash({
-    name: "votes",
-    description: "Refresh the ST vote tracker in the kib thread (who voted what + lock buttons)",
-  })
   async votes(interaction: CommandInteraction): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
     if (!interaction.guild) return;
@@ -522,24 +639,10 @@ export class StCommandsMinimal {
     }
   }
 
-  @Slash({
-    name: "vote-visibility",
-    description: "Set public or secret vote tallies (Organ Grinder mode)",
-  })
   async voteVisibility(
-    @SlashChoice({ name: "Public tallies", value: "public" })
-    @SlashChoice({ name: "Secret tallies", value: "secret" })
-    @SlashOption({
-      name: "mode",
-      description: "public shows tallies; secret hides them from players",
-      type: ApplicationCommandOptionType.String,
-      required: true,
-    })
     mode: "public" | "secret",
-    interaction?: CommandInteraction,
+    interaction: CommandInteraction,
   ): Promise<void> {
-    if (!interaction) return;
-    if (!(await requireCommandAccess(interaction))) return;
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
 
@@ -559,6 +662,10 @@ export class StCommandsMinimal {
         ?.send(`Vote visibility is now **${formatVoteVisibility(mode)}**.`)
         .catch(() => undefined);
 
+      if (interaction.guild) {
+        await upsertStControlPanel(interaction.guild, game.channelId, engine);
+      }
+
       await replyOrEditInteraction(interaction, {
         content: `Vote visibility set to **${formatVoteVisibility(mode)}**.`,
         flags: MessageFlags.Ephemeral,
@@ -568,40 +675,13 @@ export class StCommandsMinimal {
     }
   }
 
-  @Slash({ name: "set-vote", description: "Manually set a player's vote on a nomination" })
   async setVote(
-    @SlashOption({
-      name: "choice",
-      description: "Vote to record",
-      type: ApplicationCommandOptionType.String,
-      required: true,
-    })
     choice: "yes" | "no" | "conditional",
-    @SlashOption({
-      name: "voter",
-      description: "Player casting the vote",
-      type: ApplicationCommandOptionType.User,
-      required: false,
-    })
     voter: User | undefined,
-    @SlashOption({
-      name: "nominee",
-      description: "Nominated player",
-      type: ApplicationCommandOptionType.User,
-      required: false,
-    })
     nominee: User | undefined,
-    @SlashOption({
-      name: "reason",
-      description: "Required for conditional votes",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-    })
     reason: string | undefined,
-    interaction?: CommandInteraction,
+    interaction: CommandInteraction,
   ): Promise<void> {
-    if (!interaction) return;
-    if (!(await requireCommandAccess(interaction))) return;
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
 
@@ -615,4 +695,19 @@ export class StCommandsMinimal {
       reason: reason ?? null,
     });
   }
+}
+
+async function respondStDoAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  await respondDoAutocomplete(interaction, ST_DO_ACTIONS);
+}
+
+async function missingOption(
+  interaction: CommandInteraction,
+  option: string,
+  action: string,
+): Promise<void> {
+  await replyOrEditInteraction(interaction, {
+    content: `\`/st do ${action}\` needs \`${option}:\`. See \`/st help\`.`,
+    flags: MessageFlags.Ephemeral,
+  });
 }

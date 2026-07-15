@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   ApplicationCommandOptionType,
+  AutocompleteInteraction,
   CommandInteraction,
   EmbedBuilder,
   MessageFlags,
@@ -13,6 +14,7 @@ import { GameCommandKind, GameEngine } from "@grimkeeper/engine";
 import { isDevMode } from "../dev.js";
 import { type StandardEditionChoice } from "../edition-choices.js";
 import { castVoteFromSlash } from "../interactions/day-vote.js";
+import { GAME_DO_ACTIONS, respondDoAutocomplete } from "./action-catalog.js";
 import {
   GAME_DISCORD_ROLES_ENABLED,
   addRoleToUser,
@@ -39,24 +41,145 @@ import {
 @SlashGroup({ name: "game", description: "Player commands for Blood on the Clocktower games" })
 @SlashGroup("game")
 export class GameCommandsMinimal {
-  @Slash({ name: "create", description: "Create a new game in this channel" })
-  async create(
+  @Slash({
+    name: "do",
+    description: "Run a player action (type to filter — avoids a long subcommand list)",
+  })
+  async do(
+    @SlashOption({
+      name: "action",
+      description: "Action to run (start typing to filter)",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+      autocomplete: respondGameDoAutocomplete,
+    })
+    action: string,
     @SlashChoice({ name: "Trouble Brewing", value: "tb" })
     @SlashChoice({ name: "Bad Moon Rising", value: "bmr" })
     @SlashChoice({ name: "Sects & Violets", value: "snv" })
     @SlashOption({
       name: "edition",
-      description: "Script edition",
+      description: "For create: script edition",
       type: ApplicationCommandOptionType.String,
       required: false,
     })
     edition: StandardEditionChoice | undefined,
+    @SlashOption({
+      name: "player",
+      description: "For nominate: player to nominate",
+      type: ApplicationCommandOptionType.User,
+      required: false,
+    })
+    player: User | undefined,
+    @SlashOption({
+      name: "accusation",
+      description: "For nominate: accusation text",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    accusation: string | undefined,
+    @SlashOption({
+      name: "text",
+      description: "For defend: defense text",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    text: string | undefined,
+    @SlashOption({
+      name: "nominee",
+      description: "For vote: nominated player",
+      type: ApplicationCommandOptionType.User,
+      required: false,
+    })
+    nominee: User | undefined,
+    @SlashOption({
+      name: "choice",
+      description: "For vote: yes / no / conditional",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    choice: "yes" | "no" | "conditional" | undefined,
+    @SlashOption({
+      name: "reason",
+      description: "For conditional votes",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    reason: string | undefined,
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
     if (!(await requireCommandAccess(interaction))) return;
+
+    const normalized = action.trim().toLowerCase();
+    const known = GAME_DO_ACTIONS.some((entry) => entry.name === normalized);
+    if (!known) {
+      await replyOrEditInteraction(interaction, {
+        content: `Unknown action \`${action}\`. Start typing after \`action:\` to see options, or use \`/game help\`.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    switch (normalized) {
+      case "create":
+        await this.create(edition, interaction);
+        return;
+      case "join":
+        await this.join(interaction);
+        return;
+      case "leave":
+        await this.leave(interaction);
+        return;
+      case "list":
+        await this.list(interaction);
+        return;
+      case "nominate":
+        if (!player) {
+          await missingOption(interaction, "player", "nominate");
+          return;
+        }
+        if (!accusation?.trim()) {
+          await missingOption(interaction, "accusation", "nominate");
+          return;
+        }
+        await this.nominate(player, accusation, interaction);
+        return;
+      case "defend":
+        if (!text?.trim()) {
+          await missingOption(interaction, "text", "defend");
+          return;
+        }
+        await this.defend(text, interaction);
+        return;
+      case "vote":
+        if (!nominee) {
+          await missingOption(interaction, "nominee", "vote");
+          return;
+        }
+        if (!choice) {
+          await missingOption(interaction, "choice", "vote");
+          return;
+        }
+        await this.vote(nominee, choice, reason, interaction);
+        return;
+      case "roster":
+        await this.roster(interaction);
+        return;
+      default:
+        await replyOrEditInteraction(interaction, {
+          content: `Action \`${normalized}\` is not implemented.`,
+          flags: MessageFlags.Ephemeral,
+        });
+    }
+  }
+
+  async create(
+    edition: StandardEditionChoice | undefined,
+    interaction: CommandInteraction,
+  ): Promise<void> {
     if (!interaction.guildId || !interaction.channelId) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "This command must be used in a server channel.",
         flags: MessageFlags.Ephemeral,
       });
@@ -65,7 +188,7 @@ export class GameCommandsMinimal {
 
     const existing = await getActiveGameForGuild(interaction.guildId);
     if (existing) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "An active game already exists in this server.",
         flags: MessageFlags.Ephemeral,
       });
@@ -77,7 +200,10 @@ export class GameCommandsMinimal {
       script = await loadScriptForCreate(edition, undefined);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not load script.";
-      await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+      await replyOrEditInteraction(interaction, {
+        content: message,
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
 
@@ -137,18 +263,16 @@ export class GameCommandsMinimal {
         new EmbedBuilder()
           .setTitle("Grimkeeper game created")
           .setDescription(
-            `Script: **${script.name}** (${script.roles.length} characters).\nStoryteller: run \`/st setup-town\` with ordered @mentions to set up players and open voting.${roleHint}${threadHint}${devHint}`,
+            `Script: **${script.name}** (${script.roles.length} characters).\nStoryteller: run \`/st do setup-town\` with ordered @mentions to set up players and open voting.${roleHint}${threadHint}${devHint}`,
           )
           .addFields({ name: "Game ID", value: gameId }),
       ],
     });
   }
 
-  @Slash({ name: "join", description: "Join the active game lobby" })
   async join(interaction: CommandInteraction): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
     if (!interaction.guildId) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "This command must be used in a server.",
         flags: MessageFlags.Ephemeral,
       });
@@ -157,8 +281,8 @@ export class GameCommandsMinimal {
 
     const game = await getActiveGameForGuild(interaction.guildId);
     if (!game) {
-      await interaction.reply({
-        content: "No active game found. Create one with `/game create`.",
+      await replyOrEditInteraction(interaction, {
+        content: "No active game found. Create one with `/game do create`.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -190,17 +314,15 @@ export class GameCommandsMinimal {
         await addRoleToUser(interaction.guild, interaction.user.id, roles.playersRole.id);
       }
     }
-    await interaction.reply({
+    await replyOrEditInteraction(interaction, {
       content: `Joined the game. ${engine.getState().players.length} player(s) in lobby.`,
       flags: MessageFlags.Ephemeral,
     });
   }
 
-  @Slash({ name: "leave", description: "Leave the active game lobby" })
   async leave(interaction: CommandInteraction): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
     if (!interaction.guildId) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "This command must be used in a server.",
         flags: MessageFlags.Ephemeral,
       });
@@ -209,7 +331,10 @@ export class GameCommandsMinimal {
 
     const game = await getActiveGameForGuild(interaction.guildId);
     if (!game) {
-      await interaction.reply({ content: "No active game found.", flags: MessageFlags.Ephemeral });
+      await replyOrEditInteraction(interaction, {
+        content: "No active game found.",
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
 
@@ -218,7 +343,7 @@ export class GameCommandsMinimal {
       .getState()
       .players.find((candidate) => candidate.discordUserId === interaction.user.id);
     if (!player) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "You are not currently in this game's lobby.",
         flags: MessageFlags.Ephemeral,
       });
@@ -241,7 +366,7 @@ export class GameCommandsMinimal {
           await removeRoleFromUser(interaction.guild, interaction.user.id, roles.playersRole.id);
         }
       }
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: `You left the lobby. ${engine.getState().players.length} player(s) remain.`,
         flags: MessageFlags.Ephemeral,
       });
@@ -250,11 +375,9 @@ export class GameCommandsMinimal {
     }
   }
 
-  @Slash({ name: "list", description: "List active games in this server" })
   async list(interaction: CommandInteraction): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
     if (!interaction.guildId) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "This command must be used in a server.",
         flags: MessageFlags.Ephemeral,
       });
@@ -271,7 +394,7 @@ export class GameCommandsMinimal {
     });
 
     if (games.length === 0) {
-      await interaction.reply({
+      await replyOrEditInteraction(interaction, {
         content: "No active games found in this server.",
         flags: MessageFlags.Ephemeral,
       });
@@ -282,7 +405,7 @@ export class GameCommandsMinimal {
       (game) => `- \`${game.id}\` in <#${game.channelId}> — phase: **${game.phase}**`,
     );
 
-    await interaction.reply({
+    await replyOrEditInteraction(interaction, {
       embeds: [
         new EmbedBuilder()
           .setTitle("Active Grimkeeper games")
@@ -292,27 +415,11 @@ export class GameCommandsMinimal {
     });
   }
 
-  @Slash({ name: "nominate", description: "Nominate another player for execution (town or voting thread)" })
   async nominate(
-    @SlashOption({
-      name: "player",
-      description: "Player to nominate",
-      type: ApplicationCommandOptionType.User,
-      required: true,
-    })
     nominee: User,
-    @SlashOption({
-      name: "accusation",
-      description: "Your accusation against this player",
-      type: ApplicationCommandOptionType.String,
-      required: true,
-    })
     accusation: string,
-    interaction?: CommandInteraction,
+    interaction: CommandInteraction,
   ): Promise<void> {
-    if (!interaction) return;
-    if (!(await requireCommandAccess(interaction))) return;
-
     const context = await requireActivePlayerGame(interaction);
     if (!context) return;
 
@@ -375,20 +482,7 @@ export class GameCommandsMinimal {
     }
   }
 
-  @Slash({ name: "defend", description: "Add your defense to a nomination against you" })
-  async defend(
-    @SlashOption({
-      name: "text",
-      description: "Your defense",
-      type: ApplicationCommandOptionType.String,
-      required: true,
-    })
-    defenseText: string,
-    interaction?: CommandInteraction,
-  ): Promise<void> {
-    if (!interaction) return;
-    if (!(await requireCommandAccess(interaction))) return;
-
+  async defend(defenseText: string, interaction: CommandInteraction): Promise<void> {
     const context = await requireActivePlayerGame(interaction);
     if (!context) return;
 
@@ -431,34 +525,12 @@ export class GameCommandsMinimal {
     }
   }
 
-  @Slash({ name: "vote", description: "Vote on an open nomination (voting thread or private ST thread)" })
   async vote(
-    @SlashOption({
-      name: "nominee",
-      description: "The nominated player you are voting on",
-      type: ApplicationCommandOptionType.User,
-      required: true,
-    })
     nominee: User,
-    @SlashOption({
-      name: "choice",
-      description: "Your vote",
-      type: ApplicationCommandOptionType.String,
-      required: true,
-    })
     choice: "yes" | "no" | "conditional",
-    @SlashOption({
-      name: "reason",
-      description: "Required for conditional votes",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-    })
     reason: string | undefined,
-    interaction?: CommandInteraction,
+    interaction: CommandInteraction,
   ): Promise<void> {
-    if (!interaction) return;
-    if (!(await requireCommandAccess(interaction))) return;
-
     const context = await requireActivePlayerGame(interaction);
     if (!context) return;
 
@@ -530,9 +602,7 @@ export class GameCommandsMinimal {
     }
   }
 
-  @Slash({ name: "roster", description: "Show seat order and alive/dead status" })
   async roster(interaction: CommandInteraction): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
     if (!interaction.guildId) {
       await replyOrEditInteraction(interaction, {
         content: "This command must be used in a server.",
@@ -554,7 +624,7 @@ export class GameCommandsMinimal {
     const state = engine.getState();
     if (!state.townMode || state.phase !== "day") {
       await replyOrEditInteraction(interaction, {
-        content: "Town is not set up yet. Storyteller must run `/st setup-town`.",
+        content: "Town is not set up yet. Storyteller must run `/st do setup-town`.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -568,4 +638,19 @@ export class GameCommandsMinimal {
       ],
     });
   }
+}
+
+async function respondGameDoAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  await respondDoAutocomplete(interaction, GAME_DO_ACTIONS);
+}
+
+async function missingOption(
+  interaction: CommandInteraction,
+  option: string,
+  action: string,
+): Promise<void> {
+  await replyOrEditInteraction(interaction, {
+    content: `\`/game do ${action}\` needs \`${option}:\`. See \`/game help\`.`,
+    flags: MessageFlags.Ephemeral,
+  });
 }

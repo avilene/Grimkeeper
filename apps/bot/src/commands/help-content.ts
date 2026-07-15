@@ -17,7 +17,8 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
         .setDescription(
           [
             "Player commands for minimal-mode town voting.",
-            "Nominations and votes happen in the **Town Voting** thread after `/st setup-town`.",
+            "Use **`/game do`** and start typing the action — Discord filters the list.",
+            "Nominations and votes happen in the **Town Voting** thread after `/st do setup-town`.",
             "You can also cast a **private ballot** from your personal ST thread.",
             "",
             "Storytellers: see **`/st help`** for setup and day control.",
@@ -27,19 +28,19 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
           {
             name: "Lobby",
             value: [
-              cmd("/game create", "Create a game in this channel."),
-              cmd("/game join", "Join the lobby (optional — ST can set roster with setup-town)."),
-              cmd("/game leave", "Leave the lobby."),
-              cmd("/game list", "List active games in this server."),
+              cmd("/game do create", "Create a game in this channel (optional `edition:`)."),
+              cmd("/game do join", "Join the lobby (optional — ST can set roster with setup-town)."),
+              cmd("/game do leave", "Leave the lobby."),
+              cmd("/game do list", "List active games in this server."),
             ].join("\n\n"),
           },
           {
             name: "Nominations & votes",
             value: [
-              cmd("/game nominate", "Nominate another player (town or voting thread)."),
-              cmd("/game defend", "Add your defense to an open nomination against you."),
-              cmd("/game vote", "Vote yes / no / conditional on any open nomination."),
-              cmd("/game roster", "Show seat order and alive/dead status."),
+              cmd("/game do nominate", "Needs `player:` + `accusation:`."),
+              cmd("/game do defend", "Needs `text:` — defense on an open nomination against you."),
+              cmd("/game do vote", "Needs `nominee:` + `choice:` (+ `reason:` if conditional)."),
+              cmd("/game do roster", "Show seat order and alive/dead status."),
             ].join("\n\n"),
           },
           {
@@ -48,7 +49,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
               "**Town Voting** thread — shared embeds + Vote buttons; public results when visibility is public.",
               "**Personal ST thread** — private ballot (Vote button); confirmations stay ephemeral.",
               "You can vote on **any** open nomination; embeds update tallies after each vote.",
-              "Use `/st vote-visibility` for public vs secret tallies.",
+              "ST sets public vs secret tallies with `/st do vote-visibility` or the kib control panel.",
             ].join("\n"),
           },
         ),
@@ -105,49 +106,48 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
         .setDescription(
           [
             "**Quick start**",
-            `1. \`/game create\` in the town channel`,
-            `2. \`/st setup-town players:\` @mentions in **seat order** (min ${minPlayers} players)`,
+            `1. \`/game do create\` in the town channel`,
+            `2. \`/st do setup-town\` with \`players:\` @mentions in **seat order** (min ${minPlayers})`,
             "3. Players nominate and vote in **Town Voting** (or privately in ST threads)",
-            "4. \`/st resolve-next\` → \`/st execute\` if passed",
+            "4. Use the **kib control panel** (or `/st do resolve-next` → `/st do execute`)",
+            "",
+            "Prefer typing less? **`/st do`** filters actions as you type. Mid-game buttons: **`/st panel`**.",
           ].join("\n"),
         )
         .addFields(
           {
-            name: "Setup & town",
+            name: "How to run commands",
             value: [
-              cmd("/st setup-town", "Set roster + seats, create ST threads + Town Voting thread."),
-              cmd("/st end", "End the game."),
+              cmd("/st do", "Pick an action via autocomplete, then fill only the options that action needs."),
+              cmd("/st panel", "Pin/refresh button controls in the kib thread (resolve, execute, votes, …)."),
             ].join("\n\n"),
           },
           {
-            name: "Nominations & votes",
+            name: "Setup & town (`/st do …`)",
             value: [
-              cmd("/st resolve-next", "Resolve the oldest open nomination (majority pass/fail)."),
-              cmd("/st execute", "Execute a player after their nomination passed."),
-              cmd("/st set-vote", "Manually set a player's vote on a nomination."),
-              cmd("/st vote-visibility", "Public or secret vote tallies."),
-              cmd("/st votes", "Refresh the ST vote tracker in the kib thread."),
+              cmd("setup-town", "Needs `players:` ordered @mentions — creates ST threads + Town Voting."),
+              cmd("end", "End the game."),
+              cmd("add-spectator / remove-spectator", "Needs `user:`."),
             ].join("\n\n"),
           },
           {
-            name: "Player status",
+            name: "Day control (`/st do …` or panel buttons)",
             value: [
-              cmd("/st mark-dead", "Mark a player dead or alive (ST correction; reversible)."),
-              "`alive:false` (default) = dead · `alive:true` = alive again",
-              "**Execute** = official kill after a passed nomination. **Mark-dead** = ST corrections only.",
-            ].join("\n"),
+              cmd("resolve-next", "Resolve the oldest open nomination."),
+              cmd("execute", "Needs `player:` after a passed nomination."),
+              cmd("votes", "Refresh the ST vote tracker (Lock/Unlock lives there)."),
+              cmd("vote-visibility", "Needs `mode:` public or secret."),
+              cmd("set-vote", "Needs `choice:` (+ optional voter/nominee/reason)."),
+              cmd("mark-dead", "Needs `player:` (+ optional `alive:`). Corrections only — not execute."),
+            ].join("\n\n"),
           },
           {
-            name: "Spectators & reminders",
+            name: "Reminders",
             value: [
-              cmd("/st add-spectator", "Assign spectator role and kib thread access."),
-              cmd("/st remove-spectator", "Remove spectator role."),
               cmd("/st remind", "Schedule a reminder in the town channel."),
               cmd("/st set-reminders", "Schedule repeating hourly reminders."),
               cmd("/st reminders", "List pending reminders."),
-              cmd("/st edit-reminder", "Update a pending reminder."),
-              cmd("/st delete-reminder", "Cancel one reminder by ID prefix."),
-              cmd("/st clear-reminders", "Cancel all pending reminders."),
+              cmd("/st edit-reminder / delete-reminder / clear-reminders", "Manage pending reminders."),
             ].join("\n\n"),
           },
           {
@@ -155,9 +155,9 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             value: [
               "Votes live in the **Town Voting** private thread (all players + ST).",
               "Private ballots are also posted to each personal ST thread.",
-              "ST: pin a **vote tracker** in kib (`/st votes`) with full rolls + Lock/Unlock buttons.",
+              "`setup-town` also pins the **control panel** + **vote tracker** in kib.",
               "A player can only have **one open nomination** at a time (as nominator or nominee).",
-              "Seat order = mention order in `/st setup-town`.",
+              "Seat order = mention order in `setup-town`.",
             ].join("\n"),
           },
         ),
