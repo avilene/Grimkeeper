@@ -9,6 +9,11 @@ export type InteractionEditPayload = {
   flags?: number;
 };
 
+function discordErrorCode(error: unknown): unknown {
+  if (error === null || typeof error !== "object" || !("code" in error)) return undefined;
+  return error.code;
+}
+
 /** Clear placeholder text when a final reply is embeds-only. */
 export function toEditReplyPayload(payload: InteractionEditPayload): InteractionEditPayload {
   if (payload.content === undefined && payload.embeds && payload.embeds.length > 0) {
@@ -17,15 +22,27 @@ export function toEditReplyPayload(payload: InteractionEditPayload): Interaction
   return payload;
 }
 
+/** Interaction expired / already handled elsewhere (often a second bot replica). */
+export function isUnknownInteractionError(error: unknown): boolean {
+  return discordErrorCode(error) === 10062;
+}
+
 export function isRecoverableInteractionResponseError(error: unknown): boolean {
-  if (error === null || typeof error !== "object") return false;
-  if (!("code" in error)) return false;
-  const code = error.code;
-  return code === 40060 || code === "InteractionNotReplied";
+  const code = discordErrorCode(error);
+  // 40060: already acknowledged in this process. 10062: unknown/expired — often another replica
+  // already replied; further reply/edit/followUp attempts are pointless.
+  return code === 40060 || code === 10062 || code === "InteractionNotReplied";
 }
 
 /** @deprecated Use isRecoverableInteractionResponseError */
 export function isInteractionAlreadyAcknowledged(error: unknown): boolean {
+  return isRecoverableInteractionResponseError(error);
+}
+
+/**
+ * Ack failures that should not page the error channel (duplicate bots, races, expired tokens).
+ */
+export function isBenignInteractionAckError(error: unknown): boolean {
   return isRecoverableInteractionResponseError(error);
 }
 
@@ -39,6 +56,10 @@ export async function withAcknowledgedFallback(
     } catch (error) {
       if (!isRecoverableInteractionResponseError(error)) {
         throw error;
+      }
+      // Unknown interaction: don't keep trying followUp/reply on a dead token.
+      if (isUnknownInteractionError(error)) {
+        return;
       }
     }
   }

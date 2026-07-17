@@ -4,7 +4,7 @@ import { isMinimalMode } from "../bot-mode.js";
 import { reportError } from "../error-reporter.js";
 import {
   INTERACTION_PENDING_CONTENT,
-  isInteractionAlreadyAcknowledged,
+  isBenignInteractionAckError,
 } from "./interaction-response.js";
 import { log } from "../logger.js";
 
@@ -66,6 +66,7 @@ export function startEarlyDefer(interaction: Interaction): Promise<void> {
       userId: command.user.id,
     };
     log("warn", "interaction.defer.late", context);
+    // Still attempt ack — Discord may accept within the window — but page only when truly late.
     void reportError(
       "interaction.defer.late",
       new Error(`Interaction ack started ${ageMs}ms after create`),
@@ -78,7 +79,17 @@ export function startEarlyDefer(interaction: Interaction): Promise<void> {
     .then(
       () => undefined,
       (error: unknown) => {
-        if (isInteractionAlreadyAcknowledged(error)) {
+        // 10062/40060: expired token or another replica already acked — not actionable pages.
+        if (isBenignInteractionAckError(error)) {
+          log("warn", "interaction.defer.skipped", {
+            command: command.commandName,
+            subcommand: command.options.getSubcommand(false) ?? undefined,
+            guildId: command.guildId,
+            channelId: command.channelId,
+            userId: command.user.id,
+            ageMs,
+            code: error && typeof error === "object" && "code" in error ? error.code : undefined,
+          });
           return undefined;
         }
         const context = {
