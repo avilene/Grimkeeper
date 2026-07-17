@@ -22,12 +22,12 @@ import { getReminderPingRoleId } from "../access.js";
 import { logReminderAction } from "../action-log.js";
 import { formatReminderDuration, formatHourOffsetCompact, parseReminderDuration, parseReminderHours } from "../reminder-duration.js";
 import {
-  discordTimestamp,
   encodePingRoleIds,
   formatPingRoleMentions,
   formatReminderText,
   parseReminderEmoji,
   resolvePingRoleIds,
+  discordRelativeWithTime,
 } from "../reminder-message.js";
 import { postGameLog } from "../game-log-thread.js";
 import {
@@ -262,7 +262,7 @@ export class StReminderCommands {
 
     const scheduleLines = hours.map((hour) => {
       const fireAt = new Date(now + hour * 3_600_000);
-      return `- ${discordTimestamp(fireAt, "R")}`;
+      return `- ${discordRelativeWithTime(fireAt)}`;
     });
     const totalPending = await countPendingReminders(scope);
     const scopeLabel = `<#${targetChannelId}>`;
@@ -327,7 +327,7 @@ export class StReminderCommands {
     }
 
     const lines = pending.map((reminder) => {
-      const when = discordTimestamp(reminder.fireAt, "R");
+      const when = discordRelativeWithTime(reminder.fireAt);
       const pingMentions = reminder.pingPlayers ? formatPingRoleMentions(reminder.pingRoleId) : null;
       const pingNote = reminder.pingPlayers
         ? pingMentions
@@ -576,7 +576,7 @@ export class StReminderCommands {
       }
       const fireAt = new Date(Date.now() + minutes * 60_000);
       updates.fireAt = fireAt;
-      changes.push(`fires ${discordTimestamp(fireAt, "R")}`);
+      changes.push(`fires ${discordRelativeWithTime(fireAt)}`);
     }
 
     if (hasPingRoles) {

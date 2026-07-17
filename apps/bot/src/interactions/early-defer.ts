@@ -1,6 +1,7 @@
 import { type ChatInputCommandInteraction, Interaction, MessageFlags } from "discord.js";
 
 import { isMinimalMode } from "../bot-mode.js";
+import { reportError } from "../error-reporter.js";
 import {
   INTERACTION_PENDING_CONTENT,
   isInteractionAlreadyAcknowledged,
@@ -56,14 +57,20 @@ export function startEarlyDefer(interaction: Interaction): Promise<void> {
 
   const ageMs = Date.now() - command.createdTimestamp;
   if (ageMs > INTERACTION_DEFER_BUDGET_MS) {
-    log("warn", "interaction.defer.late", {
+    const context = {
       ageMs,
       command: command.commandName,
       subcommand: command.options.getSubcommand(false) ?? undefined,
       guildId: command.guildId,
       channelId: command.channelId,
       userId: command.user.id,
-    });
+    };
+    log("warn", "interaction.defer.late", context);
+    void reportError(
+      "interaction.defer.late",
+      new Error(`Interaction ack started ${ageMs}ms after create`),
+      context,
+    );
   }
 
   return command
@@ -74,15 +81,19 @@ export function startEarlyDefer(interaction: Interaction): Promise<void> {
         if (isInteractionAlreadyAcknowledged(error)) {
           return undefined;
         }
-        log("warn", "interaction.defer.failed", {
+        const context = {
           command: command.commandName,
           subcommand: command.options.getSubcommand(false) ?? undefined,
           guildId: command.guildId,
           channelId: command.channelId,
           userId: command.user.id,
           ageMs,
+        };
+        log("warn", "interaction.defer.failed", {
+          ...context,
           error: error instanceof Error ? error.message : String(error),
         });
+        void reportError("interaction.defer.failed", error, context);
       },
     );
 }

@@ -2,6 +2,11 @@ export function discordTimestamp(date: Date, style: "R" | "F" | "f" | "t" = "R")
   return `<t:${Math.floor(date.getTime() / 1000)}:${style}>`;
 }
 
+/** Relative time with localized clock in parentheses, e.g. `in 12 hours (3:11 AM)`. */
+export function discordRelativeWithTime(date: Date): string {
+  return `${discordTimestamp(date, "R")} (${discordTimestamp(date, "t")})`;
+}
+
 const CUSTOM_EMOJI = /^<a?:[a-zA-Z0-9_]+:\d+>$/u;
 const UNICODE_EMOJI =
   /^\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*$/u;
@@ -32,7 +37,7 @@ export function formatFiredReminderBody(
 ): string {
   const base = formatReminderText(message, emoji);
   const endAt = reminderEndAt(fireAt, seriesEndAt);
-  return `${base} ${discordTimestamp(endAt, "R")}`;
+  return `${base} ${discordRelativeWithTime(endAt)}`;
 }
 
 export function buildReminderFireContent(

@@ -337,6 +337,16 @@ export class StCommandsMinimal {
         game,
         engine,
         message.trim(),
+        {
+          onProgress: async (done, total) => {
+            // Avoid hammering editReply on every parallel completion.
+            if (done < total && done % 3 !== 0) return;
+            await setInteractionProgress(
+              interaction,
+              `Broadcasting to player threads… (${done}/${total})`,
+            );
+          },
+        },
       );
 
       if (sent === 0) {

@@ -3,8 +3,8 @@ import { EmbedBuilder, type APIEmbed, type Client, type TextChannel } from "disc
 import { getBotClient } from "./discord-client.js";
 import { log, logError, serializeError } from "./logger.js";
 
-const DEDUPE_WINDOW_MS = 60_000;
-const MIN_SEND_INTERVAL_MS = 1_500;
+const DEDUPE_WINDOW_MS = 15_000;
+const MIN_SEND_INTERVAL_MS = 750;
 const MAX_QUEUE_SIZE = 50;
 const EMBED_FIELD_LIMIT = 1024;
 
@@ -229,16 +229,25 @@ export function formatLifecycleForDiscord(
   return JSON.stringify(buildLifecycleLogEmbed(source, context).toJSON());
 }
 
-function fingerprint(source: string, error: unknown): string {
+function fingerprint(source: string, error: unknown, context: Record<string, unknown> = {}): string {
   const serialized = serializeError(error);
   const message = typeof serialized.error === "string" ? serialized.error : String(error);
   const stackLine =
     typeof serialized.stack === "string" ? serialized.stack.split("\n")[1]?.trim() ?? "" : "";
-  return `${source}:${message}:${stackLine}`;
+  const guildId = typeof context.guildId === "string" ? context.guildId : "";
+  const command =
+    typeof context.command === "string"
+      ? `${context.command}:${typeof context.subcommand === "string" ? context.subcommand : ""}`
+      : "";
+  return `${source}:${guildId}:${command}:${message}:${stackLine}`;
 }
 
-function shouldSkipDuplicate(source: string, error: unknown): boolean {
-  const key = fingerprint(source, error);
+function shouldSkipDuplicate(
+  source: string,
+  error: unknown,
+  context: Record<string, unknown> = {},
+): boolean {
+  const key = fingerprint(source, error, context);
   const now = Date.now();
   const lastSeen = recentFingerprints.get(key);
   recentFingerprints.set(key, now);
@@ -254,7 +263,7 @@ function shouldSkipDuplicate(source: string, error: unknown): boolean {
 
 function queueDiscordReport(report: PendingReport): void {
   if (!getErrorChannelId()) return;
-  if (shouldSkipDuplicate(report.source, report.error)) return;
+  if (shouldSkipDuplicate(report.source, report.error, report.context)) return;
 
   if (pendingReports.length >= MAX_QUEUE_SIZE) {
     pendingReports.shift();

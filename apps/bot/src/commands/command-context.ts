@@ -522,19 +522,37 @@ export async function broadcastToPlayerThreads(
   game: { id: string; channelId: string },
   engine: GameEngine,
   message: string,
+  options?: {
+    onProgress?: (done: number, total: number) => Promise<void>;
+  },
 ): Promise<{ sent: number; failed: number }> {
-  const threads = await listPersonalPlayerThreads(guild, game, engine);
-  let sent = 0;
-  let failed = 0;
-  for (const thread of threads) {
-    const ok = await thread
-      .send({ content: message })
-      .then(() => true)
-      .catch(() => false);
-    if (ok) sent++;
-    else failed++;
-  }
-  return { sent, failed };
+  const threads = await listPersonalPlayerThreads(guild, game, engine, {
+    includeArchived: true,
+  });
+  if (threads.length === 0) return { sent: 0, failed: 0 };
+
+  let done = 0;
+  const results = await Promise.all(
+    threads.map(async (thread) => {
+      try {
+        if (thread.isThread() && thread.archived) {
+          await thread.setArchived(false, "ST broadcast").catch(() => undefined);
+        }
+        await thread.send({ content: message });
+        return true;
+      } catch {
+        return false;
+      } finally {
+        done++;
+        if (options?.onProgress) {
+          await options.onProgress(done, threads.length).catch(() => undefined);
+        }
+      }
+    }),
+  );
+
+  const sent = results.filter(Boolean).length;
+  return { sent, failed: results.length - sent };
 }
 
 export async function stripGameRolesFromMembers(
@@ -848,24 +866,49 @@ export function isGameTextChannel(
   );
 }
 
+export async function loadParentThreadIndex(
+  guild: Guild,
+  parentChannelId: string,
+): Promise<Map<string, AnyThreadChannel>> {
+  const byName = new Map<string, AnyThreadChannel>();
+
+  const active = await guild.channels.fetchActiveThreads().catch(() => null);
+  if (active) {
+    for (const thread of active.threads.values()) {
+      if (thread.parentId === parentChannelId) {
+        byName.set(thread.name, thread);
+      }
+    }
+  }
+
+  const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
+  if (!isGameTextChannel(parent)) return byName;
+
+  // One archived page is enough for typical player counts; avoid N fetches per player.
+  const archived = await parent.threads
+    .fetchArchived({ type: "private", limit: 100 })
+    .catch(() => null);
+  if (archived) {
+    for (const thread of archived.threads.values()) {
+      if (!byName.has(thread.name)) {
+        byName.set(thread.name, thread);
+      }
+    }
+  }
+
+  return byName;
+}
+
 export async function findPersonalPlayerThread(
   guild: Guild,
   parentChannelId: string,
   gameId: string,
   displayName: string,
+  threadIndex?: Map<string, AnyThreadChannel>,
 ): Promise<AnyThreadChannel | null> {
   const threadName = personalPlayerThreadName(gameId, displayName);
-  const active = await guild.channels.fetchActiveThreads().catch(() => null);
-  const activeThread = active?.threads.find(
-    (candidate) => candidate.parentId === parentChannelId && candidate.name === threadName,
-  );
-  if (activeThread) return activeThread;
-
-  const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
-  if (!isGameTextChannel(parent)) return null;
-
-  const archived = await parent.threads.fetchArchived({ type: "private" }).catch(() => null);
-  return archived?.threads.find((candidate) => candidate.name === threadName) ?? null;
+  const index = threadIndex ?? (await loadParentThreadIndex(guild, parentChannelId));
+  return index.get(threadName) ?? null;
 }
 
 export async function createKibThread(
@@ -954,12 +997,14 @@ export async function createPlayerStThreads(
   const storytellerIds = engine.getStorytellerDiscordIds();
   let created = 0;
   let failed = 0;
+  const threadIndex = await loadParentThreadIndex(guild, game.channelId);
 
   for (const player of engine.getState().players) {
     if (isFakePlayer(player.discordUserId)) continue;
 
-    const thread =
-      (await findPersonalPlayerThread(guild, game.channelId, game.id, player.displayName)) ??
+    const threadName = personalPlayerThreadName(game.id, player.displayName);
+    let thread =
+      threadIndex.get(threadName) ??
       (await createPersonalPlayerThread(
         interaction,
         game.id,
@@ -967,6 +1012,10 @@ export async function createPlayerStThreads(
         player.discordUserId,
         player.displayName,
       ));
+
+    if (thread) {
+      threadIndex.set(threadName, thread);
+    }
 
     if (!thread) {
       failed++;
@@ -1234,19 +1283,16 @@ export async function listPersonalPlayerThreads(
   guild: Guild,
   game: { id: string; channelId: string },
   engine: GameEngine,
+  options?: { includeArchived?: boolean },
 ): Promise<DayDiscussionChannel[]> {
+  const threadIndex = await loadParentThreadIndex(guild, game.channelId);
   const threads: DayDiscussionChannel[] = [];
   for (const player of engine.getState().players) {
     if (isFakePlayer(player.discordUserId)) continue;
-    const thread = await findPersonalPlayerThread(
-      guild,
-      game.channelId,
-      game.id,
-      player.displayName,
-    );
-    if (thread && !thread.archived) {
-      threads.push(thread as DayDiscussionChannel);
-    }
+    const thread = threadIndex.get(personalPlayerThreadName(game.id, player.displayName));
+    if (!thread) continue;
+    if (thread.archived && !options?.includeArchived) continue;
+    threads.push(thread as DayDiscussionChannel);
   }
   return threads;
 }

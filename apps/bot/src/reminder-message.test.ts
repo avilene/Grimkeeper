@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildReminderFireContent,
+  discordRelativeWithTime,
   discordTimestamp,
   encodePingRoleIds,
   formatFiredReminderBody,
@@ -19,6 +20,14 @@ describe("discordTimestamp", () => {
     expect(discordTimestamp(date, "R")).toBe(`<t:${Math.floor(date.getTime() / 1000)}:R>`);
     expect(discordTimestamp(date, "t")).toBe(`<t:${Math.floor(date.getTime() / 1000)}:t>`);
     expect(discordTimestamp(date, "f")).toBe(`<t:${Math.floor(date.getTime() / 1000)}:f>`);
+  });
+});
+
+describe("discordRelativeWithTime", () => {
+  it("pairs relative text with a localized clock time", () => {
+    const date = new Date("2026-07-14T16:00:00Z");
+    const unix = Math.floor(date.getTime() / 1000);
+    expect(discordRelativeWithTime(date)).toBe(`<t:${unix}:R> (<t:${unix}:t>)`);
   });
 });
 
@@ -53,18 +62,18 @@ describe("reminderEndAt", () => {
 });
 
 describe("formatFiredReminderBody", () => {
-  it("appends a Discord relative timestamp for the max end time", () => {
+  it("appends relative time with clock in parentheses", () => {
     const fireAt = new Date("2026-07-14T08:20:00Z");
     const seriesEndAt = new Date("2026-07-14T08:40:00Z");
     const content = formatFiredReminderBody("Noms and whispers close", fireAt, null, seriesEndAt);
     expect(content).toBe(
-      `Noms and whispers close ${discordTimestamp(seriesEndAt, "R")}`,
+      `Noms and whispers close ${discordRelativeWithTime(seriesEndAt)}`,
     );
   });
 });
 
 describe("buildReminderFireContent", () => {
-  it("includes player ping and relative timestamp", () => {
+  it("includes player ping and relative timestamp with clock", () => {
     const fireAt = new Date("2026-07-14T08:20:00Z");
     const seriesEndAt = new Date("2026-07-14T08:40:00Z");
     const content = buildReminderFireContent(
@@ -75,14 +84,14 @@ describe("buildReminderFireContent", () => {
       seriesEndAt,
     );
     expect(content).toBe(
-      `<@&123> 🔔 Noms and whispers close ${discordTimestamp(seriesEndAt, "R")}`,
+      `<@&123> 🔔 Noms and whispers close ${discordRelativeWithTime(seriesEndAt)}`,
     );
   });
 
   it("uses fireAt when there is no series end", () => {
     const fireAt = new Date("2026-07-14T08:40:00Z");
     expect(buildReminderFireContent(null, "Noms and whispers close", fireAt)).toBe(
-      `Noms and whispers close ${discordTimestamp(fireAt, "R")}`,
+      `Noms and whispers close ${discordRelativeWithTime(fireAt)}`,
     );
   });
 });
