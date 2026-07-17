@@ -15,8 +15,63 @@ import {
 } from "./commands/command-context.js";
 import { discordTimestamp } from "./reminder-message.js";
 
+const USER_MENTION_RE = /<@!?(\d{17,20})>/g;
+const ROLE_MENTION_RE = /<@&(\d{17,20})>/g;
+
 export function logThreadName(parentChannelName: string, gameId: string): string {
   return `log-${parentChannelName} · ${shortGameId(gameId)}`.slice(0, 100);
+}
+
+/** Non-pinging user reference for audit logs. */
+export function formatLogUserRef(displayName: string, userId: string): string {
+  const name = displayName.trim() || "user";
+  return `${name} (\`${userId}\`)`;
+}
+
+/** Non-pinging role reference for audit logs. */
+export function formatLogRoleRef(roleName: string, roleId: string): string {
+  const name = roleName.trim() || "role";
+  return `${name} (\`${roleId}\`)`;
+}
+
+/**
+ * Replace Discord user/role mentions with name + id so the audit log never pings.
+ */
+export async function sanitizeGameLogMentions(guild: Guild, message: string): Promise<string> {
+  const userIds = [...new Set([...message.matchAll(USER_MENTION_RE)].map((match) => match[1]!))];
+  const roleIds = [...new Set([...message.matchAll(ROLE_MENTION_RE)].map((match) => match[1]!))];
+
+  const users = new Map<string, string>();
+  await Promise.all(
+    userIds.map(async (userId) => {
+      const member = await guild.members.fetch(userId).catch(() => null);
+      const name =
+        member?.displayName ??
+        member?.user.globalName ??
+        member?.user.username ??
+        "unknown";
+      users.set(userId, name);
+    }),
+  );
+
+  const roles = new Map<string, string>();
+  for (const roleId of roleIds) {
+    const cached = guild.roles.cache.get(roleId);
+    if (cached) {
+      roles.set(roleId, cached.name);
+      continue;
+    }
+    const fetched = await guild.roles.fetch(roleId).catch(() => null);
+    roles.set(roleId, fetched?.name ?? "unknown-role");
+  }
+
+  return message
+    .replace(USER_MENTION_RE, (_match, userId: string) =>
+      formatLogUserRef(users.get(userId) ?? "unknown", userId),
+    )
+    .replace(ROLE_MENTION_RE, (_match, roleId: string) =>
+      formatLogRoleRef(roles.get(roleId) ?? "unknown-role", roleId),
+    );
 }
 
 /** Prefix with Discord short date/time so each viewer sees their local timezone. */
@@ -148,7 +203,13 @@ export async function postGameLog(
 ): Promise<boolean> {
   const thread = await getLogThreadForGame(guild, game);
   if (!thread?.isTextBased()) return false;
-  await thread.send(formatGameLogLine(message)).catch(() => undefined);
+  const safeMessage = await sanitizeGameLogMentions(guild, message);
+  await thread
+    .send({
+      content: formatGameLogLine(safeMessage),
+      allowedMentions: { parse: [] },
+    })
+    .catch(() => undefined);
   return true;
 }
 

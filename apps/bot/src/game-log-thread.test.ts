@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { formatGameLogLine, logThreadName } from "./game-log-thread.js";
+import {
+  formatGameLogLine,
+  formatLogRoleRef,
+  formatLogUserRef,
+  logThreadName,
+  sanitizeGameLogMentions,
+} from "./game-log-thread.js";
 
 describe("logThreadName", () => {
   it("includes short game id so games do not share log threads", () => {
@@ -19,5 +25,51 @@ describe("formatGameLogLine", () => {
     const at = new Date("2026-07-17T10:30:00.000Z");
     const line = formatGameLogLine("test event", at);
     expect(line).toBe(`<t:${Math.floor(at.getTime() / 1000)}:f> test event`);
+  });
+});
+
+describe("formatLogUserRef", () => {
+  it("renders name and userid without a mention", () => {
+    expect(formatLogUserRef("Alice", "123456789012345678")).toBe("Alice (`123456789012345678`)");
+  });
+});
+
+describe("formatLogRoleRef", () => {
+  it("renders role name and id without a mention", () => {
+    expect(formatLogRoleRef("Players", "987654321098765432")).toBe(
+      "Players (`987654321098765432`)",
+    );
+  });
+});
+
+describe("sanitizeGameLogMentions", () => {
+  it("replaces user and role mentions with name + id", async () => {
+    const guild = {
+      members: {
+        fetch: vi.fn(async (id: string) => {
+          if (id === "111111111111111111") {
+            return { displayName: "Alice", user: { username: "alice" } };
+          }
+          return null;
+        }),
+      },
+      roles: {
+        cache: {
+          get: (id: string) => (id === "222222222222222222" ? { name: "ST" } : undefined),
+        },
+        fetch: vi.fn(async () => null),
+      },
+    };
+
+    const result = await sanitizeGameLogMentions(
+      guild as never,
+      `<@111111111111111111> added <@&222222222222222222> for <@!333333333333333333>`,
+    );
+
+    expect(result).toBe(
+      "Alice (`111111111111111111`) added ST (`222222222222222222`) for unknown (`333333333333333333`)",
+    );
+    expect(result).not.toMatch(/<@!?/);
+    expect(result).not.toMatch(/<@&/);
   });
 });
