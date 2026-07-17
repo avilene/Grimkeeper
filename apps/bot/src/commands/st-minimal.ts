@@ -824,14 +824,12 @@ export class StCommandsMinimal {
       });
       await persistEvents(engine, events);
 
-      const voting = interaction.guild
-        ? await resolveVotingChannel(interaction.guild, game, engine)
-        : null;
-      await voting
-        ?.send(`Vote visibility is now **${formatVoteVisibility(mode)}**.`)
-        .catch(() => undefined);
-
       if (interaction.guild) {
+        await postGameLog(
+          interaction.guild,
+          game,
+          `<@${interaction.user.id}> set vote visibility to **${formatVoteVisibility(mode)}**.`,
+        );
         await upsertStControlPanel(interaction.guild, game.channelId, engine, game.kibThreadId);
       }
 

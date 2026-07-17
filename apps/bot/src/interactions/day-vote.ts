@@ -7,7 +7,7 @@ import {
   type ButtonInteraction,
   type ModalSubmitInteraction,
 } from "discord.js";
-import { getActiveGameForGuild, getGameById } from "@grimkeeper/database";
+import { getActiveGameForChannel, getGameById, listActiveGamesForGuild } from "@grimkeeper/database";
 import { GameCommandKind, type VoteChoice } from "@grimkeeper/engine";
 
 import {
@@ -43,18 +43,29 @@ async function resolveGameForVoteIds(
   guildId: string,
   gameId: string,
   nominationId: string,
+  channelId?: string | null,
 ): Promise<NonNullable<Awaited<ReturnType<typeof getGameById>>> | null> {
   const byId = await getGameById(gameId);
   if (byId && byId.guildId === guildId && byId.phase !== "ended") {
     return byId;
   }
 
-  // Fallback for stale/mangled custom ids: active guild game that still has this nomination.
-  const active = await getActiveGameForGuild(guildId);
-  if (!active || active.phase === "ended") return null;
-  const engine = await loadEngine(active.id);
-  if (!engine.getNominationById(nominationId)) return null;
-  return active;
+  // Prefer the game for this channel when the button id was mangled.
+  if (channelId) {
+    const parentId = channelId;
+    const forChannel = await getActiveGameForChannel(guildId, parentId);
+    if (forChannel) {
+      const engine = await loadEngine(forChannel.id);
+      if (engine.getNominationById(nominationId)) return forChannel;
+    }
+  }
+
+  // Last resort: any active guild game that still has this nomination.
+  for (const active of await listActiveGamesForGuild(guildId)) {
+    const engine = await loadEngine(active.id);
+    if (engine.getNominationById(nominationId)) return active;
+  }
+  return null;
 }
 
 export async function handleVoteButton(interaction: ButtonInteraction): Promise<boolean> {
@@ -153,10 +164,15 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
     return true;
   }
 
+  const parentChannelId = interaction.channel?.isThread()
+    ? interaction.channel.parentId
+    : interaction.channelId;
+
   const game = await resolveGameForVoteIds(
     interaction.guildId,
     parsed.gameId,
     parsed.nominationId,
+    parentChannelId,
   );
   if (!game) {
     log("warn", "vote.game_lookup_failed", {

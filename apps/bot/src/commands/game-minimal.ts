@@ -11,7 +11,7 @@ import {
   User,
 } from "discord.js";
 import { Discord, Slash, SlashGroup, SlashOption } from "discordx";
-import { getActiveGameForGuild, prisma } from "@grimkeeper/database";
+import { getActiveGameForChannel, listActiveGamesForGuild, prisma } from "@grimkeeper/database";
 import { GameCommandKind, GameEngine } from "@grimkeeper/engine";
 
 import { isDevMode } from "../dev.js";
@@ -28,6 +28,7 @@ import {
   getGameRoles,
   isPersonalPlayerThreadChannel,
   loadEngine,
+  multipleActiveGamesHint,
   persistEvents,
   postNominationEverywhere,
   refreshNominationEverywhere,
@@ -37,6 +38,7 @@ import {
   requireActivePlayerGame,
   requireCommandAccess,
   requireTownVotingChannel,
+  resolveActiveGameForInteraction,
   resolveGameRoles,
   setInteractionProgress,
   syncGameProjection,
@@ -249,10 +251,10 @@ export class GameCommandsMinimal {
       return;
     }
 
-    const existing = await getActiveGameForGuild(interaction.guildId);
+    const existing = await getActiveGameForChannel(interaction.guildId, interaction.channelId);
     if (existing) {
       await replyOrEditInteraction(interaction, {
-        content: "An active game already exists in this server.",
+        content: "An active game already exists in this channel.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -387,10 +389,10 @@ export class GameCommandsMinimal {
       return;
     }
 
-    const existing = await getActiveGameForGuild(interaction.guildId);
+    const existing = await getActiveGameForChannel(interaction.guildId, interaction.channelId);
     if (existing) {
       await replyOrEditInteraction(interaction, {
-        content: "An active game already exists in this server.",
+        content: "An active game already exists in this channel.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -466,10 +468,16 @@ export class GameCommandsMinimal {
       return;
     }
 
-    const game = await getActiveGameForGuild(interaction.guildId);
+    const game = await resolveActiveGameForInteraction(interaction);
     if (!game) {
+      const activeCount = interaction.guildId
+        ? (await listActiveGamesForGuild(interaction.guildId)).length
+        : 0;
       await replyOrEditInteraction(interaction, {
-        content: "No active game found. Create one with `/game do setup`.",
+        content:
+          activeCount > 1
+            ? multipleActiveGamesHint()
+            : "No active game found. Create one with `/game do setup`.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -524,10 +532,14 @@ export class GameCommandsMinimal {
       return;
     }
 
-    const game = await getActiveGameForGuild(interaction.guildId);
+    const game = await resolveActiveGameForInteraction(interaction);
     if (!game) {
+      const activeCount = interaction.guildId
+        ? (await listActiveGamesForGuild(interaction.guildId)).length
+        : 0;
       await replyOrEditInteraction(interaction, {
-        content: "No active game found.",
+        content:
+          activeCount > 1 ? multipleActiveGamesHint() : "No active game found.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -831,10 +843,14 @@ export class GameCommandsMinimal {
       return;
     }
 
-    const game = await getActiveGameForGuild(interaction.guildId);
+    const game = await resolveActiveGameForInteraction(interaction);
     if (!game) {
+      const activeCount = interaction.guildId
+        ? (await listActiveGamesForGuild(interaction.guildId)).length
+        : 0;
       await replyOrEditInteraction(interaction, {
-        content: "No active game found.",
+        content:
+          activeCount > 1 ? multipleActiveGamesHint() : "No active game found.",
         flags: MessageFlags.Ephemeral,
       });
       return;

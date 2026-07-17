@@ -8,7 +8,7 @@ import {
 import { Discord, Slash, SlashGroup, SlashOption } from "discordx";
 import {
   createReminder,
-  getActiveGameForGuild,
+  listActiveGamesForGuild,
   cancelGameReminders,
 } from "@grimkeeper/database";
 import {
@@ -39,6 +39,7 @@ import {
   getStorytellerThread,
   loadEngine,
   minPlayers,
+  multipleActiveGamesHint,
   openStorytellerThread,
   persistEvents,
   postSetupChecklist,
@@ -47,6 +48,7 @@ import {
   replyEngineError,
   requireCommandAccess,
   requireStorytellerGame,
+  resolveActiveGameForInteraction,
   syncGameProjection,
   getGameRoles,
 } from "./command-context.js";
@@ -156,9 +158,13 @@ export class StCommands {
       return;
     }
 
-    const game = await getActiveGameForGuild(interaction.guildId);
+    const game = await resolveActiveGameForInteraction(interaction);
     if (!game) {
-      await interaction.reply({ content: "No active game found.", flags: MessageFlags.Ephemeral });
+      const activeCount = (await listActiveGamesForGuild(interaction.guildId)).length;
+      await interaction.reply({
+        content: activeCount > 1 ? multipleActiveGamesHint() : "No active game found.",
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
 
@@ -618,14 +624,13 @@ export class StCommands {
       });
       await persistEvents(engine, events);
 
-      const dayThreadId = engine.getState().day?.discordThreadId;
-      if (dayThreadId && interaction.guild) {
-        const thread = await interaction.guild.channels.fetch(dayThreadId).catch(() => null);
-        if (thread?.isTextBased()) {
-          await thread
-            .send(`Vote visibility is now **${formatVoteVisibility(mode)}**.`)
-            .catch(() => undefined);
-        }
+      if (interaction.guild) {
+        const { postGameLog } = await import("../game-log-thread.js");
+        await postGameLog(
+          interaction.guild,
+          game,
+          `<@${interaction.user.id}> set vote visibility to **${formatVoteVisibility(mode)}**.`,
+        );
       }
 
       await interaction.reply({

@@ -58,6 +58,24 @@ export async function getGameEvents(gameId: string): Promise<StoredGameEvent[]> 
 export async function getActiveGameForGuild(guildId: string) {
   return prisma.game.findFirst({
     where: { guildId, phase: { not: "ended" } },
+    orderBy: { createdAt: "desc" },
+    include: { players: true },
+  });
+}
+
+/** Prefer the active game for a town/parent channel (avoids cross-game button mismatches). */
+export async function getActiveGameForChannel(guildId: string, channelId: string) {
+  return prisma.game.findFirst({
+    where: { guildId, channelId, phase: { not: "ended" } },
+    orderBy: { createdAt: "desc" },
+    include: { players: true },
+  });
+}
+
+export async function listActiveGamesForGuild(guildId: string) {
+  return prisma.game.findMany({
+    where: { guildId, phase: { not: "ended" } },
+    orderBy: { createdAt: "desc" },
     include: { players: true },
   });
 }

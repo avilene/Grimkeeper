@@ -5,7 +5,7 @@ import {
   type ButtonInteraction,
   type UserSelectMenuInteraction,
 } from "discord.js";
-import { getActiveGameForGuild } from "@grimkeeper/database";
+import { getGameById } from "@grimkeeper/database";
 import { GameCommandKind } from "@grimkeeper/engine";
 
 import {
@@ -18,6 +18,7 @@ import {
   syncGameProjection,
 } from "../commands/command-context.js";
 import { formatVoteVisibility } from "../day-thread.js";
+import { postGameLog } from "../game-log-thread.js";
 import { upsertPinnedGameStatus } from "../game-status.js";
 import {
   INTERACTION_PENDING_CONTENT,
@@ -41,9 +42,18 @@ async function requirePanelStoryteller(
     return null;
   }
 
-  const game = await getActiveGameForGuild(interaction.guildId);
-  if (!game || game.id !== gameId) {
-    await interaction.editReply({ content: "No matching active game." }).catch(() => undefined);
+  const game = await getGameById(gameId);
+  if (!game || game.guildId !== interaction.guildId) {
+    await interaction
+      .editReply({
+        content:
+          "No matching game for this panel (it may be from an older game). Run `/st do setup-town` or refresh the panel from kib.",
+      })
+      .catch(() => undefined);
+    return null;
+  }
+  if (game.phase === "ended") {
+    await interaction.editReply({ content: "That game has ended." }).catch(() => undefined);
     return null;
   }
 
@@ -118,7 +128,7 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       await interaction.editReply({
         content: message
           ? `Vote tracker updated in ${thread ? `<#${thread.id}>` : "your kib thread"}.`
-          : "Could not post the vote tracker.",
+          : "Could not post the vote tracker (kib thread missing or send failed — check the error channel).",
       });
       return true;
     }
@@ -131,10 +141,11 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
         visibility: mode,
       });
       await persistEvents(engine, events);
-      const voting = await resolveVotingChannel(guild, game, engine);
-      await voting
-        ?.send(`Vote visibility is now **${formatVoteVisibility(mode)}**.`)
-        .catch(() => undefined);
+      await postGameLog(
+        guild,
+        game,
+        `<@${interaction.user.id}> set vote visibility to **${formatVoteVisibility(mode)}**.`,
+      );
       await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
       await interaction.editReply({
         content: `Vote visibility set to **${formatVoteVisibility(mode)}**.`,
@@ -226,7 +237,7 @@ export async function handleStPanelUserSelect(
 async function runPanelUserAction(
   action: StPanelUserSelectAction,
   discordUserId: string,
-  game: NonNullable<Awaited<ReturnType<typeof getActiveGameForGuild>>>,
+  game: NonNullable<Awaited<ReturnType<typeof getGameById>>>,
   guild: NonNullable<ButtonInteraction["guild"]>,
   engine: Awaited<ReturnType<typeof loadEngine>>,
   interaction: UserSelectMenuInteraction,

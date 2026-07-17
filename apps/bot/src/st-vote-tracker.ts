@@ -7,10 +7,13 @@ import {
   type Guild,
   type Message,
 } from "discord.js";
+import { prisma } from "@grimkeeper/database";
 import type { GameEngine, NominationRecord } from "@grimkeeper/engine";
 
-import { getStorytellerThread } from "./commands/command-context.js";
+import { ensureStorytellerThread, getStorytellerThread } from "./commands/command-context.js";
+import { reportError } from "./error-reporter.js";
 import { encodeIdPair, parseIdPair } from "./interaction-ids.js";
+import { log } from "./logger.js";
 
 export const VOTE_TRACKER_FOOTER_PREFIX = "grimkeeper:vote-tracker:";
 export const LOCK_VOTES_BUTTON_PREFIX = "gk:lock-votes:";
@@ -171,30 +174,88 @@ async function findVoteTrackerMessage(
   return null;
 }
 
+async function resolveKibThreadForTracker(
+  guild: Guild,
+  parentChannelId: string,
+  gameId: string,
+  kibThreadId?: string | null,
+): Promise<AnyThreadChannel | null> {
+  let thread = await getStorytellerThread(guild, parentChannelId, { kibThreadId, gameId });
+  if (!thread) {
+    thread = await ensureStorytellerThread(guild, parentChannelId, gameId);
+  }
+  if (!thread) return null;
+
+  if (thread.archived) {
+    await thread.setArchived(false, "Posting ST vote tracker.").catch(() => undefined);
+  }
+
+  if (thread.id !== kibThreadId) {
+    await prisma.game
+      .update({
+        where: { id: gameId },
+        data: { kibThreadId: thread.id },
+      })
+      .catch(() => undefined);
+  }
+
+  return thread;
+}
+
 export async function upsertStVoteTracker(
   guild: Guild,
   parentChannelId: string,
   engine: GameEngine,
   kibThreadId?: string | null,
 ): Promise<Message | null> {
-  const thread = await getStorytellerThread(guild, parentChannelId, {
-    kibThreadId,
-    gameId: engine.getState().gameId,
-  });
-  if (!thread?.isTextBased()) return null;
+  const gameId = engine.getState().gameId;
+  const thread = await resolveKibThreadForTracker(guild, parentChannelId, gameId, kibThreadId);
+  if (!thread?.isTextBased()) {
+    log("warn", "voteTracker.thread.missing", {
+      gameId,
+      parentChannelId,
+      kibThreadId: kibThreadId ?? undefined,
+      guildId: guild.id,
+    });
+    void reportError(
+      "voteTracker.thread.missing",
+      new Error("Could not find or create kib thread for vote tracker"),
+      { gameId, parentChannelId, kibThreadId, guildId: guild.id },
+    );
+    return null;
+  }
 
   const embed = buildStVoteTrackerEmbed(engine);
   const components = buildStVoteTrackerComponents(engine);
-  const existing = await findVoteTrackerMessage(thread, engine.getState().gameId);
+  const existing = await findVoteTrackerMessage(thread, gameId);
 
   if (existing) {
-    await existing.edit({ embeds: [embed], components }).catch(() => undefined);
-    return existing;
+    try {
+      await existing.edit({ embeds: [embed], components });
+      return existing;
+    } catch (error) {
+      log("warn", "voteTracker.edit.failed", { gameId, threadId: thread.id, messageId: existing.id });
+      void reportError("voteTracker.edit.failed", error, {
+        gameId,
+        threadId: thread.id,
+        messageId: existing.id,
+        guildId: guild.id,
+      });
+      // Fall through and try a fresh post.
+    }
   }
 
-  const message = await thread.send({ embeds: [embed], components }).catch(() => null);
-  if (message) {
+  try {
+    const message = await thread.send({ embeds: [embed], components });
     await message.pin().catch(() => undefined);
+    return message;
+  } catch (error) {
+    log("warn", "voteTracker.send.failed", { gameId, threadId: thread.id });
+    void reportError("voteTracker.send.failed", error, {
+      gameId,
+      threadId: thread.id,
+      guildId: guild.id,
+    });
+    return null;
   }
-  return message;
 }

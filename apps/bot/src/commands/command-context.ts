@@ -10,7 +10,8 @@ import {
 } from "discord.js";
 import {
   appendGameEvent,
-  getActiveGameForGuild,
+  getActiveGameForChannel,
+  listActiveGamesForGuild,
   getGameEvents,
   prisma,
   syncGameProjectionFromEngine,
@@ -261,6 +262,37 @@ export async function syncGameProjection(gameId: string, engine: GameEngine): Pr
   await syncGameProjectionFromEngine(gameId, engine);
 }
 
+async function resolveParentChannelId(interaction: CommandInteraction): Promise<string | null> {
+  if (!interaction.channelId) return null;
+  const cached = interaction.channel;
+  if (cached?.isThread()) return cached.parentId ?? interaction.channelId;
+  if (cached) return interaction.channelId;
+  if (interaction.inGuild()) {
+    const fetched = await interaction.guild!.channels.fetch(interaction.channelId).catch(() => null);
+    if (fetched?.isThread()) return fetched.parentId ?? interaction.channelId;
+    if (fetched) return interaction.channelId;
+  }
+  return interaction.channelId;
+}
+
+/** Active game for this interaction’s channel; only falls back to guild when exactly one is active. */
+export async function resolveActiveGameForInteraction(interaction: CommandInteraction) {
+  if (!interaction.guildId) return null;
+  const parentChannelId = await resolveParentChannelId(interaction);
+  if (parentChannelId) {
+    const forChannel = await getActiveGameForChannel(interaction.guildId, parentChannelId);
+    if (forChannel) return forChannel;
+  }
+
+  const active = await listActiveGamesForGuild(interaction.guildId);
+  if (active.length === 1) return active[0]!;
+  return null;
+}
+
+export function multipleActiveGamesHint(): string {
+  return "Multiple active games in this server — run this from that game’s channel, kib, or Town Voting thread.";
+}
+
 export async function requireStorytellerGame(interaction: CommandInteraction) {
   if (!interaction.guildId) {
     await replyOrEditInteraction(interaction, {
@@ -270,10 +302,14 @@ export async function requireStorytellerGame(interaction: CommandInteraction) {
     return null;
   }
 
-  const game = await getActiveGameForGuild(interaction.guildId);
+  const game = await resolveActiveGameForInteraction(interaction);
   if (!game) {
+    const activeCount = (await listActiveGamesForGuild(interaction.guildId)).length;
     await replyOrEditInteraction(interaction, {
-      content: "No active game found.",
+      content:
+        activeCount > 1
+          ? multipleActiveGamesHint()
+          : "No active game found for this channel.",
       flags: MessageFlags.Ephemeral,
     });
     return null;
@@ -298,7 +334,7 @@ export async function requireSetRemindersAccess(interaction: CommandInteraction)
 export type ReminderAccess = {
   scope: ReminderScope;
   targetChannelId: string;
-  game: Awaited<ReturnType<typeof getActiveGameForGuild>>;
+  game: Awaited<ReturnType<typeof getActiveGameForChannel>>;
   engine: GameEngine | null;
 };
 
@@ -354,7 +390,7 @@ export async function requireReminderAccess(interaction: CommandInteraction): Pr
     return null;
   }
 
-  const game = await getActiveGameForGuild(interaction.guildId);
+  const game = await getActiveGameForChannel(interaction.guildId, targetChannelId);
   if (game) {
     const engine = await loadEngine(game.id);
     const isStoryteller = engine.isStoryteller(interaction.user.id);
@@ -453,9 +489,16 @@ export async function requireActivePlayerGame(interaction: CommandInteraction) {
     return null;
   }
 
-  const game = await getActiveGameForGuild(interaction.guildId);
+  const game = await resolveActiveGameForInteraction(interaction);
   if (!game) {
-    await interaction.reply({ content: "No active game found.", flags: MessageFlags.Ephemeral });
+    const activeCount = (await listActiveGamesForGuild(interaction.guildId)).length;
+    await interaction.reply({
+      content:
+        activeCount > 1
+          ? multipleActiveGamesHint()
+          : "No active game found for this channel.",
+      flags: MessageFlags.Ephemeral,
+    });
     return null;
   }
 
@@ -1196,20 +1239,31 @@ export async function getStorytellerThread(
 
   const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
   const parentChannelName = parent && "name" in parent ? parent.name : undefined;
-  // Prefer game-scoped kib names so successive games do not reuse another game's thread.
-  const expectedName = storytellerThreadName(parentChannelName, options?.gameId);
+  const expectedNames = new Set<string>();
+  const scoped = storytellerThreadName(parentChannelName, options?.gameId);
+  expectedNames.add(scoped);
+  // Migrate older kib threads that predate game-id suffixes.
+  if (options?.gameId && parentChannelName && isMinimalMode()) {
+    expectedNames.add(kibThreadName(parentChannelName));
+  }
+
+  const matchesName = (candidate: { parentId: string | null; name: string }) =>
+    candidate.parentId === parentChannelId && expectedNames.has(candidate.name);
 
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
-  const activeThread = active?.threads.find(
-    (candidate) =>
-      candidate.parentId === parentChannelId && candidate.name === expectedName,
-  );
+  const activeThread =
+    active?.threads.find((candidate) => candidate.name === scoped && matchesName(candidate)) ??
+    active?.threads.find((candidate) => matchesName(candidate));
   if (activeThread) return activeThread;
 
   if (!isGameTextChannel(parent)) return null;
 
   const archived = await parent.threads.fetchArchived({ type: "private" }).catch(() => null);
-  return archived?.threads.find((candidate) => candidate.name === expectedName) ?? null;
+  return (
+    archived?.threads.find((candidate) => candidate.name === scoped && matchesName(candidate)) ??
+    archived?.threads.find((candidate) => matchesName(candidate)) ??
+    null
+  );
 }
 
 export async function getKibThreadForGame(
