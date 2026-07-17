@@ -55,7 +55,12 @@ import {
 import { getBotClient } from "../discord-client.js";
 import { buildReminderFireContent } from "../reminder-message.js";
 import { reportError } from "../error-reporter.js";
-import { isInteractionAlreadyAcknowledged, withAcknowledgedFallback } from "../interactions/interaction-response.js";
+import {
+  INTERACTION_PENDING_CONTENT,
+  isInteractionAlreadyAcknowledged,
+  toEditReplyPayload,
+  withAcknowledgedFallback,
+} from "../interactions/interaction-response.js";
 import { logGameEvent } from "../game-events-log.js";
 import { refreshGameStatusForEngine } from "../game-status.js";
 import { buildRoleDmEmbed } from "../role-embed.js";
@@ -1473,17 +1478,30 @@ export async function createDayThread(
 
 export async function deferInteractionReply(
   interaction: CommandInteraction,
-  options: { ephemeral?: boolean } = {},
+  options: { ephemeral?: boolean; content?: string } = {},
 ): Promise<void> {
   if (interaction.deferred || interaction.replied) return;
   try {
-    await interaction.deferReply(
-      options.ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
-    );
+    await interaction.reply({
+      content: options.content ?? INTERACTION_PENDING_CONTENT,
+      ...(options.ephemeral ? { flags: MessageFlags.Ephemeral } : {}),
+    });
   } catch (error) {
     if (isInteractionAlreadyAcknowledged(error)) return;
     throw error;
   }
+}
+
+/** Update the pending ack message while a long command is still running. */
+export async function setInteractionProgress(
+  interaction: CommandInteraction,
+  content: string,
+): Promise<void> {
+  if (!interaction.deferred && !interaction.replied) {
+    await deferInteractionReply(interaction, { ephemeral: true, content });
+    return;
+  }
+  await interaction.editReply({ content }).catch(() => undefined);
 }
 
 export function buildInteractionResponseAttempts(
@@ -1491,8 +1509,9 @@ export function buildInteractionResponseAttempts(
   payload: { content?: string; embeds?: EmbedBuilder[]; flags?: number },
   options: { allowReply?: boolean } = {},
 ): Array<() => Promise<unknown>> {
+  const editPayload = toEditReplyPayload(payload);
   const attempts: Array<() => Promise<unknown>> = [
-    () => interaction.editReply(payload),
+    () => interaction.editReply(editPayload),
     () => interaction.followUp(payload),
   ];
   if (options.allowReply !== false) {

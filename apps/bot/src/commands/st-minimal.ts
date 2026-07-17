@@ -39,6 +39,7 @@ import {
   requireStorytellerGame,
   resolveGameRoles,
   resolveVotingChannel,
+  setInteractionProgress,
   syncGameProjection,
 } from "./command-context.js";
 
@@ -304,8 +305,10 @@ export class StCommandsMinimal {
       await persistEvents(engine, events);
 
       if (GAME_DISCORD_ROLES_ENABLED) {
+        await setInteractionProgress(interaction, "Cleaning up roles…");
         await cleanupGameRoles(guild, game.channelId);
       } else {
+        await setInteractionProgress(interaction, "Removing roles and cancelling reminders…");
         await finalizeMinimalGameEnd(guild, game, engine);
       }
 
@@ -328,6 +331,7 @@ export class StCommandsMinimal {
 
     try {
       const engine = await loadEngine(game.id);
+      await setInteractionProgress(interaction, "Broadcasting to player threads…");
       const { sent, failed } = await broadcastToPlayerThreads(
         interaction.guild,
         game,
@@ -516,6 +520,7 @@ export class StCommandsMinimal {
     );
 
     try {
+      await setInteractionProgress(interaction, "Saving roster…");
       const engine = await loadEngine(game.id);
       const events = engine.handle({
         kind: GameCommandKind.SetupTown,
@@ -544,6 +549,7 @@ export class StCommandsMinimal {
 
       const roles = await resolveGameRoles(guild, game);
       if (roles) {
+        await setInteractionProgress(interaction, "Assigning player roles…");
         for (const player of engine.getState().players) {
           await addRoleToUser(guild, player.discordUserId, roles.playersRole.id);
           await postGameLogRoleChange(
@@ -557,8 +563,10 @@ export class StCommandsMinimal {
         }
       }
 
+      await setInteractionProgress(interaction, "Creating player threads…");
       const threadSummary = await createPlayerStThreads(interaction, game, engine);
 
+      await setInteractionProgress(interaction, "Opening voting thread…");
       const voteThread = await createTownVoteThread(guild, game, engine);
       if (voteThread) {
         const openEvents = engine.handle({
@@ -569,6 +577,7 @@ export class StCommandsMinimal {
         await persistEvents(engine, openEvents);
       }
 
+      await setInteractionProgress(interaction, "Pinning ST panel…");
       await upsertPinnedGameStatus(guild, game.channelId, engine);
       await upsertStVoteTracker(guild, game.channelId, engine, game.kibThreadId);
       await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);

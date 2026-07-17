@@ -10,6 +10,7 @@ import {
 import type { GameEngine, NominationRecord } from "@grimkeeper/engine";
 
 import { getStorytellerThread } from "./commands/command-context.js";
+import { encodeIdPair, parseIdPair } from "./interaction-ids.js";
 
 export const VOTE_TRACKER_FOOTER_PREFIX = "grimkeeper:vote-tracker:";
 export const LOCK_VOTES_BUTTON_PREFIX = "gk:lock-votes:";
@@ -25,11 +26,11 @@ export function parseVoteTrackerFooter(footerText: string | null | undefined): s
 }
 
 export function lockVotesButtonCustomId(gameId: string, nominationId: string): string {
-  return `${LOCK_VOTES_BUTTON_PREFIX}${gameId}:${nominationId}`;
+  return `${LOCK_VOTES_BUTTON_PREFIX}${encodeIdPair(gameId, nominationId)}`;
 }
 
 export function unlockVotesButtonCustomId(gameId: string, nominationId: string): string {
-  return `${UNLOCK_VOTES_BUTTON_PREFIX}${gameId}:${nominationId}`;
+  return `${UNLOCK_VOTES_BUTTON_PREFIX}${encodeIdPair(gameId, nominationId)}`;
 }
 
 export function parseLockVotesButtonCustomId(
@@ -41,11 +42,11 @@ export function parseLockVotesButtonCustomId(
   const rest = customId.slice(
     lock ? LOCK_VOTES_BUTTON_PREFIX.length : UNLOCK_VOTES_BUTTON_PREFIX.length,
   );
-  const separator = rest.indexOf(":");
-  if (separator <= 0) return null;
+  const parsed = parseIdPair(rest);
+  if (!parsed) return null;
   return {
-    gameId: rest.slice(0, separator),
-    nominationId: rest.slice(separator + 1),
+    gameId: parsed.left,
+    nominationId: parsed.right,
     lock,
   };
 }

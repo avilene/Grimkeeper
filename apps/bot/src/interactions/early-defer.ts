@@ -1,7 +1,10 @@
 import { type ChatInputCommandInteraction, Interaction, MessageFlags } from "discord.js";
 
 import { isMinimalMode } from "../bot-mode.js";
-import { isInteractionAlreadyAcknowledged } from "./interaction-response.js";
+import {
+  INTERACTION_PENDING_CONTENT,
+  isInteractionAlreadyAcknowledged,
+} from "./interaction-response.js";
 import { log } from "../logger.js";
 
 const ST_REMINDER_SUBCOMMANDS = new Set([
@@ -13,30 +16,40 @@ const ST_REMINDER_SUBCOMMANDS = new Set([
   "edit-reminder",
 ]);
 
-const ST_FAST_SUBCOMMANDS = new Set(["help", "commands"]);
+const FAST_SUBCOMMANDS = new Set(["help", "commands"]);
 
 const INTERACTION_DEFER_BUDGET_MS = 2_800;
 
-export function shouldDeferStSlashCommand(interaction: Interaction): boolean {
+export function shouldDeferSlashCommand(interaction: Interaction): boolean {
   if (!interaction.isChatInputCommand()) return false;
-  if (interaction.commandName !== "st") return false;
 
   const subcommand = interaction.options.getSubcommand(false);
-  if (subcommand !== null && ST_FAST_SUBCOMMANDS.has(subcommand)) return false;
+  if (subcommand !== null && FAST_SUBCOMMANDS.has(subcommand)) return false;
+
+  if (interaction.commandName === "game") {
+    return isMinimalMode();
+  }
+
+  if (interaction.commandName !== "st") return false;
 
   if (isMinimalMode()) return true;
 
   return subcommand !== null && ST_REMINDER_SUBCOMMANDS.has(subcommand);
 }
 
-/** @deprecated Use startEarlyDefer */
-export function shouldDeferStReminderCommand(interaction: Interaction): boolean {
-  return shouldDeferStSlashCommand(interaction);
+/** @deprecated Use shouldDeferSlashCommand */
+export function shouldDeferStSlashCommand(interaction: Interaction): boolean {
+  return shouldDeferSlashCommand(interaction);
 }
 
-/** Kick off deferReply on the same tick the interaction arrives. */
+/** @deprecated Use startEarlyDefer */
+export function shouldDeferStReminderCommand(interaction: Interaction): boolean {
+  return shouldDeferSlashCommand(interaction);
+}
+
+/** Acknowledge immediately with custom pending text (Discord's deferReply text is not customizable). */
 export function startEarlyDefer(interaction: Interaction): Promise<void> {
-  if (!shouldDeferStSlashCommand(interaction)) return Promise.resolve();
+  if (!shouldDeferSlashCommand(interaction)) return Promise.resolve();
 
   const command = interaction as ChatInputCommandInteraction;
   if (command.deferred || command.replied) return Promise.resolve();
@@ -53,23 +66,25 @@ export function startEarlyDefer(interaction: Interaction): Promise<void> {
     });
   }
 
-  return command.deferReply({ flags: MessageFlags.Ephemeral }).then(
-    () => undefined,
-    (error: unknown) => {
-      if (isInteractionAlreadyAcknowledged(error)) {
-        return undefined;
-      }
-      log("warn", "interaction.defer.failed", {
-        command: command.commandName,
-        subcommand: command.options.getSubcommand(false) ?? undefined,
-        guildId: command.guildId,
-        channelId: command.channelId,
-        userId: command.user.id,
-        ageMs,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    },
-  );
+  return command
+    .reply({ content: INTERACTION_PENDING_CONTENT, flags: MessageFlags.Ephemeral })
+    .then(
+      () => undefined,
+      (error: unknown) => {
+        if (isInteractionAlreadyAcknowledged(error)) {
+          return undefined;
+        }
+        log("warn", "interaction.defer.failed", {
+          command: command.commandName,
+          subcommand: command.options.getSubcommand(false) ?? undefined,
+          guildId: command.guildId,
+          channelId: command.channelId,
+          userId: command.user.id,
+          ageMs,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
 }
 
 export async function deferStReminderCommand(interaction: Interaction): Promise<void> {

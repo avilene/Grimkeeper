@@ -38,6 +38,7 @@ import {
   requireMinimalVotingAccess,
   requireTownVotingChannel,
   resolveGameRoles,
+  setInteractionProgress,
   syncGameProjection,
 } from "./command-context.js";
 
@@ -262,6 +263,7 @@ export class GameCommandsMinimal {
     const gameId = randomUUID();
     const gameRoles = { stRole, playersRole: playerRole, spectatorRole: kibRole };
 
+    await setInteractionProgress(interaction, "Assigning roles…");
     await addRoleToUser(interaction.guild, interaction.user.id, stRole.id);
     await applyGameChannelPermissions(
       interaction.guild!,
@@ -270,6 +272,7 @@ export class GameCommandsMinimal {
       playerRole.id,
     );
 
+    await setInteractionProgress(interaction, "Creating game…");
     const engine = new GameEngine(gameId);
     const events = engine.handle({
       kind: GameCommandKind.CreateGame,
@@ -293,11 +296,13 @@ export class GameCommandsMinimal {
 
     await persistEvents(engine, events);
 
+    await setInteractionProgress(interaction, kibThread ? "Attaching kib thread…" : "Creating kib thread…");
     const kibResult = await createKibThread(interaction, gameId, gameRoles, {
       kibRoleId: kibRole.id,
       existingThreadId: kibThread?.id,
     });
 
+    await setInteractionProgress(interaction, logThread ? "Attaching log thread…" : "Creating log thread…");
     const logResult = await ensureLogThread(interaction.guild, {
       id: gameId,
       channelId: interaction.channelId,
@@ -331,6 +336,7 @@ export class GameCommandsMinimal {
       logThreadId: logResult.threadId,
     };
 
+    await setInteractionProgress(interaction, "Writing audit log…");
     await postGameLogRoleChange(
       interaction.guild,
       gameRecord,

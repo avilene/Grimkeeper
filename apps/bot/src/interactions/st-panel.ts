@@ -19,7 +19,10 @@ import {
 } from "../commands/command-context.js";
 import { formatVoteVisibility } from "../day-thread.js";
 import { upsertPinnedGameStatus } from "../game-status.js";
-import { isRecoverableInteractionResponseError } from "./interaction-response.js";
+import {
+  INTERACTION_PENDING_CONTENT,
+  isRecoverableInteractionResponseError,
+} from "./interaction-response.js";
 import {
   parseStPanelButtonCustomId,
   parseStPanelUserSelectCustomId,
@@ -57,7 +60,9 @@ async function ensureDeferred(
   interaction: ButtonInteraction | UserSelectMenuInteraction,
 ): Promise<void> {
   if (!interaction.deferred && !interaction.replied) {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => undefined);
+    await interaction
+      .reply({ content: INTERACTION_PENDING_CONTENT, flags: MessageFlags.Ephemeral })
+      .catch(() => undefined);
   }
 }
 

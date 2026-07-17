@@ -1,5 +1,5 @@
 import { MessageFlags, type ButtonInteraction } from "discord.js";
-import { getActiveGameForGuild } from "@grimkeeper/database";
+import { getGameById } from "@grimkeeper/database";
 import { GameCommandKind } from "@grimkeeper/engine";
 
 import {
@@ -12,14 +12,19 @@ import {
   upsertStVoteTracker,
 } from "../st-vote-tracker.js";
 import { refreshNominationEverywhere } from "../commands/command-context.js";
-import { isRecoverableInteractionResponseError } from "./interaction-response.js";
+import {
+  INTERACTION_PENDING_CONTENT,
+  isRecoverableInteractionResponseError,
+} from "./interaction-response.js";
 
 export async function handleLockVotesButton(interaction: ButtonInteraction): Promise<boolean> {
   const parsed = parseLockVotesButtonCustomId(interaction.customId);
   if (!parsed) return false;
 
   if (!interaction.deferred && !interaction.replied) {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => undefined);
+    await interaction
+      .reply({ content: INTERACTION_PENDING_CONTENT, flags: MessageFlags.Ephemeral })
+      .catch(() => undefined);
   }
 
   if (!interaction.guildId || !interaction.guild) {
@@ -27,9 +32,15 @@ export async function handleLockVotesButton(interaction: ButtonInteraction): Pro
     return true;
   }
 
-  const game = await getActiveGameForGuild(interaction.guildId);
-  if (!game || game.id !== parsed.gameId) {
-    await interaction.editReply({ content: "No matching active game." }).catch(() => undefined);
+  const game = await getGameById(parsed.gameId);
+  if (!game || game.guildId !== interaction.guildId) {
+    await interaction
+      .editReply({ content: "No matching game for this nomination (it may be from an older game)." })
+      .catch(() => undefined);
+    return true;
+  }
+  if (game.phase === "ended") {
+    await interaction.editReply({ content: "That game has ended." }).catch(() => undefined);
     return true;
   }
 

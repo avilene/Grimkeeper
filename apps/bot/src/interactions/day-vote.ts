@@ -7,7 +7,7 @@ import {
   type ButtonInteraction,
   type ModalSubmitInteraction,
 } from "discord.js";
-import { getActiveGameForGuild } from "@grimkeeper/database";
+import { getGameById } from "@grimkeeper/database";
 import { GameCommandKind, type VoteChoice } from "@grimkeeper/engine";
 
 import { canUseMinimalVoting } from "../access.js";
@@ -25,7 +25,10 @@ import {
   resolveVotingChannel,
   syncGameProjection,
 } from "../commands/command-context.js";
-import { isRecoverableInteractionResponseError } from "./interaction-response.js";
+import {
+  INTERACTION_PENDING_CONTENT,
+  isRecoverableInteractionResponseError,
+} from "./interaction-response.js";
 
 const VOTE_CHOICE_FIELD = "choice";
 const VOTE_REASON_FIELD = "reason";
@@ -39,53 +42,25 @@ export async function handleVoteButton(interaction: ButtonInteraction): Promise<
   const parsed = parseVoteButtonCustomId(interaction.customId);
   if (!parsed) return false;
 
-  // Show the modal as soon as possible — Discord's 3s window closes before DB work.
+  // showModal must be the first response — keep this path free of DB/network work.
   if (!interaction.guildId) {
     await interaction.reply({ content: "This must be used in a server.", flags: MessageFlags.Ephemeral });
     return true;
   }
 
+  if (isMinimalMode() && !canUseMinimalVoting(interaction.user.id)) {
+    await interaction.reply({
+      content:
+        "Voting is restricted to allowlisted users (`ALLOWED_USER_IDS`) during development.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
   try {
-    const game = await getActiveGameForGuild(interaction.guildId);
-    if (!game || game.id !== parsed.gameId) {
-      await interaction.reply({ content: "No matching active game.", flags: MessageFlags.Ephemeral });
-      return true;
-    }
-
-    const engine = await loadEngine(game.id);
-    const nomination = engine.getNominationById(parsed.nominationId);
-    if (!nomination || nomination.status !== "open") {
-      await interaction.reply({
-        content: "That nomination is not open for voting.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return true;
-    }
-
-    const voter = engine.getPlayerByDiscordId(interaction.user.id);
-    if (!voter) {
-      await interaction.reply({ content: "You are not in this game.", flags: MessageFlags.Ephemeral });
-      return true;
-    }
-
-    if (isMinimalMode() && !canUseMinimalVoting(interaction.user.id)) {
-      await interaction.reply({
-        content:
-          "Voting is restricted to allowlisted users (`ALLOWED_USER_IDS`) during development.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return true;
-    }
-
-    const nominee = engine.getPlayerById(nomination.nomineeId);
-    const contextLines = [
-      `Accusation: ${nomination.accusation}`,
-      `Defense: ${nomination.defense ?? "—"}`,
-    ].join("\n");
-
     const modal = new ModalBuilder()
-      .setCustomId(voteModalCustomId(game.id, nomination.id))
-      .setTitle(`Vote: ${nominee?.displayName ?? "nominee"}`.slice(0, 45))
+      .setCustomId(voteModalCustomId(parsed.gameId, parsed.nominationId))
+      .setTitle("Cast your vote")
       .addComponents(
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
@@ -103,7 +78,7 @@ export async function handleVoteButton(interaction: ButtonInteraction): Promise<
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(false)
             .setMaxLength(500)
-            .setPlaceholder(contextLines.slice(0, 100)),
+            .setPlaceholder("Optional unless voting conditional"),
         ),
       );
 
@@ -131,7 +106,9 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
 
   // Ack immediately so Discord does not expire the interaction while we persist.
   if (!interaction.deferred && !interaction.replied) {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => undefined);
+    await interaction
+      .reply({ content: INTERACTION_PENDING_CONTENT, flags: MessageFlags.Ephemeral })
+      .catch(() => undefined);
   }
 
   if (!interaction.guildId) {
@@ -139,9 +116,15 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
     return true;
   }
 
-  const game = await getActiveGameForGuild(interaction.guildId);
-  if (!game || game.id !== parsed.gameId) {
-    await interaction.editReply({ content: "No matching active game." }).catch(() => undefined);
+  const game = await getGameById(parsed.gameId);
+  if (!game || game.guildId !== interaction.guildId) {
+    await interaction
+      .editReply({ content: "No matching game for this nomination (it may be from an older game)." })
+      .catch(() => undefined);
+    return true;
+  }
+  if (game.phase === "ended") {
+    await interaction.editReply({ content: "That game has ended." }).catch(() => undefined);
     return true;
   }
 
@@ -158,6 +141,14 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
         content:
           "Voting is restricted to allowlisted users (`ALLOWED_USER_IDS`) during development.",
       })
+      .catch(() => undefined);
+    return true;
+  }
+
+  const nomination = engine.getNominationById(parsed.nominationId);
+  if (!nomination || nomination.status !== "open") {
+    await interaction
+      .editReply({ content: "That nomination is not open for voting." })
       .catch(() => undefined);
     return true;
   }

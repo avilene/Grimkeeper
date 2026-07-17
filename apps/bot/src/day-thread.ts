@@ -18,6 +18,7 @@ import {
 } from "@grimkeeper/engine";
 
 import { isDevMode } from "./dev.js";
+import { encodeIdPair, parseIdPair } from "./interaction-ids.js";
 import { discordTimestamp } from "./reminder-message.js";
 
 export const VOTE_BUTTON_PREFIX = "gk:vote:";
@@ -33,33 +34,25 @@ export function parseNominationIdFromFooter(footerText: string | null | undefine
 }
 
 export function voteButtonCustomId(gameId: string, nominationId: string): string {
-  return `${VOTE_BUTTON_PREFIX}${gameId}:${nominationId}`;
+  return `${VOTE_BUTTON_PREFIX}${encodeIdPair(gameId, nominationId)}`;
 }
 
 export function parseVoteButtonCustomId(customId: string): { gameId: string; nominationId: string } | null {
   if (!customId.startsWith(VOTE_BUTTON_PREFIX)) return null;
-  const rest = customId.slice(VOTE_BUTTON_PREFIX.length);
-  const separator = rest.indexOf(":");
-  if (separator <= 0) return null;
-  return {
-    gameId: rest.slice(0, separator),
-    nominationId: rest.slice(separator + 1),
-  };
+  const parsed = parseIdPair(customId.slice(VOTE_BUTTON_PREFIX.length));
+  if (!parsed) return null;
+  return { gameId: parsed.left, nominationId: parsed.right };
 }
 
 export function voteModalCustomId(gameId: string, nominationId: string): string {
-  return `${VOTE_MODAL_PREFIX}${gameId}:${nominationId}`;
+  return `${VOTE_MODAL_PREFIX}${encodeIdPair(gameId, nominationId)}`;
 }
 
 export function parseVoteModalCustomId(customId: string): { gameId: string; nominationId: string } | null {
   if (!customId.startsWith(VOTE_MODAL_PREFIX)) return null;
-  const rest = customId.slice(VOTE_MODAL_PREFIX.length);
-  const separator = rest.indexOf(":");
-  if (separator <= 0) return null;
-  return {
-    gameId: rest.slice(0, separator),
-    nominationId: rest.slice(separator + 1),
-  };
+  const parsed = parseIdPair(customId.slice(VOTE_MODAL_PREFIX.length));
+  if (!parsed) return null;
+  return { gameId: parsed.left, nominationId: parsed.right };
 }
 
 export function dayThreadName(dayNumber: number): string {

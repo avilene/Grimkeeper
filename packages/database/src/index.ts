@@ -56,6 +56,13 @@ export async function getGameEvents(gameId: string): Promise<StoredGameEvent[]> 
 export async function getActiveGameForGuild(guildId: string) {
   return prisma.game.findFirst({
     where: { guildId, phase: { not: "ended" } },
-    include: { players: true, events: { orderBy: { seq: "asc" } } },
+    include: { players: true },
+  });
+}
+
+export async function getGameById(gameId: string) {
+  return prisma.game.findUnique({
+    where: { id: gameId },
+    include: { players: true },
   });
 }

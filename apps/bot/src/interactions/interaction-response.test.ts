@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  INTERACTION_PENDING_CONTENT,
   isInteractionAlreadyAcknowledged,
   isRecoverableInteractionResponseError,
+  toEditReplyPayload,
   withAcknowledgedFallback,
 } from "./interaction-response.js";
 
@@ -25,6 +27,28 @@ describe("isInteractionAlreadyAcknowledged", () => {
   it("matches recoverable acknowledgement errors", () => {
     expect(isInteractionAlreadyAcknowledged({ code: 40060 })).toBe(true);
     expect(isInteractionAlreadyAcknowledged({ code: "InteractionNotReplied" })).toBe(true);
+  });
+});
+
+describe("toEditReplyPayload", () => {
+  it("clears pending content when final reply is embeds-only", () => {
+    expect(toEditReplyPayload({ embeds: [{} as never] })).toEqual({
+      embeds: [{}],
+      content: null,
+    });
+  });
+
+  it("preserves explicit content", () => {
+    expect(toEditReplyPayload({ content: "done", embeds: [{} as never] })).toEqual({
+      content: "done",
+      embeds: [{}],
+    });
+  });
+});
+
+describe("INTERACTION_PENDING_CONTENT", () => {
+  it("is a non-empty pending message", () => {
+    expect(INTERACTION_PENDING_CONTENT.length).toBeGreaterThan(0);
   });
 });
 
