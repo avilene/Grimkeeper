@@ -52,14 +52,16 @@ Build notifications:
   - GitHub repo secret: DISCORD_BUILD_WEBHOOK_URL (Discord channel webhook)
   - Each push to main posts build success/failure to that channel
 
-Auto-deploy after GitHub Actions build (webhook — no polling):
+Auto-deploy after GitHub Actions build (shared webhook — Grimkeeper + Koi):
   1. In .env: DEPLOY_WEBHOOK_SECRET=<random>
   2. In .env: DEPLOY_HOOK_IMAGE=ghcr.io/YOUR_USER/Grimkeeper-deploy-hook:latest
-  3. docker login ghcr.io -u YOUR_USER   # on the droplet (credentials used by deploy-hook)
-  4. docker compose --profile deploy pull deploy-hook && docker compose --profile deploy up -d deploy-hook
-     (CI only rebuilds deploy-hook when ops/deploy-hook/ changes; redeploy-bot.sh is mounted from the repo)
-  5. GitHub repo secrets: DEPLOY_WEBHOOK_SECRET (same), DEPLOY_WEBHOOK_URL=http://DROPLET:9000/hooks/redeploy
-  6. Open port 9000 (or put nginx in front with TLS)
+  3. In .env: KOI_REPO_DIR=/path/to/koi-discord   # sibling checkout on the droplet
+  4. docker login ghcr.io -u YOUR_USER   # on the droplet (credentials used by deploy-hook)
+  5. docker compose --profile deploy pull deploy-hook && docker compose --profile deploy up -d deploy-hook
+     (CI only rebuilds deploy-hook when ops/deploy-hook/ changes; redeploy scripts are mounted from the repos)
+  6. Grimkeeper GitHub secrets: DEPLOY_WEBHOOK_SECRET, DEPLOY_WEBHOOK_URL=http://DROPLET:9000/hooks/redeploy
+  7. Koi GitHub secrets:        DEPLOY_WEBHOOK_SECRET (same), DEPLOY_WEBHOOK_URL=http://DROPLET:9000/hooks/redeploy-koi
+  8. Open port 9000 (or put nginx in front with TLS)
 
 Legacy poll-based deploy (if you cannot expose a webhook port):
   - pnpm docker:watch

@@ -24,5 +24,31 @@
         }
       }
     }
+  },
+  {
+    "id": "redeploy-koi",
+    "execute-command": "/bin/sh",
+    "pass-arguments-to-command": [
+      {
+        "source": "string",
+        "name": "/koi/scripts/redeploy-bot.sh"
+      },
+      {
+        "source": "string",
+        "name": "webhook"
+      }
+    ],
+    "command-working-directory": "/koi",
+    "include-command-output-in-response": true,
+    "trigger-rule": {
+      "match": {
+        "type": "payload-hmac-sha256",
+        "secret": "{{ getenv `DEPLOY_WEBHOOK_SECRET` }}",
+        "parameter": {
+          "source": "header",
+          "name": "X-Hub-Signature-256"
+        }
+      }
+    }
   }
 ]

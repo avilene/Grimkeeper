@@ -32,9 +32,11 @@ services:
       logging: "promtail"
       logging_jobname: "grimkeeper-bot"
 
-  # Optional — receive GitHub Actions deploy webhook and auto-redeploy:
+  # Optional — shared deploy webhook for Grimkeeper + Koi (same port/secret):
   #   docker compose --profile deploy up -d deploy-hook
-  # GitHub repo secrets: DEPLOY_WEBHOOK_URL, DEPLOY_WEBHOOK_SECRET
+  # Grimkeeper CI → http://DROPLET:9000/hooks/redeploy
+  # Koi CI        → http://DROPLET:9000/hooks/redeploy-koi
+  # Set KOI_REPO_DIR to the host path of the koi-discord checkout (sibling by default).
   deploy-hook:
     profiles: ["deploy"]
     image: ${DEPLOY_HOOK_IMAGE:-grimkeeper-deploy-hook:local}
@@ -47,6 +49,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./:/app:ro
+      - ${KOI_REPO_DIR:-../koi-discord}:/koi:ro
       # Host `docker login ghcr.io` credentials — required for private image pulls from the hook.
       - ${DOCKER_CONFIG_DIR:-/root/.docker}:/root/.docker:ro
     ports:
