@@ -34,7 +34,14 @@ import {
   type PlayerState,
 } from "@grimkeeper/engine";
 
-import { canUseBot, canManageChannelReminders, getAdminRoleIds, getReminderPingRoleId, isInExplicitAllowlist } from "../access.js";
+import {
+  canUseBot,
+  canManageChannelReminders,
+  canUseMinimalVoting,
+  getAdminRoleIds,
+  getReminderPingRoleId,
+  isInExplicitAllowlist,
+} from "../access.js";
 import { isMinimalMode } from "../bot-mode.js";
 import { isDevMode } from "../dev.js";
 import {
@@ -339,9 +346,10 @@ export async function requireReminderAccess(interaction: CommandInteraction): Pr
   if (game) {
     const engine = await loadEngine(game.id);
     const isStoryteller = engine.isStoryteller(interaction.user.id);
+    const hasStRole = await memberHasGameStRole(interaction, game);
     const isAllowlistOverride = await isInExplicitAllowlist(interaction);
 
-    if (isStoryteller || isAllowlistOverride) {
+    if (isStoryteller || hasStRole || isAllowlistOverride) {
       const channelIds = buildGameReminderChannelIds(game, targetChannelId, engine);
       return {
         scope: {
@@ -361,7 +369,7 @@ export async function requireReminderAccess(interaction: CommandInteraction): Pr
   if (!(await canManageChannelReminders(interaction))) {
     await replyOrEditInteraction(interaction, {
       content:
-        "No active game access. Set channel reminders with `REMINDER_ROLE_IDS`, or add your user/role to `ALLOWED_USER_IDS` / `ALLOWED_ROLE_IDS`.",
+        "No active game access. Set reminders with the **ST role**, or add your user/role to `ALLOWED_USER_IDS` / `ALLOWED_ROLE_IDS`.",
       flags: MessageFlags.Ephemeral,
     });
     return null;
@@ -463,6 +471,125 @@ export async function requireCommandAccess(interaction: CommandInteraction): Pro
     await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
   }
   return false;
+}
+
+export async function requireMinimalVotingAccess(interaction: CommandInteraction): Promise<boolean> {
+  if (!isMinimalMode()) return true;
+  if (canUseMinimalVoting(interaction.user.id)) return true;
+
+  await replyOrEditInteraction(interaction, {
+    content:
+      "Voting is restricted to allowlisted users (`ALLOWED_USER_IDS`) during development.",
+    flags: MessageFlags.Ephemeral,
+  });
+  return false;
+}
+
+export async function memberHasGameStRole(
+  interaction: CommandInteraction,
+  game: GameRoleIds,
+): Promise<boolean> {
+  if (!game.stRoleId || !interaction.guild) return false;
+  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  return member?.roles.cache.has(game.stRoleId) ?? false;
+}
+
+export async function requireKibThread(
+  interaction: CommandInteraction,
+  game: { channelId: string },
+): Promise<boolean> {
+  if (!interaction.guild) {
+    await replyOrEditInteraction(interaction, {
+      content: "This command must be used in a server.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return false;
+  }
+
+  const kib = await getStorytellerThread(interaction.guild, game.channelId);
+  if (!kib || interaction.channelId !== kib.id) {
+    await replyOrEditInteraction(interaction, {
+      content: "Run this from the **kib thread**.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return false;
+  }
+  return true;
+}
+
+export async function broadcastToPlayerThreads(
+  guild: Guild,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+  message: string,
+): Promise<{ sent: number; failed: number }> {
+  const threads = await listPersonalPlayerThreads(guild, game, engine);
+  let sent = 0;
+  let failed = 0;
+  for (const thread of threads) {
+    const ok = await thread
+      .send({ content: message })
+      .then(() => true)
+      .catch(() => false);
+    if (ok) sent++;
+    else failed++;
+  }
+  return { sent, failed };
+}
+
+export async function stripGameRolesFromMembers(
+  guild: Guild,
+  game: GameRoleIds,
+  engine: GameEngine,
+): Promise<void> {
+  const roleIds = [game.stRoleId, game.playerRoleId, game.kibRoleId].filter(
+    (roleId): roleId is string => Boolean(roleId),
+  );
+  if (roleIds.length === 0) return;
+
+  const userIds = new Set<string>();
+  for (const player of engine.getState().players) {
+    if (!isFakePlayer(player.discordUserId)) {
+      userIds.add(player.discordUserId);
+    }
+  }
+  for (const stId of engine.getStorytellerDiscordIds()) {
+    userIds.add(stId);
+  }
+
+  for (const userId of userIds) {
+    for (const roleId of roleIds) {
+      await removeRoleFromUser(guild, userId, roleId);
+    }
+  }
+}
+
+export async function clearGameChannelPermissions(
+  guild: Guild,
+  channelId: string,
+  game: GameRoleIds,
+): Promise<void> {
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel || !("permissionOverwrites" in channel)) return;
+
+  if (game.stRoleId) {
+    await channel.permissionOverwrites.delete(game.stRoleId).catch(() => undefined);
+  }
+  if (game.playerRoleId) {
+    await channel.permissionOverwrites.delete(game.playerRoleId).catch(() => undefined);
+  }
+}
+
+export async function finalizeMinimalGameEnd(
+  guild: Guild,
+  game: GameRoleIds & { id: string; channelId: string },
+  engine: GameEngine,
+): Promise<void> {
+  const { cancelGameReminders } = await import("@grimkeeper/database");
+  await cancelGameReminders(game.id);
+  await stripGameRolesFromMembers(guild, game, engine);
+  await clearGameChannelPermissions(guild, game.channelId, game);
+  await openStorytellerThread(guild, game.channelId);
 }
 
 type GameRoles = {

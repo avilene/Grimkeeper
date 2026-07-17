@@ -10,6 +10,8 @@ import {
 import { getActiveGameForGuild } from "@grimkeeper/database";
 import { GameCommandKind, type VoteChoice } from "@grimkeeper/engine";
 
+import { canUseMinimalVoting } from "../access.js";
+import { isMinimalMode } from "../bot-mode.js";
 import {
   parseVoteButtonCustomId,
   parseVoteModalCustomId,
@@ -63,6 +65,15 @@ export async function handleVoteButton(interaction: ButtonInteraction): Promise<
     const voter = engine.getPlayerByDiscordId(interaction.user.id);
     if (!voter) {
       await interaction.reply({ content: "You are not in this game.", flags: MessageFlags.Ephemeral });
+      return true;
+    }
+
+    if (isMinimalMode() && !canUseMinimalVoting(interaction.user.id)) {
+      await interaction.reply({
+        content:
+          "Voting is restricted to allowlisted users (`ALLOWED_USER_IDS`) during development.",
+        flags: MessageFlags.Ephemeral,
+      });
       return true;
     }
 
@@ -138,6 +149,16 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
   const voter = engine.getPlayerByDiscordId(interaction.user.id);
   if (!voter) {
     await interaction.editReply({ content: "You are not in this game." }).catch(() => undefined);
+    return true;
+  }
+
+  if (isMinimalMode() && !canUseMinimalVoting(interaction.user.id)) {
+    await interaction
+      .editReply({
+        content:
+          "Voting is restricted to allowlisted users (`ALLOWED_USER_IDS`) during development.",
+      })
+      .catch(() => undefined);
     return true;
   }
 

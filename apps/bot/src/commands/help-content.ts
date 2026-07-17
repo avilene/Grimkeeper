@@ -19,6 +19,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
             "Player commands for minimal-mode town voting.",
             "Use **`/game do`** and start typing the action — Discord filters the list.",
             "Nominations and votes happen in the **Town Voting** thread after `/st do setup-town`.",
+            "**Voting is allowlist-only** — only users in `ALLOWED_USER_IDS` can nominate, defend, or vote for now.",
             "You can also cast a **private ballot** from your personal ST thread.",
             "",
             "Storytellers: see **`/st help`** for setup and day control.",
@@ -110,8 +111,9 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             "**Quick start**",
             "1. `/game do setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles",
             "2. `/st do setup-town` with `players:` @mentions in **seat order** (any player count)",
-            "3. Players nominate and vote in **Town Voting** (or privately in ST threads)",
-            "4. Use the **kib control panel** (or `/st do resolve-next` → `/st do execute`)",
+            "3. `/st do say` from kib to broadcast to all player threads",
+            "4. `/st remind` / `/st set-reminders` for scheduled pings (ST role or allowlist)",
+            "5. `/st do end` — strips game roles, cancels reminders, opens kib for post-game chat",
             "",
             "Prefer typing less? **`/st do`** filters actions as you type. Mid-game buttons: **`/st panel`**.",
           ].join("\n"),
@@ -127,13 +129,14 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           {
             name: "Setup & town (`/st do …`)",
             value: [
-              cmd("setup-town", "Needs `players:` ordered @mentions — creates ST threads + Town Voting."),
+              cmd("setup-town", "Needs `players:` ordered @mentions — assigns player role + creates threads."),
+              cmd("say", "Needs `message:` — broadcast from **kib** to every personal player thread."),
+              cmd("end", "End game: remove roles from players, cancel reminders, open kib."),
               cmd("add-spectator / remove-spectator", "Needs `user:` — assigns/removes the kib role."),
-              cmd("end", "End the game."),
             ].join("\n\n"),
           },
           {
-            name: "Day control (`/st do …` or panel buttons)",
+            name: "Day testing (`/st do …` or panel — allowlist voting only)",
             value: [
               cmd("resolve-next", "Resolve the oldest open nomination."),
               cmd("execute", "Needs `player:` after a passed nomination."),
@@ -146,7 +149,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           {
             name: "Reminders",
             value: [
-              cmd("/st remind", "Schedule a reminder in the town channel."),
+              cmd("/st remind", "Schedule a reminder (requires ST role, storyteller, or allowlist)."),
               cmd("/st set-reminders", "Replace this channel’s hour-offset reminder batch (does not stack)."),
               cmd("/st reminders", "List pending reminders."),
               cmd("/st edit-reminder / delete-reminder / clear-reminders", "Manage pending reminders."),
@@ -155,11 +158,11 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           {
             name: "Notes",
             value: [
+              "Player nominate/vote is restricted to **`ALLOWED_USER_IDS`** during development.",
               "Votes live in the **Town Voting** private thread (all players + ST).",
               "Private ballots are also posted to each personal ST thread.",
               "`setup-town` also pins the **control panel** + **vote tracker** in kib.",
-              "A player can only have **one open nomination** at a time (as nominator or nominee).",
-              "Seat order = mention order in `setup-town`.",
+              "Personal player threads stay private after `/st do end`.",
             ].join("\n"),
           },
         ),

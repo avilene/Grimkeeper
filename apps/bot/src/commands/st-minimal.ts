@@ -21,9 +21,11 @@ import { respondDoAutocomplete, ST_DO_ACTIONS } from "./action-catalog.js";
 import {
   GAME_DISCORD_ROLES_ENABLED,
   addRoleToUser,
+  broadcastToPlayerThreads,
   cleanupGameRoles,
   createPlayerStThreads,
   createTownVoteThread,
+  finalizeMinimalGameEnd,
   getStorytellerThread,
   loadEngine,
   persistEvents,
@@ -32,6 +34,7 @@ import {
   replyEngineError,
   replyOrEditInteraction,
   requireCommandAccess,
+  requireKibThread,
   requireStorytellerGame,
   resolveGameRoles,
   resolveVotingChannel,
@@ -120,6 +123,13 @@ export class StCommandsMinimal {
       required: false,
     })
     reason: string | undefined,
+    @SlashOption({
+      name: "message",
+      description: "For say: text to broadcast to all player threads",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    message: string | undefined,
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
@@ -162,6 +172,13 @@ export class StCommandsMinimal {
           return;
         }
         await this.setupTown(players, interaction);
+        return;
+      case "say":
+        if (!message?.trim()) {
+          await missingOption(interaction, "message", "say");
+          return;
+        }
+        await this.say(message, interaction);
         return;
       case "resolve-next":
         await this.resolveNext(interaction);
@@ -284,11 +301,48 @@ export class StCommandsMinimal {
 
       if (GAME_DISCORD_ROLES_ENABLED) {
         await cleanupGameRoles(guild, game.channelId);
+      } else {
+        await finalizeMinimalGameEnd(guild, game, engine);
       }
 
-      const cleanupHint = GAME_DISCORD_ROLES_ENABLED ? " Game roles cleaned up." : "";
+      const cleanupHint = GAME_DISCORD_ROLES_ENABLED
+        ? " Game roles cleaned up."
+        : " Game roles removed from players, reminders cancelled, and kib thread opened for post-game chat.";
       await replyOrEditInteraction(interaction, {
         content: `Game ended.${cleanupHint}`,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async say(message: string, interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    if (!interaction.guild) return;
+    if (!(await requireKibThread(interaction, game))) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const { sent, failed } = await broadcastToPlayerThreads(
+        interaction.guild,
+        game,
+        engine,
+        message.trim(),
+      );
+
+      if (sent === 0) {
+        await replyOrEditInteraction(interaction, {
+          content: "No player threads found. Run `/st do setup-town` first.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const failureHint = failed > 0 ? ` (${failed} failed)` : "";
+      await replyOrEditInteraction(interaction, {
+        content: `Sent to **${sent}** player thread${sent === 1 ? "" : "s"}${failureHint}.`,
+        flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       await replyEngineError(interaction, error);
