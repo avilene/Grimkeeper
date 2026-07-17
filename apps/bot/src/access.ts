@@ -10,14 +10,6 @@ export function parseList(value: string | undefined): Set<string> {
   );
 }
 
-/** Minimal-mode player voting (nominate/defend/vote): ALLOWED_USER_IDS only, fail closed if unset. */
-export function canUseMinimalVoting(userId: string | undefined): boolean {
-  if (!userId) return false;
-  const allowedUserIds = parseList(process.env.ALLOWED_USER_IDS);
-  if (allowedUserIds.size === 0) return false;
-  return allowedUserIds.has(userId);
-}
-
 export async function canUseBot(interaction: CommandInteraction): Promise<boolean> {
   const allowedUserIds = parseList(process.env.ALLOWED_USER_IDS);
   const allowedRoleIds = parseList(process.env.ALLOWED_ROLE_IDS);

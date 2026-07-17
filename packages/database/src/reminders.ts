@@ -112,9 +112,50 @@ export async function markReminderFired(id: string) {
 export async function claimReminderForFire(id: string): Promise<boolean> {
   const result = await prisma.gameReminder.updateMany({
     where: { id, fired: false },
-    data: { fired: true },
+    data: { fired: true, sourceKey: null },
   });
   return result.count > 0;
+}
+
+/**
+ * Claim one due reminder and mark same-channel/message/minute siblings fired so
+ * stacked duplicate rows cannot send again (works across processes).
+ */
+export async function claimReminderAndDuplicates(reminder: {
+  id: string;
+  channelId: string;
+  message: string;
+  fireAt: Date;
+}): Promise<boolean> {
+  const claimed = await claimReminderForFire(reminder.id);
+  if (!claimed) return false;
+
+  const fireMinute = Math.floor(new Date(reminder.fireAt).getTime() / 60_000);
+  const minuteStart = new Date(fireMinute * 60_000);
+  const minuteEnd = new Date((fireMinute + 1) * 60_000);
+  const normalized = reminder.message.trim().toLowerCase().replace(/\s+/g, " ");
+
+  const siblings = await prisma.gameReminder.findMany({
+    where: {
+      id: { not: reminder.id },
+      channelId: reminder.channelId,
+      fired: false,
+      fireAt: { gte: minuteStart, lt: minuteEnd },
+    },
+    select: { id: true, message: true },
+  });
+  const siblingIds = siblings
+    .filter(
+      (row) => row.message.trim().toLowerCase().replace(/\s+/g, " ") === normalized,
+    )
+    .map((row) => row.id);
+  if (siblingIds.length > 0) {
+    await prisma.gameReminder.updateMany({
+      where: { id: { in: siblingIds } },
+      data: { fired: true, sourceKey: null },
+    });
+  }
+  return true;
 }
 
 export async function cancelGameReminders(gameId: string) {
@@ -173,15 +214,71 @@ export async function cancelReminders(scope: ReminderScope, filter?: CancelRemin
   return result.count;
 }
 
-/** Stable key so Discord retries / duplicate handlers cannot create parallel batch rows. */
+/**
+ * Cancel all pending set-reminders batch rows in a channel (any gameId), then create
+ * replacements in one transaction so parallel handlers cannot stack batches.
+ */
+export async function replaceChannelBatchReminders(
+  guildId: string,
+  channelId: string,
+  creates: CreateReminderInput[],
+): Promise<{ replaced: number }> {
+  return prisma.$transaction(async (tx) => {
+    const cancelled = await tx.gameReminder.updateMany({
+      where: {
+        guildId,
+        channelId,
+        fired: false,
+        seriesEndAt: { not: null },
+      },
+      data: { fired: true, sourceKey: null },
+    });
+
+    for (const input of creates) {
+      const data = {
+        gameId: input.gameId ?? null,
+        guildId: input.guildId,
+        channelId: input.channelId,
+        message: input.message,
+        emoji: input.emoji ?? null,
+        sourceKey: input.sourceKey ?? null,
+        fireAt: input.fireAt,
+        seriesEndAt: input.seriesEndAt ?? null,
+        createdBy: input.createdBy,
+        pingPlayers: input.pingPlayers ?? false,
+        pingRoleId: input.pingRoleId ?? null,
+      };
+
+      if (data.sourceKey) {
+        const existing = await tx.gameReminder.findUnique({
+          where: { sourceKey: data.sourceKey },
+        });
+        if (existing) {
+          await tx.gameReminder.update({
+            where: { id: existing.id },
+            data: { ...data, fired: false },
+          });
+          continue;
+        }
+      }
+
+      await tx.gameReminder.create({ data });
+    }
+
+    return { replaced: cancelled.count };
+  });
+}
+
+/** Stable key by hour offset so parallel set-reminders runs upsert instead of stacking. */
 export function batchReminderSourceKey(
   guildId: string,
   channelId: string,
-  fireAt: Date,
+  hourOffset: number,
   message: string,
 ): string {
   const normalized = message.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 80);
-  return `set:${guildId}:${channelId}:${fireAt.getTime()}:${normalized}`;
+  const hour = Number(hourOffset.toFixed(4));
+  return `set:${guildId}:${channelId}:h${hour}:${normalized}`;
 }
 
 export async function countPendingReminders(scope: ReminderScope) {

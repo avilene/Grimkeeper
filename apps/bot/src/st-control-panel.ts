@@ -168,7 +168,10 @@ export async function upsertStControlPanel(
   engine: GameEngine,
   kibThreadId?: string | null,
 ): Promise<Message | null> {
-  const thread = await getStorytellerThread(guild, parentChannelId, { kibThreadId });
+  const thread = await getStorytellerThread(guild, parentChannelId, {
+    kibThreadId,
+    gameId: engine.getState().gameId,
+  });
   if (!thread?.isTextBased()) return null;
 
   const embed = buildStControlPanelEmbed(engine);

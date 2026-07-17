@@ -11,10 +11,11 @@ import {
   addRoleMembersToThread,
   GameRoleIds,
   isGameTextChannel,
+  shortGameId,
 } from "./commands/command-context.js";
 
-export function logThreadName(parentChannelName: string): string {
-  return `log-${parentChannelName}`.slice(0, 100);
+export function logThreadName(parentChannelName: string, gameId: string): string {
+  return `log-${parentChannelName} · ${shortGameId(gameId)}`.slice(0, 100);
 }
 
 export function formatGameLogLine(message: string, at = new Date()): string {
@@ -31,18 +32,23 @@ export type GameThreadRecord = GameRoleIds & {
 
 export async function getLogThreadForGame(
   guild: Guild,
-  game: Pick<GameThreadRecord, "channelId" | "logThreadId">,
+  game: Pick<GameThreadRecord, "id" | "channelId" | "logThreadId">,
 ): Promise<AnyThreadChannel | null> {
   if (game.logThreadId) {
     const byId = await guild.channels.fetch(game.logThreadId).catch(() => null);
     if (byId?.isThread() && byId.parentId === game.channelId) {
-      return byId;
+      // Reject IDs that clearly belong to another game (game-scoped name mismatch).
+      const short = shortGameId(game.id);
+      if (!byId.name.includes(" · ") || byId.name.includes(short)) {
+        return byId;
+      }
     }
   }
 
   const parent = await guild.channels.fetch(game.channelId).catch(() => null);
   const parentName = parent && "name" in parent ? parent.name : "game";
-  const expectedName = logThreadName(parentName);
+  // Game-scoped name only — never reuse another game's `log-{channel}` thread.
+  const expectedName = logThreadName(parentName, game.id);
 
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
   const activeThread = active?.threads.find(
@@ -101,7 +107,7 @@ export async function ensureLogThread(
       return { thread: null, created: false, threadId: null };
     }
 
-    const threadName = logThreadName(parent.name);
+    const threadName = logThreadName(parent.name, game.id);
     try {
       thread = await parent.threads.create({
         name: threadName,
@@ -136,7 +142,7 @@ export async function ensureLogThread(
 
 export async function postGameLog(
   guild: Guild,
-  game: Pick<GameThreadRecord, "channelId" | "logThreadId">,
+  game: Pick<GameThreadRecord, "id" | "channelId" | "logThreadId">,
   message: string,
 ): Promise<boolean> {
   const thread = await getLogThreadForGame(guild, game);

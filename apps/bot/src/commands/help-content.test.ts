@@ -25,11 +25,11 @@ describe("help content", () => {
 
     expect(game.data.title).toBe("Game commands");
     expect(game.data.fields?.some((field) => field.name === "Nominations & votes")).toBe(true);
-    expect(game.data.description).toContain("ALLOWED_USER_IDS");
+    expect(game.data.description).toContain("Town Voting");
     expect(st.data.title).toContain("minimal mode");
     expect(st.data.description).toContain("/game do setup");
     expect(st.data.description).toContain("log thread");
-    expect(st.data.fields?.some((field) => field.name?.startsWith("Day testing"))).toBe(true);
+    expect(st.data.fields?.some((field) => field.name?.startsWith("Day"))).toBe(true);
   });
 
   it("builds full-mode guides", () => {

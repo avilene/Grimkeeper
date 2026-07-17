@@ -36,7 +36,6 @@ import {
   replyOrEditInteraction,
   requireActivePlayerGame,
   requireCommandAccess,
-  requireMinimalVotingAccess,
   requireTownVotingChannel,
   resolveGameRoles,
   setInteractionProgress,
@@ -624,7 +623,6 @@ export class GameCommandsMinimal {
     accusation: string,
     interaction: CommandInteraction,
   ): Promise<void> {
-    if (!(await requireMinimalVotingAccess(interaction))) return;
     const context = await requireActivePlayerGame(interaction);
     if (!context) return;
 
@@ -687,7 +685,6 @@ export class GameCommandsMinimal {
   }
 
   async defend(defenseText: string, interaction: CommandInteraction): Promise<void> {
-    if (!(await requireMinimalVotingAccess(interaction))) return;
     const context = await requireActivePlayerGame(interaction);
     if (!context) return;
 
@@ -736,7 +733,6 @@ export class GameCommandsMinimal {
     reason: string | undefined,
     interaction: CommandInteraction,
   ): Promise<void> {
-    if (!(await requireMinimalVotingAccess(interaction))) return;
     const context = await requireActivePlayerGame(interaction);
     if (!context) return;
 

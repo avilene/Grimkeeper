@@ -37,7 +37,6 @@ import {
 import {
   canUseBot,
   canManageChannelReminders,
-  canUseMinimalVoting,
   getAdminRoleIds,
   getReminderPingRoleId,
   isInExplicitAllowlist,
@@ -45,6 +44,7 @@ import {
 import { isMinimalMode } from "../bot-mode.js";
 import { isDevMode } from "../dev.js";
 import {
+  clearNominationMessageInChannel,
   dayThreadName,
   townVoteThreadName,
   postNominationToChannel,
@@ -69,7 +69,14 @@ import { buildRoleDmEmbed } from "../role-embed.js";
 export const GAME_DISCORD_ROLES_ENABLED = !isMinimalMode();
 export const STORYTELLER_THREAD_NAME = "ST and the gang";
 
-export function kibThreadName(parentChannelName: string): string {
+export function shortGameId(gameId: string): string {
+  return gameId.slice(0, 6);
+}
+
+export function kibThreadName(parentChannelName: string, gameId?: string): string {
+  if (gameId) {
+    return `kib-${parentChannelName} · ${shortGameId(gameId)}`.slice(0, 100);
+  }
   return `kib-${parentChannelName}`.slice(0, 100);
 }
 
@@ -77,9 +84,9 @@ export function stPlayerThreadName(displayName: string): string {
   return `ST ${displayName}`.slice(0, 100);
 }
 
-export function storytellerThreadName(parentChannelName?: string): string {
+export function storytellerThreadName(parentChannelName?: string, gameId?: string): string {
   if (isMinimalMode() && parentChannelName) {
-    return kibThreadName(parentChannelName);
+    return kibThreadName(parentChannelName, gameId);
   }
   return STORYTELLER_THREAD_NAME;
 }
@@ -478,18 +485,6 @@ export async function requireCommandAccess(interaction: CommandInteraction): Pro
   return false;
 }
 
-export async function requireMinimalVotingAccess(interaction: CommandInteraction): Promise<boolean> {
-  if (!isMinimalMode()) return true;
-  if (canUseMinimalVoting(interaction.user.id)) return true;
-
-  await replyOrEditInteraction(interaction, {
-    content:
-      "Voting is restricted to allowlisted users (`ALLOWED_USER_IDS`) during development.",
-    flags: MessageFlags.Ephemeral,
-  });
-  return false;
-}
-
 export async function memberHasGameStRole(
   interaction: CommandInteraction,
   game: GameRoleIds,
@@ -501,7 +496,7 @@ export async function memberHasGameStRole(
 
 export async function requireKibThread(
   interaction: CommandInteraction,
-  game: { channelId: string },
+  game: { id: string; channelId: string; kibThreadId?: string | null },
 ): Promise<boolean> {
   if (!interaction.guild) {
     await replyOrEditInteraction(interaction, {
@@ -595,7 +590,7 @@ export async function finalizeMinimalGameEnd(
   await cancelGameReminders(game.id);
   await stripGameRolesFromMembers(guild, game, engine);
   await clearGameChannelPermissions(guild, game.channelId, game);
-  await openStorytellerThread(guild, game.channelId, game.kibThreadId);
+  await openStorytellerThread(guild, game.channelId, game.kibThreadId, game.id);
   await postGameLog(
     guild,
     game,
@@ -775,8 +770,9 @@ export async function postToStorytellerThread(
   guild: Guild,
   parentChannelId: string,
   payload: { content?: string; embeds?: EmbedBuilder[] },
+  gameId?: string,
 ): Promise<void> {
-  const thread = await getStorytellerThread(guild, parentChannelId);
+  const thread = await getStorytellerThread(guild, parentChannelId, { gameId });
   if (!thread) return;
   await thread.send(payload).catch(() => undefined);
 }
@@ -885,7 +881,7 @@ export async function createKibThread(
   const parent = await guild.channels.fetch(channelId).catch(() => null);
   if (!isGameTextChannel(parent)) return { mention: null, threadId: null };
 
-  const threadName = kibThreadName(parent.name);
+  const threadName = kibThreadName(parent.name, gameId);
   let thread: AnyThreadChannel | null = null;
 
   if (options?.existingThreadId) {
@@ -896,7 +892,7 @@ export async function createKibThread(
       return { mention: null, threadId: null };
     }
   } else {
-    thread = await getStorytellerThread(guild, channelId);
+    thread = await getStorytellerThread(guild, channelId, { gameId });
     if (!thread) {
       try {
         thread = await parent.threads.create({
@@ -1006,12 +1002,12 @@ export async function ensureStorytellerThread(
   parentChannelId: string,
   gameId: string,
 ): Promise<AnyThreadChannel | null> {
-  let thread = await getStorytellerThread(guild, parentChannelId);
+  let thread = await getStorytellerThread(guild, parentChannelId, { gameId });
   if (!thread) {
     const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
     if (!isGameTextChannel(parent)) return null;
 
-    const threadName = storytellerThreadName(parent.name);
+    const threadName = storytellerThreadName(parent.name, gameId);
 
     try {
       thread = await parent.threads.create({
@@ -1121,27 +1117,38 @@ export function isStorytellerThread(
   candidate: { parentId: string | null; name: string },
   parentChannelId: string,
   parentChannelName?: string,
+  gameId?: string,
 ): boolean {
   if (candidate.parentId !== parentChannelId) return false;
-  const expectedName = storytellerThreadName(parentChannelName);
+  const expectedName = storytellerThreadName(parentChannelName, gameId);
   return candidate.name === expectedName;
 }
 
 export async function getStorytellerThread(
   guild: Guild,
   parentChannelId: string,
-  options?: { kibThreadId?: string | null },
+  options?: { kibThreadId?: string | null; gameId?: string },
 ): Promise<AnyThreadChannel | null> {
   if (options?.kibThreadId) {
     const byId = await guild.channels.fetch(options.kibThreadId).catch(() => null);
     if (byId?.isThread() && byId.parentId === parentChannelId) {
-      return byId;
+      if (options.gameId) {
+        const short = shortGameId(options.gameId);
+        if (byId.name.includes(" · ") && !byId.name.includes(short)) {
+          // Stale cross-game kibThreadId — fall through to name lookup.
+        } else {
+          return byId;
+        }
+      } else {
+        return byId;
+      }
     }
   }
 
   const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
   const parentChannelName = parent && "name" in parent ? parent.name : undefined;
-  const expectedName = storytellerThreadName(parentChannelName);
+  // Prefer game-scoped kib names so successive games do not reuse another game's thread.
+  const expectedName = storytellerThreadName(parentChannelName, options?.gameId);
 
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
   const activeThread = active?.threads.find(
@@ -1158,17 +1165,21 @@ export async function getStorytellerThread(
 
 export async function getKibThreadForGame(
   guild: Guild,
-  game: { channelId: string; kibThreadId?: string | null },
+  game: { id: string; channelId: string; kibThreadId?: string | null },
 ): Promise<AnyThreadChannel | null> {
-  return getStorytellerThread(guild, game.channelId, { kibThreadId: game.kibThreadId });
+  return getStorytellerThread(guild, game.channelId, {
+    kibThreadId: game.kibThreadId,
+    gameId: game.id,
+  });
 }
 
 export async function openStorytellerThread(
   guild: Guild,
   parentChannelId: string,
   kibThreadId?: string | null,
+  gameId?: string,
 ): Promise<AnyThreadChannel | null> {
-  const thread = await getStorytellerThread(guild, parentChannelId, { kibThreadId });
+  const thread = await getStorytellerThread(guild, parentChannelId, { kibThreadId, gameId });
   if (!thread) return null;
 
   await thread
@@ -1188,7 +1199,7 @@ export async function openStorytellerThread(
 
 export async function resolveVotingChannel(
   guild: Guild,
-  game: { channelId: string },
+  game: { id: string; channelId: string },
   engine: GameEngine,
 ): Promise<DayDiscussionChannel | null> {
   const state = engine.getState();
@@ -1196,12 +1207,19 @@ export async function resolveVotingChannel(
 
   if (dayThreadId) {
     const thread = await guild.channels.fetch(dayThreadId).catch(() => null);
-    if (thread?.isThread()) {
-      return thread as DayDiscussionChannel;
+    if (thread?.isThread() && thread.parentId === game.channelId) {
+      const short = shortGameId(game.id);
+      // Ignore a stored Town Voting ID that clearly belongs to another game.
+      if (!thread.name.includes(" · ") || thread.name.includes(short)) {
+        return thread as DayDiscussionChannel;
+      }
     }
   }
 
   if (state.townMode) {
+    const byName = await findTownVoteThread(guild, game.channelId, game.id);
+    if (byName) return byName as DayDiscussionChannel;
+
     const channel = await guild.channels.fetch(game.channelId).catch(() => null);
     if (channel?.isTextBased() && !channel.isDMBased()) {
       return channel as DayDiscussionChannel;
@@ -1298,6 +1316,14 @@ export async function refreshNominationEverywhere(
 ): Promise<void> {
   const channels = await collectNominationUpdateChannels(guild, game, engine);
   await updateNominationMessagesInChannels(engine, game.id, channels, nominationId, options);
+
+  // Disable Vote buttons on leftover private-ballot embeds in personal ST threads.
+  if (engine.getState().townMode) {
+    for (const thread of await listPersonalPlayerThreads(guild, game, engine)) {
+      await clearNominationMessageInChannel(thread, nominationId);
+    }
+  }
+
   await refreshStVoteTrackerForGame(guild, game, engine);
 }
 
@@ -1319,8 +1345,8 @@ export async function createTownVoteThread(
   const parent = await guild.channels.fetch(game.channelId).catch(() => null);
   if (!isGameTextChannel(parent)) return null;
 
-  const threadName = townVoteThreadName();
-  const existing = await findTownVoteThread(guild, game.channelId);
+  const threadName = townVoteThreadName(game.id);
+  const existing = await findTownVoteThread(guild, game.channelId, game.id);
   let thread = existing;
 
   if (!thread) {
@@ -1361,8 +1387,9 @@ export async function createTownVoteThread(
 export async function findTownVoteThread(
   guild: Guild,
   parentChannelId: string,
+  gameId: string,
 ): Promise<AnyThreadChannel | null> {
-  const expectedName = townVoteThreadName();
+  const expectedName = townVoteThreadName(gameId);
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
   const activeThread = active?.threads.find(
     (candidate) => candidate.parentId === parentChannelId && candidate.name === expectedName,

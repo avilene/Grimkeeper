@@ -14,12 +14,13 @@ import {
   findRemindersByIdPrefix,
   listPendingReminders,
   updateReminder,
+  replaceChannelBatchReminders,
   batchReminderSourceKey,
 } from "@grimkeeper/database";
 
 import { getReminderPingRoleId } from "../access.js";
 import { logReminderAction } from "../action-log.js";
-import { formatReminderDuration, parseReminderDuration, parseReminderHours } from "../reminder-duration.js";
+import { formatReminderDuration, formatHourOffsetCompact, parseReminderDuration, parseReminderHours } from "../reminder-duration.js";
 import {
   discordTimestamp,
   encodePingRoleIds,
@@ -168,7 +169,7 @@ export class StReminderCommands {
 
   @Slash({
     name: "set-reminders",
-    description: "Replace channel hour-offset reminders (cancels previous set-reminders in this channel)",
+    description: "Replace channel offset reminders (cancels previous set-reminders in this channel)",
   })
   async setReminders(
     @SlashOption({
@@ -180,7 +181,7 @@ export class StReminderCommands {
     message: string,
     @SlashOption({
       name: "hours",
-      description: "Space-separated hours from now, decimals ok (e.g. 0.5 4 8 12)",
+      description: "Offsets from now: 1m 10m 30m 1h or 0.5 4 8 (max 24h)",
       type: ApplicationCommandOptionType.String,
       required: true,
     })
@@ -205,7 +206,7 @@ export class StReminderCommands {
     if (!hours) {
       await replyOrEditInteraction(interaction, {
         content:
-          "Hours must be space-separated numbers from 0.5–24 (e.g. `0.5 4 8 12`), max 25 offsets.",
+          "Offsets must be space-separated like `1m 10m 30m 1h 4 8` (1 minute–24 hours), max 25.",
         ...EPHEMERAL,
       });
       return;
@@ -231,33 +232,32 @@ export class StReminderCommands {
     const pingRoleId = encodePingRoleIds(pingRoleIds);
     const seriesEndAt = new Date(now + Math.max(...hours) * 3_600_000);
 
-    const replaced = await cancelReminders(scope, {
-      channelId: targetChannelId,
-      batchOnly: true,
+    const creates = hours.map((hour) => {
+      const fireAt = new Date(now + hour * 3_600_000);
+      return {
+        gameId: scope.kind === "game" ? scope.gameId : null,
+        guildId: interaction.guildId!,
+        channelId: targetChannelId,
+        message: trimmedMessage,
+        emoji: null,
+        sourceKey: batchReminderSourceKey(
+          interaction.guildId!,
+          targetChannelId,
+          hour,
+          trimmedMessage,
+        ),
+        fireAt,
+        seriesEndAt,
+        createdBy: interaction.user.id,
+        pingPlayers: true as const,
+        pingRoleId: pingRoleId ?? null,
+      };
     });
 
-    await Promise.all(
-      hours.map((hour) => {
-        const fireAt = new Date(now + hour * 3_600_000);
-        return createReminder({
-          gameId: scope.kind === "game" ? scope.gameId : null,
-          guildId: interaction.guildId!,
-          channelId: targetChannelId,
-          message: trimmedMessage,
-          emoji: null,
-          sourceKey: batchReminderSourceKey(
-            interaction.guildId!,
-            targetChannelId,
-            fireAt,
-            trimmedMessage,
-          ),
-          fireAt,
-          seriesEndAt,
-          createdBy: interaction.user.id,
-          pingPlayers: true,
-          pingRoleId: pingRoleId ?? null,
-        });
-      }),
+    const { replaced } = await replaceChannelBatchReminders(
+      interaction.guildId,
+      targetChannelId,
+      creates,
     );
 
     const scheduleLines = hours.map((hour) => {
@@ -287,7 +287,7 @@ export class StReminderCommands {
     });
 
     if (access.game && interaction.guild) {
-      const hourSummary = hours.map((hour) => `${hour}h`).join(", ");
+      const hourSummary = hours.map((hour) => formatHourOffsetCompact(hour)).join(", ");
       await postGameLog(
         interaction.guild,
         access.game,

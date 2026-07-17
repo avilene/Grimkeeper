@@ -19,9 +19,37 @@ export function parseReminderDuration(input: string): number | null {
 }
 
 const MAX_REMINDER_HOURS_BATCH = 25;
-const MIN_REMINDER_HOURS = 0.5;
+/** Minimum offset: 1 minute (also allows legacy `0.5` hour). */
+const MIN_REMINDER_HOURS = 1 / 60;
 const MAX_REMINDER_HOURS = 24;
-const HOUR_OFFSET = /^\d+(\.\d+)?$/;
+const BARE_HOUR_OFFSET = /^\d+(\.\d+)?$/;
+/** Human offsets for set-reminders tokens: `30m`, `1h`, `1.5h` (unit required). */
+const HUMAN_HOUR_OFFSET =
+  /^(\d+(?:\.\d+)?)\s*(m|min|mins|minute|minutes|h|hr|hour|hours)$/i;
+
+/** Parse one set-reminders token into hours from now. Bare numbers stay hours (`4` = 4h). */
+export function parseReminderHourOffset(part: string): number | null {
+  const trimmed = part.trim();
+  if (!trimmed) return null;
+
+  const human = trimmed.match(HUMAN_HOUR_OFFSET);
+  if (human) {
+    const amount = Number(human[1]);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    const unit = human[2].toLowerCase();
+    const hours = unit.startsWith("h") ? amount : amount / 60;
+    if (hours < MIN_REMINDER_HOURS || hours > MAX_REMINDER_HOURS) return null;
+    return hours;
+  }
+
+  // Legacy: bare decimals are hours (`0.5` = 30m, `4` = 4h).
+  if (!BARE_HOUR_OFFSET.test(trimmed)) return null;
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < MIN_REMINDER_HOURS || value > MAX_REMINDER_HOURS) {
+    return null;
+  }
+  return value;
+}
 
 export function parseReminderHours(input: string): number[] | null {
   const trimmed = input.trim();
@@ -31,15 +59,16 @@ export function parseReminderHours(input: string): number[] | null {
   const hours: number[] = [];
 
   for (const part of parts) {
-    if (!HOUR_OFFSET.test(part)) return null;
-    const value = Number(part);
-    if (!Number.isFinite(value) || value < MIN_REMINDER_HOURS || value > MAX_REMINDER_HOURS) return null;
+    const value = parseReminderHourOffset(part);
+    if (value == null) return null;
     hours.push(value);
   }
 
   if (hours.length === 0 || hours.length > MAX_REMINDER_HOURS_BATCH) return null;
 
-  return [...new Set(hours)].sort((a, b) => a - b);
+  // Round to nearest second so 30m and 0.5 dedupe cleanly.
+  const normalized = hours.map((hour) => Math.round(hour * 3600) / 3600);
+  return [...new Set(normalized)].sort((a, b) => a - b);
 }
 
 export function formatReminderDuration(minutes: number): string {
@@ -48,6 +77,16 @@ export function formatReminderDuration(minutes: number): string {
     return `${hours} hour${hours === 1 ? "" : "s"}`;
   }
   return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+/** Compact offset label for logs/UI (`30m`, `1h`, `1h30m`). */
+export function formatHourOffsetCompact(hours: number): string {
+  const minutes = Math.round(hours * 60);
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes % 60 === 0) return `${minutes / 60}h`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h${m}m`;
 }
 
 export function formatHoursFromNow(hours: number): string {

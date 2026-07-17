@@ -19,7 +19,6 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
             "Player commands for minimal-mode town voting.",
             "Use **`/game do`** and start typing the action — Discord filters the list.",
             "Nominations and votes happen in the **Town Voting** thread after `/st do setup-town`.",
-            "**Voting is allowlist-only** — only users in `ALLOWED_USER_IDS` can nominate, defend, or vote for now.",
             "You can cast a **private ballot** with `/game do vote` in your personal ST thread (ST sees it on the kib tracker).",
             "",
             "Storytellers: see **`/st help`** for setup and day control.",
@@ -138,7 +137,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             ].join("\n\n"),
           },
           {
-            name: "Day testing (`/st do …` or panel — allowlist voting only)",
+            name: "Day (`/st do …` or panel)",
             value: [
               cmd("resolve-next", "Resolve the oldest open nomination."),
               cmd("execute", "Needs `player:` after a passed nomination."),
@@ -152,7 +151,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             name: "Reminders",
             value: [
               cmd("/st remind", "Schedule a reminder (requires ST role, storyteller, or allowlist)."),
-              cmd("/st set-reminders", "Replace this channel’s hour-offset reminder batch (does not stack)."),
+              cmd("/st set-reminders", "Replace this channel’s reminder batch (`1m 30m 1h 4 8`; does not stack)."),
               cmd("/st reminders", "List pending reminders."),
               cmd("/st edit-reminder / delete-reminder / clear-reminders", "Manage pending reminders."),
             ].join("\n\n"),
@@ -160,7 +159,6 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           {
             name: "Notes",
             value: [
-              "Player nominate/vote is restricted to **`ALLOWED_USER_IDS`** during development.",
               "Votes live in the **Town Voting** private thread (players are pinged there on each nomination).",
               "Private ballots: `/game do vote` in a personal ST thread — ST sees them on the kib vote tracker.",
               "`setup-town` also pins the **control panel** + **vote tracker** in kib.",
@@ -219,7 +217,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             cmd("/st ping-players", "Ping all players."),
             cmd("/st ping-st", "Ping storytellers."),
             cmd("/st remind", "Schedule a reminder."),
-            cmd("/st set-reminders", "Replace this channel’s hour-offset reminder batch."),
+            cmd("/st set-reminders", "Replace this channel’s reminder batch (`1m 30m 1h` or `0.5 4 8`)."),
             cmd("/st reminders", "List pending reminders."),
           ].join("\n\n"),
         },

@@ -14,9 +14,13 @@ describe("kibThreadName", () => {
     expect(kibThreadName("town-square")).toBe("kib-town-square");
   });
 
+  it("includes short game id when provided", () => {
+    expect(kibThreadName("town-square", "abcdef12-3456")).toBe("kib-town-square · abcdef");
+  });
+
   it("truncates to 100 characters", () => {
     const longName = "x".repeat(120);
-    expect(kibThreadName(longName)).toHaveLength(100);
+    expect(kibThreadName(longName, "abcdef12-3456")).toHaveLength(100);
     expect(kibThreadName(longName).startsWith("kib-")).toBe(true);
   });
 });
@@ -68,7 +72,7 @@ describe("storytellerThreadName", () => {
 
   it("returns kib name in minimal mode", () => {
     process.env.BOT_MODE = "minimal";
-    expect(storytellerThreadName("clocktower")).toBe("kib-clocktower");
+    expect(storytellerThreadName("clocktower", "abcdef12-3456")).toBe("kib-clocktower · abcdef");
   });
 
   it("returns full-mode ST thread name otherwise", () => {
@@ -93,9 +97,12 @@ describe("isStorytellerThread", () => {
   it("matches kib thread in minimal mode", () => {
     process.env.BOT_MODE = "minimal";
     const parentId = "channel-1";
-    const candidate = { parentId, name: "kib-town" };
-    expect(isStorytellerThread(candidate, parentId, "town")).toBe(true);
-    expect(isStorytellerThread(candidate, parentId, "other")).toBe(false);
+    const candidate = { parentId, name: "kib-town · abcdef" };
+    expect(isStorytellerThread(candidate, parentId, "town", "abcdef12-3456")).toBe(true);
+    expect(isStorytellerThread(candidate, parentId, "other", "abcdef12-3456")).toBe(false);
+    expect(isStorytellerThread({ parentId, name: "kib-town" }, parentId, "town", "abcdef12-3456")).toBe(
+      false,
+    );
   });
 
   it("matches ST and the gang in full mode", () => {

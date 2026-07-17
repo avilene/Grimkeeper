@@ -75,7 +75,10 @@ export class StCommands {
     const guild = interaction.guild;
     if (!guild) return;
 
-    const thread = await getStorytellerThread(guild, game.channelId);
+    const thread = await getStorytellerThread(guild, game.channelId, {
+      kibThreadId: game.kibThreadId,
+      gameId: game.id,
+    });
     if (!thread) {
       await interaction.reply({
         content: "Could not find a storyteller thread for this game channel.",
@@ -245,7 +248,10 @@ export class StCommands {
 
     const guild = interaction.guild;
     if (guild) {
-      const thread = await getStorytellerThread(guild, game.channelId);
+      const thread = await getStorytellerThread(guild, game.channelId, {
+        kibThreadId: game.kibThreadId,
+        gameId: game.id,
+      });
       if (thread) {
         await thread.send({ embeds: [embed] }).catch(() => undefined);
       }
@@ -278,7 +284,7 @@ export class StCommands {
         )
         .addFields({ name: "Current seating", value: engine.getSeatingChart().join("\n") });
 
-      await postToStorytellerThread(guild, game.channelId, { embeds: [stEmbed] });
+      await postToStorytellerThread(guild, game.channelId, { embeds: [stEmbed] }, game.id);
       await upsertPinnedSeatingChart(guild, game.channelId, engine);
 
       await interaction.reply({
@@ -315,7 +321,7 @@ export class StCommands {
             : "Seat selection is closed. Some players are still unseated.",
         });
 
-      await postToStorytellerThread(guild, game.channelId, { embeds: [townEmbed] });
+      await postToStorytellerThread(guild, game.channelId, { embeds: [townEmbed] }, game.id);
       await upsertPinnedSeatingChart(guild, game.channelId, engine);
 
       await interaction.reply({

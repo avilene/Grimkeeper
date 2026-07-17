@@ -45,7 +45,9 @@ export function parseVoteButtonCustomId(customId: string): { gameId: string; nom
 }
 
 export function voteModalCustomId(gameId: string, nominationId: string): string {
-  return `${VOTE_MODAL_PREFIX}${encodeIdPair(gameId, nominationId)}`;
+  // Unique per open so repeated Vote→modal cycles stay unambiguous under Discord's 100-char limit.
+  const nonce = Date.now().toString(36);
+  return `${VOTE_MODAL_PREFIX}${encodeIdPair(gameId, nominationId)}.${nonce}`.slice(0, 100);
 }
 
 export function parseVoteModalCustomId(customId: string): { gameId: string; nominationId: string } | null {
@@ -59,8 +61,8 @@ export function dayThreadName(dayNumber: number): string {
   return `Day ${dayNumber} — Town Square`.slice(0, 100);
 }
 
-export function townVoteThreadName(): string {
-  return "Town Voting";
+export function townVoteThreadName(gameId: string): string {
+  return `Town Voting · ${gameId.slice(0, 6)}`.slice(0, 100);
 }
 
 export function parsePauseDurationMinutes(input: string): number | null {
@@ -235,6 +237,16 @@ export async function updateNominationMessage(
       components: row ? [row] : [],
     })
     .catch(() => undefined);
+}
+
+export async function clearNominationMessageInChannel(
+  channel: DayDiscussionChannel,
+  nominationId: string,
+): Promise<void> {
+  const message = await findNominationMessage(channel, nominationId);
+  if (!message) return;
+  // Drop stale Vote buttons (e.g. old private-ballot embeds in ST threads).
+  await message.edit({ components: [] }).catch(() => undefined);
 }
 
 export async function updateNominationMessagesInChannels(

@@ -1,5 +1,5 @@
 import type { Client } from "discord.js";
-import { claimReminderForFire, listDueReminders } from "@grimkeeper/database";
+import { claimReminderAndDuplicates, listDueReminders } from "@grimkeeper/database";
 
 import { buildReminderPingMention, buildReminderFireContent } from "./commands/command-context.js";
 import { logReminderAction } from "./action-log.js";
@@ -9,6 +9,10 @@ import { reportError } from "./error-reporter.js";
 let schedulerStarted = false;
 let processingDueReminders = false;
 
+function normalizeReminderMessage(message: string): string {
+  return message.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 /** Collapse duplicate due rows (same channel/message/fire minute) within one tick. */
 export function reminderSendDedupeKey(reminder: {
   channelId: string;
@@ -16,7 +20,7 @@ export function reminderSendDedupeKey(reminder: {
   fireAt: Date;
 }): string {
   const fireMinute = Math.floor(new Date(reminder.fireAt).getTime() / 60_000);
-  return `${reminder.channelId}:${fireMinute}:${reminder.message.trim().toLowerCase()}`;
+  return `${reminder.channelId}:${fireMinute}:${normalizeReminderMessage(reminder.message)}`;
 }
 
 export async function processDueReminders(client: Client): Promise<void> {
@@ -32,11 +36,11 @@ export async function processDueReminders(client: Client): Promise<void> {
         const dedupeKey = reminderSendDedupeKey(reminder);
         if (sentKeys.has(dedupeKey)) {
           // Still claim so duplicate rows do not fire on a later tick.
-          await claimReminderForFire(reminder.id);
+          await claimReminderAndDuplicates(reminder);
           continue;
         }
 
-        const claimed = await claimReminderForFire(reminder.id);
+        const claimed = await claimReminderAndDuplicates(reminder);
         if (!claimed) continue;
 
         const channel = await client.channels.fetch(reminder.channelId).catch(() => null);

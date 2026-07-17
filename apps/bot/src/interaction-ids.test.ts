@@ -17,21 +17,32 @@ const gameId = "6911cd74-25ba-46f5-a57f-e9420bc219af";
 const nominationId = "a1111111-2222-4333-8444-555555555555";
 
 describe("parseIdPair", () => {
-  it("parses pipe-separated UUID pairs", () => {
+  it("parses dot-separated UUID pairs", () => {
     expect(parseIdPair(encodeIdPair(gameId, nominationId))).toEqual({
       left: gameId,
       right: nominationId,
     });
   });
 
-  it("parses legacy colon-separated UUID pairs", () => {
+  it("parses legacy colon and pipe separators", () => {
     expect(parseIdPair(`${gameId}:${nominationId}`)).toEqual({
+      left: gameId,
+      right: nominationId,
+    });
+    expect(parseIdPair(`${gameId}|${nominationId}`)).toEqual({
       left: gameId,
       right: nominationId,
     });
   });
 
-  it("rejects truncated first-colon splits", () => {
+  it("ignores trailing modal nonces", () => {
+    expect(parseIdPair(`${gameId}.${nominationId}.lmno12`)).toEqual({
+      left: gameId,
+      right: nominationId,
+    });
+  });
+
+  it("rejects payloads without two UUIDs", () => {
     expect(parseIdPair(`${gameId.split("-")[0]}:${nominationId}`)).toBeNull();
   });
 });
@@ -39,19 +50,24 @@ describe("parseIdPair", () => {
 describe("vote button custom ids", () => {
   it("round-trips UUID game and nomination ids", () => {
     const customId = voteButtonCustomId(gameId, nominationId);
-    expect(customId).toContain("|");
+    expect(customId).toContain(".");
     expect(parseVoteButtonCustomId(customId)).toEqual({ gameId, nominationId });
   });
 
-  it("still parses legacy colon-separated vote buttons", () => {
+  it("still parses legacy colon/pipe vote buttons", () => {
     expect(parseVoteButtonCustomId(`gk:vote:${gameId}:${nominationId}`)).toEqual({
+      gameId,
+      nominationId,
+    });
+    expect(parseVoteButtonCustomId(`gk:vote:${gameId}|${nominationId}`)).toEqual({
       gameId,
       nominationId,
     });
   });
 
-  it("round-trips modal ids", () => {
+  it("round-trips modal ids including nonce", () => {
     const customId = voteModalCustomId(gameId, nominationId);
+    expect(customId.length).toBeLessThanOrEqual(100);
     expect(parseVoteModalCustomId(customId)).toEqual({ gameId, nominationId });
   });
 });

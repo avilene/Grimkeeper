@@ -5,26 +5,22 @@ import { batchReminderSourceKey } from "@grimkeeper/database";
 import { reminderSendDedupeKey } from "./reminder-scheduler.js";
 
 describe("batchReminderSourceKey", () => {
-  it("is stable for the same schedule slot", () => {
-    const fireAt = new Date("2026-07-17T10:00:00Z");
-    expect(
-      batchReminderSourceKey("guild", "channel", fireAt, "Noms close"),
-    ).toBe(batchReminderSourceKey("guild", "channel", fireAt, "  noms   close "));
+  it("is stable for the same hour offset and message", () => {
+    expect(batchReminderSourceKey("guild", "channel", 4, "Noms close")).toBe(
+      batchReminderSourceKey("guild", "channel", 4, "  noms   close "),
+    );
   });
 
-  it("differs across fire times", () => {
-    const a = batchReminderSourceKey(
-      "guild",
-      "channel",
-      new Date("2026-07-17T10:00:00Z"),
-      "Noms close",
+  it("does not change when wall-clock fire time differs for the same offset", () => {
+    // Previously keyed by fireAt.getTime(), so parallel set-reminders stacked rows.
+    expect(batchReminderSourceKey("guild", "channel", 4, "Noms close")).toBe(
+      "set:guild:channel:h4:noms close",
     );
-    const b = batchReminderSourceKey(
-      "guild",
-      "channel",
-      new Date("2026-07-17T14:00:00Z"),
-      "Noms close",
-    );
+  });
+
+  it("differs across hour offsets", () => {
+    const a = batchReminderSourceKey("guild", "channel", 4, "Noms close");
+    const b = batchReminderSourceKey("guild", "channel", 8, "Noms close");
     expect(a).not.toBe(b);
   });
 });

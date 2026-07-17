@@ -111,7 +111,10 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
 
     if (action === "votes") {
       const message = await upsertStVoteTracker(guild, game.channelId, engine, game.kibThreadId);
-      const thread = await getStorytellerThread(guild, game.channelId);
+      const thread = await getStorytellerThread(guild, game.channelId, {
+        kibThreadId: game.kibThreadId,
+        gameId: game.id,
+      });
       await interaction.editReply({
         content: message
           ? `Vote tracker updated in ${thread ? `<#${thread.id}>` : "your kib thread"}.`

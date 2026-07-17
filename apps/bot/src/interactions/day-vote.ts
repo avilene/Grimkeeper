@@ -7,15 +7,15 @@ import {
   type ButtonInteraction,
   type ModalSubmitInteraction,
 } from "discord.js";
-import { getGameById } from "@grimkeeper/database";
+import { getActiveGameForGuild, getGameById } from "@grimkeeper/database";
 import { GameCommandKind, type VoteChoice } from "@grimkeeper/engine";
 
-import { canUseMinimalVoting } from "../access.js";
-import { isMinimalMode } from "../bot-mode.js";
 import {
   parseVoteButtonCustomId,
   parseVoteModalCustomId,
   voteModalCustomId,
+  VOTE_BUTTON_PREFIX,
+  VOTE_MODAL_PREFIX,
 } from "../day-thread.js";
 import {
   loadEngine,
@@ -25,6 +25,7 @@ import {
   resolveVotingChannel,
   syncGameProjection,
 } from "../commands/command-context.js";
+import { log } from "../logger.js";
 import {
   INTERACTION_PENDING_CONTENT,
   isRecoverableInteractionResponseError,
@@ -38,22 +39,47 @@ function parseVoteChoice(value: string): VoteChoice | null {
   return null;
 }
 
+async function resolveGameForVoteIds(
+  guildId: string,
+  gameId: string,
+  nominationId: string,
+): Promise<NonNullable<Awaited<ReturnType<typeof getGameById>>> | null> {
+  const byId = await getGameById(gameId);
+  if (byId && byId.guildId === guildId && byId.phase !== "ended") {
+    return byId;
+  }
+
+  // Fallback for stale/mangled custom ids: active guild game that still has this nomination.
+  const active = await getActiveGameForGuild(guildId);
+  if (!active || active.phase === "ended") return null;
+  const engine = await loadEngine(active.id);
+  if (!engine.getNominationById(nominationId)) return null;
+  return active;
+}
+
 export async function handleVoteButton(interaction: ButtonInteraction): Promise<boolean> {
+  // `gk:vote-modal:` also starts with `gk:vote:` — only real vote buttons belong here.
+  if (
+    !interaction.customId.startsWith(VOTE_BUTTON_PREFIX) ||
+    interaction.customId.startsWith(VOTE_MODAL_PREFIX)
+  ) {
+    return false;
+  }
+
   const parsed = parseVoteButtonCustomId(interaction.customId);
-  if (!parsed) return false;
+  if (!parsed) {
+    await interaction
+      .reply({
+        content: "That Vote button is invalid or too old. Use a nomination in **Town Voting**, or `/game do vote` in your ST thread.",
+        flags: MessageFlags.Ephemeral,
+      })
+      .catch(() => undefined);
+    return true;
+  }
 
   // showModal must be the first response — keep this path free of DB/network work.
   if (!interaction.guildId) {
     await interaction.reply({ content: "This must be used in a server.", flags: MessageFlags.Ephemeral });
-    return true;
-  }
-
-  if (isMinimalMode() && !canUseMinimalVoting(interaction.user.id)) {
-    await interaction.reply({
-      content:
-        "Voting is restricted to allowlisted users (`ALLOWED_USER_IDS`) during development.",
-      flags: MessageFlags.Ephemeral,
-    });
     return true;
   }
 
@@ -101,8 +127,9 @@ export async function handleVoteButton(interaction: ButtonInteraction): Promise<
 }
 
 export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction): Promise<boolean> {
+  if (!interaction.customId.startsWith(VOTE_MODAL_PREFIX)) return false;
+
   const parsed = parseVoteModalCustomId(interaction.customId);
-  if (!parsed) return false;
 
   // Ack immediately so Discord does not expire the interaction while we persist.
   if (!interaction.deferred && !interaction.replied) {
@@ -111,20 +138,40 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
       .catch(() => undefined);
   }
 
+  if (!parsed) {
+    await interaction
+      .editReply({
+        content:
+          "That vote form is invalid or too old. Press **Vote** again in Town Voting, or use `/game do vote`.",
+      })
+      .catch(() => undefined);
+    return true;
+  }
+
   if (!interaction.guildId) {
     await interaction.editReply({ content: "This must be used in a server." }).catch(() => undefined);
     return true;
   }
 
-  const game = await getGameById(parsed.gameId);
-  if (!game || game.guildId !== interaction.guildId) {
+  const game = await resolveGameForVoteIds(
+    interaction.guildId,
+    parsed.gameId,
+    parsed.nominationId,
+  );
+  if (!game) {
+    log("warn", "vote.game_lookup_failed", {
+      guildId: interaction.guildId,
+      parsedGameId: parsed.gameId,
+      nominationId: parsed.nominationId,
+      userId: interaction.user.id,
+      customId: interaction.customId,
+    });
     await interaction
-      .editReply({ content: "No matching game for this nomination (it may be from an older game)." })
+      .editReply({
+        content:
+          "Could not find the active game for this vote. Open **Town Voting** and press Vote on the nomination there, or use `/game do vote` in your ST thread.",
+      })
       .catch(() => undefined);
-    return true;
-  }
-  if (game.phase === "ended") {
-    await interaction.editReply({ content: "That game has ended." }).catch(() => undefined);
     return true;
   }
 
@@ -132,16 +179,6 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
   const voter = engine.getPlayerByDiscordId(interaction.user.id);
   if (!voter) {
     await interaction.editReply({ content: "You are not in this game." }).catch(() => undefined);
-    return true;
-  }
-
-  if (isMinimalMode() && !canUseMinimalVoting(interaction.user.id)) {
-    await interaction
-      .editReply({
-        content:
-          "Voting is restricted to allowlisted users (`ALLOWED_USER_IDS`) during development.",
-      })
-      .catch(() => undefined);
     return true;
   }
 
