@@ -8,13 +8,16 @@ datasource db {
 }
 
 model Game {
-  id          String         @id @default(cuid())
-  guildId     String
-  channelId   String
-  phase       String         @default("lobby")
-  dayNumber   Int            @default(0)
-  nightNumber Int            @default(0)
-  createdAt   DateTime       @default(now())
+  id            String         @id @default(cuid())
+  guildId       String
+  channelId     String
+  phase         String         @default("lobby")
+  dayNumber     Int            @default(0)
+  nightNumber   Int            @default(0)
+  stRoleId      String?
+  playerRoleId  String?
+  kibRoleId     String?
+  createdAt     DateTime       @default(now())
   events      GameEvent[]
   players     Player[]
   gameDays    GameDay[]

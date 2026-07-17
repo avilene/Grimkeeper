@@ -37,29 +37,48 @@ function matchesIdPrefix(id: string, idPrefix: string): boolean {
 }
 
 export async function createReminder(input: CreateReminderInput) {
-  if (input.sourceKey) {
+  const data = {
+    gameId: input.gameId ?? null,
+    guildId: input.guildId,
+    channelId: input.channelId,
+    message: input.message,
+    emoji: input.emoji ?? null,
+    sourceKey: input.sourceKey ?? null,
+    fireAt: input.fireAt,
+    seriesEndAt: input.seriesEndAt ?? null,
+    createdBy: input.createdBy,
+    pingPlayers: input.pingPlayers ?? false,
+    pingRoleId: input.pingRoleId ?? null,
+  };
+
+  if (data.sourceKey) {
     const existing = await prisma.gameReminder.findUnique({
-      where: { sourceKey: input.sourceKey },
+      where: { sourceKey: data.sourceKey },
     });
-    if (existing) return existing;
+    if (existing) {
+      if (!existing.fired) return existing;
+      return prisma.gameReminder.update({
+        where: { id: existing.id },
+        data: { ...data, fired: false },
+      });
+    }
   }
 
   try {
-    return await prisma.gameReminder.create({
-      data: {
-        ...input,
-        gameId: input.gameId ?? null,
-        sourceKey: input.sourceKey ?? null,
-      },
-    });
+    return await prisma.gameReminder.create({ data });
   } catch (error) {
     if (
-      input.sourceKey &&
+      data.sourceKey &&
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
-      return prisma.gameReminder.findUniqueOrThrow({
-        where: { sourceKey: input.sourceKey },
+      const existing = await prisma.gameReminder.findUniqueOrThrow({
+        where: { sourceKey: data.sourceKey },
+      });
+      if (!existing.fired) return existing;
+      return prisma.gameReminder.update({
+        where: { id: existing.id },
+        data: { ...data, fired: false },
       });
     }
     throw error;
@@ -101,7 +120,7 @@ export async function claimReminderForFire(id: string): Promise<boolean> {
 export async function cancelGameReminders(gameId: string) {
   const result = await prisma.gameReminder.updateMany({
     where: { gameId, fired: false },
-    data: { fired: true },
+    data: { fired: true, sourceKey: null },
   });
   return result.count;
 }
@@ -110,13 +129,18 @@ export interface CancelRemindersFilter {
   channelId?: string;
   message?: string;
   idPrefix?: string;
+  /** When true, only cancel reminders created by `/st set-reminders` (have seriesEndAt). */
+  batchOnly?: boolean;
 }
 
 export async function cancelReminders(scope: ReminderScope, filter?: CancelRemindersFilter) {
   if (filter?.idPrefix) {
     const idPrefix = filter.idPrefix;
     const reminders = await prisma.gameReminder.findMany({
-      where: scopeWhere(scope),
+      where: {
+        ...scopeWhere(scope),
+        ...(filter.batchOnly ? { seriesEndAt: { not: null } } : {}),
+      },
       select: { id: true, channelId: true, message: true },
     });
 
@@ -132,7 +156,7 @@ export async function cancelReminders(scope: ReminderScope, filter?: CancelRemin
 
     const result = await prisma.gameReminder.updateMany({
       where: { id: { in: ids }, fired: false },
-      data: { fired: true },
+      data: { fired: true, sourceKey: null },
     });
     return result.count;
   }
@@ -140,12 +164,24 @@ export async function cancelReminders(scope: ReminderScope, filter?: CancelRemin
   const where: Prisma.GameReminderWhereInput = { ...scopeWhere(scope) };
   if (filter?.channelId) where.channelId = filter.channelId;
   if (filter?.message) where.message = filter.message;
+  if (filter?.batchOnly) where.seriesEndAt = { not: null };
 
   const result = await prisma.gameReminder.updateMany({
     where,
-    data: { fired: true },
+    data: { fired: true, sourceKey: null },
   });
   return result.count;
+}
+
+/** Stable key so Discord retries / duplicate handlers cannot create parallel batch rows. */
+export function batchReminderSourceKey(
+  guildId: string,
+  channelId: string,
+  fireAt: Date,
+  message: string,
+): string {
+  const normalized = message.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 80);
+  return `set:${guildId}:${channelId}:${fireAt.getTime()}:${normalized}`;
 }
 
 export async function countPendingReminders(scope: ReminderScope) {
@@ -216,7 +252,7 @@ export async function cancelReminderByIdPrefix(scope: ReminderScope, idPrefix: s
   if (channelMatches.length > 0) {
     const result = await prisma.gameReminder.updateMany({
       where: { id: { in: channelMatches.map((reminder) => reminder.id) }, fired: false },
-      data: { fired: true },
+      data: { fired: true, sourceKey: null },
     });
     return result.count;
   }
@@ -230,7 +266,7 @@ export async function cancelReminderByIdPrefix(scope: ReminderScope, idPrefix: s
 
   const result = await prisma.gameReminder.updateMany({
     where: { id: { in: matches.map((reminder) => reminder.id) }, fired: false },
-    data: { fired: true },
+    data: { fired: true, sourceKey: null },
   });
   return result.count;
 }

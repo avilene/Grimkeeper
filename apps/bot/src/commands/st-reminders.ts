@@ -14,6 +14,7 @@ import {
   findRemindersByIdPrefix,
   listPendingReminders,
   updateReminder,
+  batchReminderSourceKey,
 } from "@grimkeeper/database";
 
 import { getReminderPingRoleId } from "../access.js";
@@ -158,7 +159,7 @@ export class StReminderCommands {
 
   @Slash({
     name: "set-reminders",
-    description: "Schedule multiple hour-offset reminders in this channel with player pings",
+    description: "Replace channel hour-offset reminders (cancels previous set-reminders in this channel)",
   })
   async setReminders(
     @SlashOption({
@@ -221,22 +222,33 @@ export class StReminderCommands {
     const pingRoleId = encodePingRoleIds(pingRoleIds);
     const seriesEndAt = new Date(now + Math.max(...hours) * 3_600_000);
 
+    const replaced = await cancelReminders(scope, {
+      channelId: targetChannelId,
+      batchOnly: true,
+    });
+
     await Promise.all(
-      hours.map((hour) =>
-        createReminder({
+      hours.map((hour) => {
+        const fireAt = new Date(now + hour * 3_600_000);
+        return createReminder({
           gameId: scope.kind === "game" ? scope.gameId : null,
           guildId: interaction.guildId!,
           channelId: targetChannelId,
           message: trimmedMessage,
           emoji: null,
-          sourceKey: `${interaction.id}:${hour}`,
-          fireAt: new Date(now + hour * 3_600_000),
+          sourceKey: batchReminderSourceKey(
+            interaction.guildId!,
+            targetChannelId,
+            fireAt,
+            trimmedMessage,
+          ),
+          fireAt,
           seriesEndAt,
           createdBy: interaction.user.id,
           pingPlayers: true,
           pingRoleId: pingRoleId ?? null,
-        }),
-      ),
+        });
+      }),
     );
 
     const scheduleLines = hours.map((hour) => {
@@ -247,6 +259,10 @@ export class StReminderCommands {
     const scopeLabel = `<#${targetChannelId}>`;
     const threadNote = createdInThread ? " (created in thread, fires in parent channel)" : "";
     const pingLabel = formatPingRoleMentions(pingRoleId) ?? "player role";
+    const replacedNote =
+      replaced > 0
+        ? ` Replaced **${replaced}** previous set-reminders ping${replaced === 1 ? "" : "s"} in this channel.`
+        : "";
 
     logReminderAction("created", {
       scope: scope.kind,
@@ -255,6 +271,7 @@ export class StReminderCommands {
       channelId: targetChannelId,
       count: hours.length,
       hours,
+      replaced,
       message: trimmedMessage,
       pingRoleId: pingRoleId ?? undefined,
       userId: interaction.user.id,
@@ -262,12 +279,12 @@ export class StReminderCommands {
 
     await replyOrEditInteraction(interaction, {
       content: [
-        `Set **${hours.length}** reminder${hours.length === 1 ? "" : "s"} in <#${targetChannelId}> pinging ${pingLabel}${threadNote}:`,
+        `Set **${hours.length}** reminder${hours.length === 1 ? "" : "s"} in <#${targetChannelId}> pinging ${pingLabel}${threadNote}.${replacedNote}`,
         `“${trimmedMessage}”`,
         "",
         ...scheduleLines,
         "",
-        `**${totalPending}** reminder${totalPending === 1 ? "" : "s"} pending for ${scopeLabel}. Run again anytime to add more.`,
+        `**${totalPending}** reminder${totalPending === 1 ? "" : "s"} pending for ${scopeLabel}. Run again to replace this channel’s set-reminders batch.`,
       ].join("\n"),
       ...EPHEMERAL,
     });

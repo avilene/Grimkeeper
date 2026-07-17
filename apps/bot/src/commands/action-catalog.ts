@@ -23,7 +23,8 @@ export const ST_DO_ACTIONS: DoAction[] = [
 ];
 
 export const GAME_DO_ACTIONS: DoAction[] = [
-  { name: "create", description: "Create a game in this channel", needs: ["edition?"] },
+  { name: "setup", description: "Create a game with existing ST/player/kib roles", needs: ["st", "player_role", "kib", "edition?"] },
+  { name: "create", description: "Create a game in this channel (legacy — prefer setup)", needs: ["edition?"] },
   { name: "join", description: "Join the lobby" },
   { name: "leave", description: "Leave the lobby" },
   { name: "list", description: "List active games in this server" },

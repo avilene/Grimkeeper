@@ -9,14 +9,33 @@ import { reportError } from "./error-reporter.js";
 let schedulerStarted = false;
 let processingDueReminders = false;
 
+/** Collapse duplicate due rows (same channel/message/fire minute) within one tick. */
+export function reminderSendDedupeKey(reminder: {
+  channelId: string;
+  message: string;
+  fireAt: Date;
+}): string {
+  const fireMinute = Math.floor(new Date(reminder.fireAt).getTime() / 60_000);
+  return `${reminder.channelId}:${fireMinute}:${reminder.message.trim().toLowerCase()}`;
+}
+
 export async function processDueReminders(client: Client): Promise<void> {
   if (processingDueReminders) return;
   processingDueReminders = true;
 
   try {
     const due = await listDueReminders();
+    const sentKeys = new Set<string>();
+
     for (const reminder of due) {
       try {
+        const dedupeKey = reminderSendDedupeKey(reminder);
+        if (sentKeys.has(dedupeKey)) {
+          // Still claim so duplicate rows do not fire on a later tick.
+          await claimReminderForFire(reminder.id);
+          continue;
+        }
+
         const claimed = await claimReminderForFire(reminder.id);
         if (!claimed) continue;
 
@@ -40,6 +59,7 @@ export async function processDueReminders(client: Client): Promise<void> {
             );
           }
           await channel.send(content).catch(() => undefined);
+          sentKeys.add(dedupeKey);
           logReminderAction("fired", {
             reminderId: reminder.id,
             gameId: reminder.gameId ?? undefined,

@@ -2,7 +2,8 @@ import { DEFAULT_MIN_PLAYERS, DEV_MIN_PLAYERS } from "@grimkeeper/engine";
 
 import { isDevMode } from "./dev.js";
 
-export const MINIMAL_MIN_PLAYERS = 7;
+/** Minimal mode has no minimum player gate for setup or start. */
+export const MINIMAL_MIN_PLAYERS = 0;
 
 export function isMinimalMode(): boolean {
   return process.env.BOT_MODE === "minimal";

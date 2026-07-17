@@ -53,7 +53,8 @@ import { logGameEvent } from "../game-events-log.js";
 import { refreshGameStatusForEngine } from "../game-status.js";
 import { buildRoleDmEmbed } from "../role-embed.js";
 
-export const GAME_DISCORD_ROLES_ENABLED = true;
+/** Full mode creates per-channel Discord roles; minimal mode uses existing roles from setup. */
+export const GAME_DISCORD_ROLES_ENABLED = !isMinimalMode();
 export const STORYTELLER_THREAD_NAME = "ST and the gang";
 
 export function kibThreadName(parentChannelName: string): string {
@@ -406,7 +407,7 @@ export async function buildPlayerPingMention(
 
   const client = getBotClient();
   const discordGuild = (await client?.guilds.fetch(guildId).catch(() => null)) ?? null;
-  const gameRoles = await getGameRoles(discordGuild, game.channelId);
+  const gameRoles = await resolveGameRoles(discordGuild, game);
   if (gameRoles) {
     return `<@&${gameRoles.playersRole.id}>`;
   }
@@ -469,6 +470,33 @@ type GameRoles = {
   playersRole: Role;
   spectatorRole: Role;
 };
+
+export type GameRoleIds = {
+  stRoleId?: string | null;
+  playerRoleId?: string | null;
+  kibRoleId?: string | null;
+  channelId: string;
+};
+
+export async function resolveGameRoles(
+  guild: Guild | null,
+  game: GameRoleIds,
+): Promise<GameRoles | null> {
+  if (!guild) return null;
+
+  if (isMinimalMode() && game.stRoleId && game.playerRoleId && game.kibRoleId) {
+    await guild.roles.fetch();
+    const stRole = guild.roles.cache.get(game.stRoleId);
+    const playersRole = guild.roles.cache.get(game.playerRoleId);
+    const spectatorRole = guild.roles.cache.get(game.kibRoleId);
+    if (stRole && playersRole && spectatorRole) {
+      return { stRole, playersRole, spectatorRole };
+    }
+    return null;
+  }
+
+  return getGameRoles(guild, game.channelId);
+}
 
 export function roleSlugFromChannelName(name: string): string {
   return name
@@ -705,6 +733,7 @@ export async function createKibThread(
   interaction: CommandInteraction,
   gameId: string,
   gameRoles?: GameRoles,
+  options?: { kibRoleId?: string },
 ): Promise<string | null> {
   const guild = interaction.guild;
   const channelId = interaction.channelId;
@@ -723,14 +752,14 @@ export async function createKibThread(
         reason: `Kib thread for game ${gameId}`,
         ...( {
           type: ChannelType.PrivateThread,
-          invitable: true,
+          invitable: false,
         } as Record<string, unknown>),
       });
       const roleMention = gameRoles
-        ? ` Pingable roles: <@&${gameRoles.stRole.id}> / <@&${gameRoles.playersRole.id}>.`
+        ? ` Roles: <@&${gameRoles.stRole.id}> / <@&${gameRoles.playersRole.id}> / kib <@&${gameRoles.spectatorRole.id}>.`
         : "";
       await thread
-        .send(`Kib thread ready.${roleMention} Use \`/st add-spectator\` to assign spectators.`)
+        .send(`Kib thread ready.${roleMention} Use \`/st do add-spectator\` to grant kib access.`)
         .catch(() => undefined);
     } catch {
       return null;
@@ -742,7 +771,26 @@ export async function createKibThread(
   }
 
   await thread.members.add(interaction.user.id).catch(() => undefined);
+
+  const kibRoleId = options?.kibRoleId ?? gameRoles?.spectatorRole.id;
+  if (kibRoleId) {
+    await addRoleMembersToThread(guild, thread, kibRoleId);
+  }
+
   return `<#${thread.id}>`;
+}
+
+export async function addRoleMembersToThread(
+  guild: Guild,
+  thread: AnyThreadChannel,
+  roleId: string,
+): Promise<void> {
+  await guild.members.fetch().catch(() => undefined);
+  for (const member of guild.members.cache.values()) {
+    if (member.roles.cache.has(roleId)) {
+      await thread.members.add(member.id).catch(() => undefined);
+    }
+  }
 }
 
 export async function createPlayerStThreads(

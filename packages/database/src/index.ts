@@ -18,9 +18,11 @@ export {
   findRemindersByIdPrefix,
   listPendingReminders,
   updateReminder,
+  batchReminderSourceKey,
   type ReminderScope,
   type CreateReminderInput,
   type UpdateReminderInput,
+  type CancelRemindersFilter,
 } from "./reminders.js";
 
 export type StoredGameEvent = GameEvent;

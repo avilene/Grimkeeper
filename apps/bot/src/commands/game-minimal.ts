@@ -5,6 +5,7 @@ import {
   CommandInteraction,
   EmbedBuilder,
   MessageFlags,
+  Role,
   User,
 } from "discord.js";
 import { Discord, Slash, SlashChoice, SlashGroup, SlashOption } from "discordx";
@@ -34,6 +35,7 @@ import {
   requireActivePlayerGame,
   requireCommandAccess,
   requireTownVotingChannel,
+  resolveGameRoles,
   syncGameProjection,
 } from "./command-context.js";
 
@@ -106,6 +108,27 @@ export class GameCommandsMinimal {
       required: false,
     })
     reason: string | undefined,
+    @SlashOption({
+      name: "st",
+      description: "For setup: existing storyteller role",
+      type: ApplicationCommandOptionType.Role,
+      required: false,
+    })
+    stRole: Role | undefined,
+    @SlashOption({
+      name: "player_role",
+      description: "For setup: existing player role",
+      type: ApplicationCommandOptionType.Role,
+      required: false,
+    })
+    playerRole: Role | undefined,
+    @SlashOption({
+      name: "kib",
+      description: "For setup: existing kib/spectator role",
+      type: ApplicationCommandOptionType.Role,
+      required: false,
+    })
+    kibRole: Role | undefined,
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
@@ -122,6 +145,17 @@ export class GameCommandsMinimal {
     }
 
     switch (normalized) {
+      case "setup":
+        if (!stRole || !playerRole || !kibRole) {
+          await replyOrEditInteraction(interaction, {
+            content:
+              "`/game do setup` needs `st:`, `player_role:`, and `kib:` — pick existing server roles. Optional `edition:`.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await this.setup(edition, stRole, playerRole, kibRole, interaction);
+        return;
       case "create":
         await this.create(edition, interaction);
         return;
@@ -172,6 +206,100 @@ export class GameCommandsMinimal {
           flags: MessageFlags.Ephemeral,
         });
     }
+  }
+
+  async setup(
+    edition: StandardEditionChoice | undefined,
+    stRole: Role,
+    playerRole: Role,
+    kibRole: Role,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction.guildId || !interaction.channelId) {
+      await replyOrEditInteraction(interaction, {
+        content: "This command must be used in a server channel.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const existing = await getActiveGameForGuild(interaction.guildId);
+    if (existing) {
+      await replyOrEditInteraction(interaction, {
+        content: "An active game already exists in this server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    let script;
+    try {
+      script = await loadScriptForCreate(edition, undefined);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load script.";
+      await replyOrEditInteraction(interaction, {
+        content: message,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await deferInteractionReply(interaction);
+
+    const gameId = randomUUID();
+    const gameRoles = { stRole, playersRole: playerRole, spectatorRole: kibRole };
+
+    await addRoleToUser(interaction.guild, interaction.user.id, stRole.id);
+    await applyGameChannelPermissions(
+      interaction.guild!,
+      interaction.channelId,
+      stRole.id,
+      playerRole.id,
+    );
+
+    const engine = new GameEngine(gameId);
+    const events = engine.handle({
+      kind: GameCommandKind.CreateGame,
+      gameId,
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+      storytellerId: interaction.user.id,
+      script,
+    });
+
+    await prisma.game.create({
+      data: {
+        id: gameId,
+        guildId: interaction.guildId,
+        channelId: interaction.channelId,
+        phase: "lobby",
+        stRoleId: stRole.id,
+        playerRoleId: playerRole.id,
+        kibRoleId: kibRole.id,
+      },
+    });
+
+    await persistEvents(engine, events);
+
+    const kibThread = await createKibThread(interaction, gameId, gameRoles, {
+      kibRoleId: kibRole.id,
+    });
+    const devHint = isDevMode() ? " Dev mode: use `/dev fill` to add fake players." : "";
+    const threadHint = kibThread
+      ? ` Kib thread created: ${kibThread}.`
+      : " I could not create a kib thread (missing permissions or unsupported channel type).";
+    const roleHint = ` Roles: <@&${stRole.id}>, <@&${playerRole.id}>, kib <@&${kibRole.id}>.`;
+
+    await replyOrEditInteraction(interaction, {
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("Grimkeeper game set up")
+          .setDescription(
+            `Script: **${script.name}** (${script.roles.length} characters).\nStoryteller: run \`/st do setup-town\` with ordered @mentions to set up players and open voting.${roleHint}${threadHint}${devHint}`,
+          )
+          .addFields({ name: "Game ID", value: gameId }),
+      ],
+    });
   }
 
   async create(
@@ -252,11 +380,10 @@ export class GameCommandsMinimal {
 
     await persistEvents(engine, events);
 
-    const kibThread = await createKibThread(interaction, gameId, gameRoles ?? undefined);
     const devHint = isDevMode() ? " Dev mode: use `/dev fill` to add fake players." : "";
-    const threadHint = kibThread
-      ? ` Kib thread created: ${kibThread}.`
-      : " I could not create a kib thread (missing permissions or unsupported channel type).";
+    const threadHint = isDevMode()
+      ? ""
+      : " Prefer `/game do setup` with your existing ST, player, and kib roles.";
 
     await replyOrEditInteraction(interaction, {
       embeds: [
@@ -282,7 +409,7 @@ export class GameCommandsMinimal {
     const game = await getActiveGameForGuild(interaction.guildId);
     if (!game) {
       await replyOrEditInteraction(interaction, {
-        content: "No active game found. Create one with `/game do create`.",
+        content: "No active game found. Create one with `/game do setup`.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -308,11 +435,9 @@ export class GameCommandsMinimal {
         seat: engine.getState().players.find((p) => p.id === playerId)?.seat ?? null,
       },
     });
-    if (GAME_DISCORD_ROLES_ENABLED) {
-      const roles = await getGameRoles(interaction.guild, game.channelId);
-      if (roles) {
-        await addRoleToUser(interaction.guild, interaction.user.id, roles.playersRole.id);
-      }
+    const roles = await resolveGameRoles(interaction.guild, game);
+    if (roles) {
+      await addRoleToUser(interaction.guild, interaction.user.id, roles.playersRole.id);
     }
     await replyOrEditInteraction(interaction, {
       content: `Joined the game. ${engine.getState().players.length} player(s) in lobby.`,
@@ -360,11 +485,9 @@ export class GameCommandsMinimal {
       await prisma.player.deleteMany({
         where: { id: player.id, gameId: game.id },
       });
-      if (GAME_DISCORD_ROLES_ENABLED) {
-        const roles = await getGameRoles(interaction.guild, game.channelId);
-        if (roles) {
-          await removeRoleFromUser(interaction.guild, interaction.user.id, roles.playersRole.id);
-        }
+      const roles = await resolveGameRoles(interaction.guild, game);
+      if (roles) {
+        await removeRoleFromUser(interaction.guild, interaction.user.id, roles.playersRole.id);
       }
       await replyOrEditInteraction(interaction, {
         content: `You left the lobby. ${engine.getState().players.length} player(s) remain.`,

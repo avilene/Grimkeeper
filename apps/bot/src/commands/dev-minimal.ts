@@ -49,10 +49,11 @@ export class DevCommandsMinimal {
 
     const engine = await loadEngine(game.id);
     const min = minPlayersForMode();
-    const target = count ?? Math.max(0, min - engine.getState().players.length);
+    const fillTarget = min > 0 ? min : 7;
+    const target = count ?? Math.max(0, fillTarget - engine.getState().players.length);
     if (target === 0) {
       await interaction.reply({
-        content: `Lobby already has ${engine.getState().players.length} players (min ${min}).`,
+        content: `Lobby already has ${engine.getState().players.length} players.`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -135,7 +136,8 @@ export class DevCommandsMinimal {
 
     const engine = await loadEngine(game.id);
     const min = minPlayersForMode();
-    const needed = Math.max(0, min - engine.getState().players.length);
+    const fillTarget = min > 0 ? min : 7;
+    const needed = Math.max(0, fillTarget - engine.getState().players.length);
     if (needed > 0) {
       const existingFakeCount = engine.getState().players.filter((p) => p.isFake).length;
       for (let i = 0; i < needed; i++) {

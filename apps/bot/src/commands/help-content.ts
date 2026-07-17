@@ -1,6 +1,6 @@
 import { EmbedBuilder } from "discord.js";
 
-import { isMinimalMode, minPlayersForMode } from "../bot-mode.js";
+import { isMinimalMode } from "../bot-mode.js";
 
 const GUIDE_COLOR = 0x5865f2;
 
@@ -28,7 +28,10 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
           {
             name: "Lobby",
             value: [
-              cmd("/game do create", "Create a game in this channel (optional `edition:`)."),
+              cmd(
+                "/game do setup",
+                "Create a game with existing roles: `st:`, `player_role:`, `kib:` (+ optional `edition:`).",
+              ),
               cmd("/game do join", "Join the lobby (optional — ST can set roster with setup-town)."),
               cmd("/game do leave", "Leave the lobby."),
               cmd("/game do list", "List active games in this server."),
@@ -98,7 +101,6 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
 
 export function buildStHelpEmbeds(): EmbedBuilder[] {
   if (isMinimalMode()) {
-    const minPlayers = minPlayersForMode();
     return [
       new EmbedBuilder()
         .setColor(GUIDE_COLOR)
@@ -106,8 +108,8 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
         .setDescription(
           [
             "**Quick start**",
-            `1. \`/game do create\` in the town channel`,
-            `2. \`/st do setup-town\` with \`players:\` @mentions in **seat order** (min ${minPlayers})`,
+            "1. `/game do setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles",
+            "2. `/st do setup-town` with `players:` @mentions in **seat order** (any player count)",
             "3. Players nominate and vote in **Town Voting** (or privately in ST threads)",
             "4. Use the **kib control panel** (or `/st do resolve-next` → `/st do execute`)",
             "",
@@ -126,8 +128,8 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             name: "Setup & town (`/st do …`)",
             value: [
               cmd("setup-town", "Needs `players:` ordered @mentions — creates ST threads + Town Voting."),
+              cmd("add-spectator / remove-spectator", "Needs `user:` — assigns/removes the kib role."),
               cmd("end", "End the game."),
-              cmd("add-spectator / remove-spectator", "Needs `user:`."),
             ].join("\n\n"),
           },
           {
@@ -145,7 +147,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             name: "Reminders",
             value: [
               cmd("/st remind", "Schedule a reminder in the town channel."),
-              cmd("/st set-reminders", "Schedule repeating hourly reminders."),
+              cmd("/st set-reminders", "Replace this channel’s hour-offset reminder batch (does not stack)."),
               cmd("/st reminders", "List pending reminders."),
               cmd("/st edit-reminder / delete-reminder / clear-reminders", "Manage pending reminders."),
             ].join("\n\n"),
@@ -211,7 +213,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             cmd("/st ping-players", "Ping all players."),
             cmd("/st ping-st", "Ping storytellers."),
             cmd("/st remind", "Schedule a reminder."),
-            cmd("/st set-reminders", "Schedule repeating hourly reminders."),
+            cmd("/st set-reminders", "Replace this channel’s hour-offset reminder batch."),
             cmd("/st reminders", "List pending reminders."),
           ].join("\n\n"),
         },

@@ -24,7 +24,6 @@ import {
   cleanupGameRoles,
   createPlayerStThreads,
   createTownVoteThread,
-  getGameRoles,
   getStorytellerThread,
   loadEngine,
   persistEvents,
@@ -34,6 +33,7 @@ import {
   replyOrEditInteraction,
   requireCommandAccess,
   requireStorytellerGame,
+  resolveGameRoles,
   resolveVotingChannel,
   syncGameProjection,
 } from "./command-context.js";
@@ -301,10 +301,10 @@ export class StCommandsMinimal {
     const guild = interaction.guild;
     if (!guild) return;
 
-    const gameRoles = await getGameRoles(guild, game.channelId);
+    const gameRoles = await resolveGameRoles(guild, game);
     if (!gameRoles) {
       await replyOrEditInteraction(interaction, {
-        content: "Could not find game roles for this channel.",
+        content: "Could not find game roles. Run `/game do setup` with ST, player, and kib roles.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -341,10 +341,10 @@ export class StCommandsMinimal {
     const guild = interaction.guild;
     if (!guild) return;
 
-    const gameRoles = await getGameRoles(guild, game.channelId);
+    const gameRoles = await resolveGameRoles(guild, game);
     if (!gameRoles) {
       await replyOrEditInteraction(interaction, {
-        content: "Could not find game roles for this channel.",
+        content: "Could not find game roles. Run `/game do setup` with ST, player, and kib roles.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -364,9 +364,18 @@ export class StCommandsMinimal {
     if (!guild) return;
 
     const mentionIds = parseUserMentionsFromString(playersInput);
-    if (mentionIds.length < minPlayersForMode()) {
+    const minPlayers = minPlayersForMode();
+    if (minPlayers > 0 && mentionIds.length < minPlayers) {
       await replyOrEditInteraction(interaction, {
-        content: `Provide at least ${minPlayersForMode()} @mentions in seat order.`,
+        content: `Provide at least ${minPlayers} @mentions in seat order.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (mentionIds.length === 0) {
+      await replyOrEditInteraction(interaction, {
+        content: "Provide at least one @mention in seat order.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -410,12 +419,10 @@ export class StCommandsMinimal {
         });
       }
 
-      if (GAME_DISCORD_ROLES_ENABLED) {
-        const roles = await getGameRoles(guild, game.channelId);
-        if (roles) {
-          for (const player of engine.getState().players) {
-            await addRoleToUser(guild, player.discordUserId, roles.playersRole.id);
-          }
+      const roles = await resolveGameRoles(guild, game);
+      if (roles) {
+        for (const player of engine.getState().players) {
+          await addRoleToUser(guild, player.discordUserId, roles.playersRole.id);
         }
       }
 

@@ -47,10 +47,10 @@ describe("minPlayersForMode", () => {
     }
   });
 
-  it("returns 7 in minimal mode", () => {
+  it("returns 0 in minimal mode (no min player gate)", () => {
     process.env.BOT_MODE = "minimal";
     expect(minPlayersForMode()).toBe(MINIMAL_MIN_PLAYERS);
-    expect(MINIMAL_MIN_PLAYERS).toBe(7);
+    expect(MINIMAL_MIN_PLAYERS).toBe(0);
   });
 
   it("returns 5 in full mode without dev", () => {
