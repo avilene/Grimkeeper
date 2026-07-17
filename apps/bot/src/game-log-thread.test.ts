@@ -15,8 +15,9 @@ describe("logThreadName", () => {
 });
 
 describe("formatGameLogLine", () => {
-  it("includes ISO timestamp prefix", () => {
-    const line = formatGameLogLine("test event", new Date("2026-07-17T10:30:00.000Z"));
-    expect(line).toBe("`[2026-07-17 10:30:00]` test event");
+  it("prefixes with a Discord localized short datetime", () => {
+    const at = new Date("2026-07-17T10:30:00.000Z");
+    const line = formatGameLogLine("test event", at);
+    expect(line).toBe(`<t:${Math.floor(at.getTime() / 1000)}:f> test event`);
   });
 });

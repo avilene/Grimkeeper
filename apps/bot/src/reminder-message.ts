@@ -1,4 +1,4 @@
-export function discordTimestamp(date: Date, style: "R" | "F" | "t" = "R"): string {
+export function discordTimestamp(date: Date, style: "R" | "F" | "f" | "t" = "R"): string {
   return `<t:${Math.floor(date.getTime() / 1000)}:${style}>`;
 }
 

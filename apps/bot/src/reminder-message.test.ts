@@ -18,6 +18,7 @@ describe("discordTimestamp", () => {
     const date = new Date("2026-07-14T16:00:00Z");
     expect(discordTimestamp(date, "R")).toBe(`<t:${Math.floor(date.getTime() / 1000)}:R>`);
     expect(discordTimestamp(date, "t")).toBe(`<t:${Math.floor(date.getTime() / 1000)}:t>`);
+    expect(discordTimestamp(date, "f")).toBe(`<t:${Math.floor(date.getTime() / 1000)}:f>`);
   });
 });
 

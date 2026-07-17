@@ -13,14 +13,15 @@ import {
   isGameTextChannel,
   shortGameId,
 } from "./commands/command-context.js";
+import { discordTimestamp } from "./reminder-message.js";
 
 export function logThreadName(parentChannelName: string, gameId: string): string {
   return `log-${parentChannelName} · ${shortGameId(gameId)}`.slice(0, 100);
 }
 
+/** Prefix with Discord short date/time so each viewer sees their local timezone. */
 export function formatGameLogLine(message: string, at = new Date()): string {
-  const ts = at.toISOString().replace("T", " ").slice(0, 19);
-  return `\`[${ts}]\` ${message}`;
+  return `${discordTimestamp(at, "f")} ${message}`;
 }
 
 export type GameThreadRecord = GameRoleIds & {
