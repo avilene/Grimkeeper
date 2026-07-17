@@ -31,7 +31,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
             value: [
               cmd(
                 "/game do setup",
-                "Create a game with existing roles: `st:`, `player_role:`, `kib:` (+ optional `edition:`).",
+                "Create a game with existing roles: `st:`, `player_role:`, `kib:` (+ optional `kib_thread:` / `log_thread:`).",
               ),
               cmd("/game do join", "Join the lobby (optional — ST can set roster with setup-town)."),
               cmd("/game do leave", "Leave the lobby."),
@@ -109,12 +109,13 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
         .setDescription(
           [
             "**Quick start**",
-            "1. `/game do setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles",
+            "1. `/game do setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles (optional `kib_thread:` / `log_thread:`)",
             "2. `/st do setup-town` with `players:` @mentions in **seat order** (any player count)",
             "3. `/st do say` from kib to broadcast to all player threads",
             "4. `/st remind` / `/st set-reminders` for scheduled pings (ST role or allowlist)",
             "5. `/st do end` — strips game roles, cancels reminders, opens kib for post-game chat",
             "",
+            "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/st do log` to recreate it mid-game.",
             "Prefer typing less? **`/st do`** filters actions as you type. Mid-game buttons: **`/st panel`**.",
           ].join("\n"),
         )
@@ -130,6 +131,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             name: "Setup & town (`/st do …`)",
             value: [
               cmd("setup-town", "Needs `players:` ordered @mentions — assigns player role + creates threads."),
+              cmd("log", "Create or reopen the ST-only audit log thread."),
               cmd("say", "Needs `message:` — broadcast from **kib** to every personal player thread."),
               cmd("end", "End game: remove roles from players, cancel reminders, open kib."),
               cmd("add-spectator / remove-spectator", "Needs `user:` — assigns/removes the kib role."),
@@ -162,6 +164,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
               "Votes live in the **Town Voting** private thread (all players + ST).",
               "Private ballots are also posted to each personal ST thread.",
               "`setup-town` also pins the **control panel** + **vote tracker** in kib.",
+              "The **log thread** records role changes, broadcasts, reminders, setup, and game end (ST-only).",
               "Personal player threads stay private after `/st do end`.",
             ].join("\n"),
           },
@@ -236,7 +239,7 @@ export function buildDevHelpEmbeds(): EmbedBuilder[] {
           value: [
             cmd("/dev fill", "Add fake players to the lobby."),
             cmd("/dev clear", "Remove all fake players."),
-            cmd("/dev setup", "Fill lobby to min players and show role script."),
+            cmd("/dev setup", "Fill lobby with fake players for testing."),
           ].join("\n\n"),
         }),
     ];
@@ -253,7 +256,7 @@ export function buildDevHelpEmbeds(): EmbedBuilder[] {
           value: [
             cmd("/dev fill", "Add fake players to the lobby."),
             cmd("/dev clear", "Remove all fake players."),
-            cmd("/dev setup", "Fill lobby to min players and show role script."),
+            cmd("/dev setup", "Fill lobby with fake players for testing."),
           ].join("\n\n"),
         },
         {

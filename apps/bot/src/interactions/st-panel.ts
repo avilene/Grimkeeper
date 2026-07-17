@@ -99,13 +99,13 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
     const { game, engine, guild } = ctx;
 
     if (action === "refresh") {
-      await upsertStControlPanel(guild, game.channelId, engine);
+      await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
       await interaction.editReply({ content: "Control panel refreshed." });
       return true;
     }
 
     if (action === "votes") {
-      const message = await upsertStVoteTracker(guild, game.channelId, engine);
+      const message = await upsertStVoteTracker(guild, game.channelId, engine, game.kibThreadId);
       const thread = await getStorytellerThread(guild, game.channelId);
       await interaction.editReply({
         content: message
@@ -127,7 +127,7 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       await voting
         ?.send(`Vote visibility is now **${formatVoteVisibility(mode)}**.`)
         .catch(() => undefined);
-      await upsertStControlPanel(guild, game.channelId, engine);
+      await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
       await interaction.editReply({
         content: `Vote visibility set to **${formatVoteVisibility(mode)}**.`,
       });
@@ -155,7 +155,7 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       const tally = engine.formatNominationTally(next.id, { revealSecret: true });
 
       await refreshNominationEverywhere(guild, game, engine, next.id, { revealSecret: true });
-      await upsertStControlPanel(guild, game.channelId, engine);
+      await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
 
       const channel = await resolveVotingChannel(guild, game, engine);
       if (channel) {
@@ -203,7 +203,7 @@ export async function handleStPanelUserSelect(
 
   try {
     const { game, engine, guild } = ctx;
-    await runPanelUserAction(parsed.action, selected.id, game.id, guild, engine, interaction);
+    await runPanelUserAction(parsed.action, selected.id, game, guild, engine, interaction);
   } catch (error) {
     try {
       await replyEngineError(interaction, error);
@@ -218,12 +218,11 @@ export async function handleStPanelUserSelect(
 async function runPanelUserAction(
   action: StPanelUserSelectAction,
   discordUserId: string,
-  gameId: string,
+  game: NonNullable<Awaited<ReturnType<typeof getActiveGameForGuild>>>,
   guild: NonNullable<ButtonInteraction["guild"]>,
   engine: Awaited<ReturnType<typeof loadEngine>>,
   interaction: UserSelectMenuInteraction,
 ): Promise<void> {
-  const game = { id: gameId, channelId: engine.getState().channelId };
   const target = engine.getPlayerByDiscordId(discordUserId);
   if (!target) {
     await interaction.editReply({ content: "That user is not in this game." });
@@ -246,19 +245,19 @@ async function runPanelUserAction(
 
     const events = engine.handle({
       kind: GameCommandKind.ExecutePlayer,
-      gameId,
+      gameId: game.id,
       playerId: target.id,
       nominationId: nomination.id,
     });
     await persistEvents(engine, events);
-    await syncGameProjection(gameId, engine);
+    await syncGameProjection(game.id, engine);
     await refreshNominationEverywhere(guild, game, engine, nomination.id, {
       revealSecret: true,
     });
     const channel = await resolveVotingChannel(guild, game, engine);
     await channel?.send(`**${target.displayName}** was executed.`).catch(() => undefined);
     await upsertPinnedGameStatus(guild, game.channelId, engine);
-    await upsertStControlPanel(guild, game.channelId, engine);
+    await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
     await interaction.editReply({ content: `Executed **${target.displayName}**.` });
     return;
   }
@@ -266,13 +265,13 @@ async function runPanelUserAction(
   const markAlive = action === "mark-alive";
   const events = engine.handle({
     kind: GameCommandKind.SetPlayerAlive,
-    gameId,
+    gameId: game.id,
     playerId: target.id,
     alive: markAlive,
   });
   await persistEvents(engine, events);
   await upsertPinnedGameStatus(guild, game.channelId, engine);
-  await upsertStControlPanel(guild, game.channelId, engine);
+  await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
   await interaction.editReply({
     content: `Marked **${target.displayName}** as **${markAlive ? "alive" : "dead"}**.`,
   });

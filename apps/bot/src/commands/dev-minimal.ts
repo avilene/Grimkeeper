@@ -11,7 +11,6 @@ import {
   GameCommandKind,
   fakePlayerId,
   fakePlayerName,
-  getScriptCompositionText,
 } from "@grimkeeper/engine";
 
 import { isDevMode, requireDevMode } from "../dev.js";
@@ -164,26 +163,21 @@ export class DevCommandsMinimal {
     }
 
     const playerCount = engine.getState().players.length;
-    const script = engine.getState().script;
-    const compositionText = getScriptCompositionText(playerCount, { devMode: isDevMode() });
 
     await interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setTitle("Dev setup ready")
           .setDescription(
-            `Lobby has ${playerCount} players on **${script?.name ?? "unknown script"}**. Run \`/st start\` when ready.`,
+            `Lobby has ${playerCount} players. Run \`/st do setup-town\` when ready.`,
           )
-          .addFields(
-            { name: "Composition", value: compositionText },
-            {
-              name: "Players",
-              value: engine
-                .getState()
-                .players.map((p) => `${p.seat}. ${p.displayName}${p.isFake ? " (fake)" : ""}`)
-                .join("\n"),
-            },
-          ),
+          .addFields({
+            name: "Players",
+            value: engine
+              .getState()
+              .players.map((p) => `${p.seat}. ${p.displayName}${p.isFake ? " (fake)" : ""}`)
+              .join("\n"),
+          }),
       ],
       flags: MessageFlags.Ephemeral,
     });

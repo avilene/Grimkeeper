@@ -28,6 +28,7 @@ import {
   parseReminderEmoji,
   resolvePingRoleIds,
 } from "../reminder-message.js";
+import { postGameLog } from "../game-log-thread.js";
 import {
   replyOrEditInteraction,
   requireReminderAccess,
@@ -150,6 +151,14 @@ export class StReminderCommands {
       pingRoleId: pingRoleId ?? undefined,
       userId: interaction.user.id,
     });
+
+    if (game && interaction.guild) {
+      await postGameLog(
+        interaction.guild,
+        game,
+        `<@${interaction.user.id}> scheduled reminder in ${formatReminderDuration(minutes)} for ${where}: “${message.trim()}”`,
+      );
+    }
 
     await replyOrEditInteraction(interaction, {
       content: `Reminder set in ${formatReminderDuration(minutes)} for ${where}${pingNote}: “${formatReminderText(message, emoji)}” (id: \`${created.id.slice(0, 8)}\`)`,
@@ -276,6 +285,15 @@ export class StReminderCommands {
       pingRoleId: pingRoleId ?? undefined,
       userId: interaction.user.id,
     });
+
+    if (access.game && interaction.guild) {
+      const hourSummary = hours.map((hour) => `${hour}h`).join(", ");
+      await postGameLog(
+        interaction.guild,
+        access.game,
+        `<@${interaction.user.id}> set **${hours.length}** reminders (${hourSummary}) in <#${targetChannelId}>${replaced > 0 ? ` — replaced ${replaced} previous` : ""}: “${trimmedMessage}”`,
+      );
+    }
 
     await replyOrEditInteraction(interaction, {
       content: [

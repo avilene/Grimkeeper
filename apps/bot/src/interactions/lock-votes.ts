@@ -49,7 +49,7 @@ export async function handleLockVotesButton(interaction: ButtonInteraction): Pro
     });
     await persistEvents(engine, events);
 
-    await upsertStVoteTracker(interaction.guild, game.channelId, engine);
+    await upsertStVoteTracker(interaction.guild, game.channelId, engine, game.kibThreadId);
     await refreshNominationEverywhere(interaction.guild, game, engine, parsed.nominationId);
 
     const nomination = engine.getNominationById(parsed.nominationId);

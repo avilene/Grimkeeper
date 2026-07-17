@@ -12,6 +12,7 @@ import { GameCommandKind } from "@grimkeeper/engine";
 
 import { minPlayersForMode } from "../bot-mode.js";
 import { formatVoteVisibility } from "../day-thread.js";
+import { ensureLogThread, postGameLog, postGameLogRoleChange } from "../game-log-thread.js";
 import { upsertPinnedGameStatus } from "../game-status.js";
 import { runSetPlayerVote } from "../set-vote.js";
 import { upsertStControlPanel } from "../st-control-panel.js";
@@ -26,7 +27,7 @@ import {
   createPlayerStThreads,
   createTownVoteThread,
   finalizeMinimalGameEnd,
-  getStorytellerThread,
+  getKibThreadForGame,
   loadEngine,
   persistEvents,
   refreshNominationEverywhere,
@@ -180,6 +181,9 @@ export class StCommandsMinimal {
         }
         await this.say(message, interaction);
         return;
+      case "log":
+        await this.log(interaction);
+        return;
       case "resolve-next":
         await this.resolveNext(interaction);
         return;
@@ -237,8 +241,8 @@ export class StCommandsMinimal {
 
     try {
       const engine = await loadEngine(game.id);
-      const message = await upsertStControlPanel(interaction.guild, game.channelId, engine);
-      const thread = await getStorytellerThread(interaction.guild, game.channelId);
+      const message = await upsertStControlPanel(interaction.guild, game.channelId, engine, game.kibThreadId);
+      const thread = await getKibThreadForGame(interaction.guild, game);
       await replyOrEditInteraction(interaction, {
         content: message
           ? `ST control panel updated in ${thread ? `<#${thread.id}>` : "your kib thread"}.`
@@ -340,8 +344,56 @@ export class StCommandsMinimal {
       }
 
       const failureHint = failed > 0 ? ` (${failed} failed)` : "";
+      const preview =
+        message.trim().length > 120 ? `${message.trim().slice(0, 117)}…` : message.trim();
+      await postGameLog(
+        interaction.guild,
+        game,
+        `<@${interaction.user.id}> broadcast to **${sent}** player thread${sent === 1 ? "" : "s"}${failureHint}: “${preview}”`,
+      );
       await replyOrEditInteraction(interaction, {
         content: `Sent to **${sent}** player thread${sent === 1 ? "" : "s"}${failureHint}.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async log(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    if (!interaction.guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const result = await ensureLogThread(interaction.guild, game, engine, {
+        invokerId: interaction.user.id,
+      });
+
+      if (result.threadId && result.threadId !== game.logThreadId) {
+        await prisma.game.update({
+          where: { id: game.id },
+          data: { logThreadId: result.threadId },
+        });
+      }
+
+      if (!result.thread) {
+        await replyOrEditInteraction(interaction, {
+          content: "Could not create or find the ST log thread. Check bot permissions (`Manage Threads`).",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await postGameLog(
+        interaction.guild,
+        { ...game, logThreadId: result.threadId },
+        `<@${interaction.user.id}> ensured the ST log thread${result.created ? " (created)" : ""}.`,
+      );
+
+      await replyOrEditInteraction(interaction, {
+        content: `ST log thread ready: <#${result.thread.id}>${result.created ? " (newly created)" : ""}.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -377,10 +429,19 @@ export class StCommandsMinimal {
 
     await addRoleToUser(guild, user.id, gameRoles.spectatorRole.id);
 
-    const thread = await getStorytellerThread(guild, game.channelId);
+    const thread = await getKibThreadForGame(guild, game);
     if (thread) {
       await thread.members.add(user.id).catch(() => undefined);
     }
+
+    await postGameLogRoleChange(
+      guild,
+      game,
+      "added",
+      user.id,
+      `<@&${gameRoles.spectatorRole.id}> (kib)`,
+      interaction.user.id,
+    );
 
     const threadHint = thread ? ` Added to <#${thread.id}>.` : " Could not add to kib thread.";
     await replyOrEditInteraction(interaction, {
@@ -405,6 +466,14 @@ export class StCommandsMinimal {
     }
 
     await removeRoleFromUser(guild, user.id, gameRoles.spectatorRole.id);
+    await postGameLogRoleChange(
+      guild,
+      game,
+      "removed",
+      user.id,
+      `<@&${gameRoles.spectatorRole.id}> (kib)`,
+      interaction.user.id,
+    );
     await replyOrEditInteraction(interaction, {
       content: `Removed spectator role from <@${user.id}>.`,
       flags: MessageFlags.Ephemeral,
@@ -477,6 +546,14 @@ export class StCommandsMinimal {
       if (roles) {
         for (const player of engine.getState().players) {
           await addRoleToUser(guild, player.discordUserId, roles.playersRole.id);
+          await postGameLogRoleChange(
+            guild,
+            game,
+            "added",
+            player.discordUserId,
+            `<@&${roles.playersRole.id}> (player)`,
+            interaction.user.id,
+          );
         }
       }
 
@@ -493,8 +570,20 @@ export class StCommandsMinimal {
       }
 
       await upsertPinnedGameStatus(guild, game.channelId, engine);
-      await upsertStVoteTracker(guild, game.channelId, engine);
-      await upsertStControlPanel(guild, game.channelId, engine);
+      await upsertStVoteTracker(guild, game.channelId, engine, game.kibThreadId);
+      await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
+
+      const playerNames = engine
+        .getState()
+        .players.map((player) => player.displayName)
+        .join(", ");
+      await postGameLog(
+        guild,
+        game,
+        `<@${interaction.user.id}> setup-town — **${players.length}** players (${playerNames}).` +
+          ` Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.` +
+          (voteThread ? ` Voting: <#${voteThread.id}>.` : ""),
+      );
 
       await replyOrEditInteraction(interaction, {
         content: [
@@ -552,7 +641,7 @@ export class StCommandsMinimal {
         await refreshNominationEverywhere(interaction.guild, game, engine, next.id, {
           revealSecret: true,
         });
-        await upsertStControlPanel(interaction.guild, game.channelId, engine);
+        await upsertStControlPanel(interaction.guild, game.channelId, engine, game.kibThreadId);
       }
       if (channel) {
         await channel
@@ -626,7 +715,7 @@ export class StCommandsMinimal {
 
       if (interaction.guild) {
         await upsertPinnedGameStatus(interaction.guild, game.channelId, engine);
-        await upsertStControlPanel(interaction.guild, game.channelId, engine);
+        await upsertStControlPanel(interaction.guild, game.channelId, engine, game.kibThreadId);
       }
 
       await replyOrEditInteraction(interaction, {
@@ -668,7 +757,7 @@ export class StCommandsMinimal {
 
       if (interaction.guild) {
         await upsertPinnedGameStatus(interaction.guild, game.channelId, engine);
-        await upsertStControlPanel(interaction.guild, game.channelId, engine);
+        await upsertStControlPanel(interaction.guild, game.channelId, engine, game.kibThreadId);
       }
 
       await replyOrEditInteraction(interaction, {
@@ -687,8 +776,8 @@ export class StCommandsMinimal {
 
     try {
       const engine = await loadEngine(game.id);
-      const message = await upsertStVoteTracker(interaction.guild, game.channelId, engine);
-      const thread = await getStorytellerThread(interaction.guild, game.channelId);
+      const message = await upsertStVoteTracker(interaction.guild, game.channelId, engine, game.kibThreadId);
+      const thread = await getKibThreadForGame(interaction.guild, game);
       await replyOrEditInteraction(interaction, {
         content: message
           ? `Vote tracker updated in ${thread ? `<#${thread.id}>` : "your kib thread"}.`
@@ -724,7 +813,7 @@ export class StCommandsMinimal {
         .catch(() => undefined);
 
       if (interaction.guild) {
-        await upsertStControlPanel(interaction.guild, game.channelId, engine);
+        await upsertStControlPanel(interaction.guild, game.channelId, engine, game.kibThreadId);
       }
 
       await replyOrEditInteraction(interaction, {

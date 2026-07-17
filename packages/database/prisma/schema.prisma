@@ -17,6 +17,8 @@ model Game {
   stRoleId      String?
   playerRoleId  String?
   kibRoleId     String?
+  kibThreadId   String?
+  logThreadId   String?
   createdAt     DateTime       @default(now())
   events      GameEvent[]
   players     Player[]

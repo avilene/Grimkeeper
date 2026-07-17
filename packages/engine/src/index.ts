@@ -30,7 +30,7 @@ export interface GameCreatedEvent extends GameEventBase {
   guildId: string;
   channelId: string;
   storytellerId: string;
-  script: GameScript;
+  script?: GameScript | null;
 }
 
 export interface GameStartedEvent extends GameEventBase {
@@ -286,7 +286,7 @@ export interface CreateGameCommand {
   guildId: string;
   channelId: string;
   storytellerId: string;
-  script: GameScript;
+  script?: GameScript | null;
 }
 
 export interface AssignRoleCommand {
@@ -1015,7 +1015,7 @@ export class GameEngine {
             guildId: command.guildId,
             channelId: command.channelId,
             storytellerId: command.storytellerId,
-            script: command.script,
+            script: command.script ?? null,
             timestamp: new Date().toISOString(),
           },
         ];
@@ -1357,7 +1357,7 @@ export class GameEngine {
         this.state.guildId = event.guildId;
         this.state.channelId = event.channelId;
         this.state.storytellerId = event.storytellerId;
-        this.state.script = event.script ?? resolveStandardScript(StandardEdition.TB);
+        this.state.script = event.script ?? null;
         this.state.phase = "lobby";
         break;
       case GameEventType.PlayerAdded:

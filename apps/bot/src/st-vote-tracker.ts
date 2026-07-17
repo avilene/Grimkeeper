@@ -174,8 +174,9 @@ export async function upsertStVoteTracker(
   guild: Guild,
   parentChannelId: string,
   engine: GameEngine,
+  kibThreadId?: string | null,
 ): Promise<Message | null> {
-  const thread = await getStorytellerThread(guild, parentChannelId);
+  const thread = await getStorytellerThread(guild, parentChannelId, { kibThreadId });
   if (!thread?.isTextBased()) return null;
 
   const embed = buildStVoteTrackerEmbed(engine);

@@ -2,19 +2,21 @@ import { randomUUID } from "node:crypto";
 import {
   ApplicationCommandOptionType,
   AutocompleteInteraction,
+  ChannelType,
   CommandInteraction,
   EmbedBuilder,
   MessageFlags,
   Role,
+  type AnyThreadChannel,
   User,
 } from "discord.js";
-import { Discord, Slash, SlashChoice, SlashGroup, SlashOption } from "discordx";
+import { Discord, Slash, SlashGroup, SlashOption } from "discordx";
 import { getActiveGameForGuild, prisma } from "@grimkeeper/database";
 import { GameCommandKind, GameEngine } from "@grimkeeper/engine";
 
 import { isDevMode } from "../dev.js";
-import { type StandardEditionChoice } from "../edition-choices.js";
 import { castVoteFromSlash } from "../interactions/day-vote.js";
+import { ensureLogThread, postGameLog, postGameLogRoleChange } from "../game-log-thread.js";
 import { GAME_DO_ACTIONS, respondDoAutocomplete } from "./action-catalog.js";
 import {
   GAME_DISCORD_ROLES_ENABLED,
@@ -25,7 +27,6 @@ import {
   ensureGameRoles,
   getGameRoles,
   loadEngine,
-  loadScriptForCreate,
   persistEvents,
   postNominationEverywhere,
   refreshNominationEverywhere,
@@ -57,16 +58,6 @@ export class GameCommandsMinimal {
       autocomplete: respondGameDoAutocomplete,
     })
     action: string,
-    @SlashChoice({ name: "Trouble Brewing", value: "tb" })
-    @SlashChoice({ name: "Bad Moon Rising", value: "bmr" })
-    @SlashChoice({ name: "Sects & Violets", value: "snv" })
-    @SlashOption({
-      name: "edition",
-      description: "For create: script edition",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-    })
-    edition: StandardEditionChoice | undefined,
     @SlashOption({
       name: "player",
       description: "For nominate: player to nominate",
@@ -130,6 +121,22 @@ export class GameCommandsMinimal {
       required: false,
     })
     kibRole: Role | undefined,
+    @SlashOption({
+      name: "kib_thread",
+      description: "For setup: use an existing kib thread (optional)",
+      type: ApplicationCommandOptionType.Channel,
+      required: false,
+      channelTypes: [ChannelType.PrivateThread, ChannelType.PublicThread],
+    })
+    kibThread: AnyThreadChannel | undefined,
+    @SlashOption({
+      name: "log_thread",
+      description: "For setup: use an existing ST log thread (optional; auto-created if omitted)",
+      type: ApplicationCommandOptionType.Channel,
+      required: false,
+      channelTypes: [ChannelType.PrivateThread, ChannelType.PublicThread],
+    })
+    logThread: AnyThreadChannel | undefined,
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
@@ -150,15 +157,15 @@ export class GameCommandsMinimal {
         if (!stRole || !playerRole || !kibRole) {
           await replyOrEditInteraction(interaction, {
             content:
-              "`/game do setup` needs `st:`, `player_role:`, and `kib:` — pick existing server roles. Optional `edition:`.",
+              "`/game do setup` needs `st:`, `player_role:`, and `kib:` — pick existing server roles.",
             flags: MessageFlags.Ephemeral,
           });
           return;
         }
-        await this.setup(edition, stRole, playerRole, kibRole, interaction);
+        await this.setup(stRole, playerRole, kibRole, kibThread, logThread, interaction);
         return;
       case "create":
-        await this.create(edition, interaction);
+        await this.create(interaction);
         return;
       case "join":
         await this.join(interaction);
@@ -210,15 +217,32 @@ export class GameCommandsMinimal {
   }
 
   async setup(
-    edition: StandardEditionChoice | undefined,
     stRole: Role,
     playerRole: Role,
     kibRole: Role,
+    kibThread: AnyThreadChannel | undefined,
+    logThread: AnyThreadChannel | undefined,
     interaction: CommandInteraction,
   ): Promise<void> {
-    if (!interaction.guildId || !interaction.channelId) {
+    if (!interaction.guildId || !interaction.channelId || !interaction.guild) {
       await replyOrEditInteraction(interaction, {
         content: "This command must be used in a server channel.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (kibThread && kibThread.parentId !== interaction.channelId) {
+      await replyOrEditInteraction(interaction, {
+        content: "`kib_thread` must be a thread under this channel.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (logThread && logThread.parentId !== interaction.channelId) {
+      await replyOrEditInteraction(interaction, {
+        content: "`log_thread` must be a thread under this channel.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -228,18 +252,6 @@ export class GameCommandsMinimal {
     if (existing) {
       await replyOrEditInteraction(interaction, {
         content: "An active game already exists in this server.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    let script;
-    try {
-      script = await loadScriptForCreate(edition, undefined);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not load script.";
-      await replyOrEditInteraction(interaction, {
-        content: message,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -265,7 +277,6 @@ export class GameCommandsMinimal {
       guildId: interaction.guildId,
       channelId: interaction.channelId,
       storytellerId: interaction.user.id,
-      script,
     });
 
     await prisma.game.create({
@@ -282,13 +293,71 @@ export class GameCommandsMinimal {
 
     await persistEvents(engine, events);
 
-    const kibThread = await createKibThread(interaction, gameId, gameRoles, {
+    const kibResult = await createKibThread(interaction, gameId, gameRoles, {
       kibRoleId: kibRole.id,
+      existingThreadId: kibThread?.id,
     });
+
+    const logResult = await ensureLogThread(interaction.guild, {
+      id: gameId,
+      channelId: interaction.channelId,
+      stRoleId: stRole.id,
+      playerRoleId: playerRole.id,
+      kibRoleId: kibRole.id,
+      kibThreadId: kibResult.threadId,
+      logThreadId: logThread?.id ?? null,
+    }, engine, {
+      existingThreadId: logThread?.id,
+      invokerId: interaction.user.id,
+    });
+
+    if (kibResult.threadId || logResult.threadId) {
+      await prisma.game.update({
+        where: { id: gameId },
+        data: {
+          ...(kibResult.threadId ? { kibThreadId: kibResult.threadId } : {}),
+          ...(logResult.threadId ? { logThreadId: logResult.threadId } : {}),
+        },
+      });
+    }
+
+    const gameRecord = {
+      id: gameId,
+      channelId: interaction.channelId,
+      stRoleId: stRole.id,
+      playerRoleId: playerRole.id,
+      kibRoleId: kibRole.id,
+      kibThreadId: kibResult.threadId,
+      logThreadId: logResult.threadId,
+    };
+
+    await postGameLogRoleChange(
+      interaction.guild,
+      gameRecord,
+      "added",
+      interaction.user.id,
+      `<@&${stRole.id}> (ST)`,
+      interaction.user.id,
+    );
+    await postGameLog(
+      interaction.guild,
+      gameRecord,
+      `<@${interaction.user.id}> set up game — ST <@&${stRole.id}>, players <@&${playerRole.id}>, kib <@&${kibRole.id}>.` +
+        (kibResult.mention ? ` Kib: ${kibResult.mention}.` : "") +
+        (logResult.thread ? ` Log: <#${logResult.thread.id}>.` : ""),
+    );
+
     const devHint = isDevMode() ? " Dev mode: use `/dev fill` to add fake players." : "";
-    const threadHint = kibThread
-      ? ` Kib thread created: ${kibThread}.`
-      : " I could not create a kib thread (missing permissions or unsupported channel type).";
+    const threadHint = kibResult.mention
+      ? ` Kib thread: ${kibResult.mention}.`
+      : kibThread
+        ? " Could not attach the chosen kib thread."
+        : " I could not create a kib thread (missing permissions or unsupported channel type).";
+    const logHint = logResult.thread
+      ? ` ST log thread: <#${logResult.thread.id}>.`
+      : logThread
+        ? " Could not attach the chosen log thread."
+        : "";
     const roleHint = ` Roles: <@&${stRole.id}>, <@&${playerRole.id}>, kib <@&${kibRole.id}>.`;
 
     await replyOrEditInteraction(interaction, {
@@ -296,17 +365,14 @@ export class GameCommandsMinimal {
         new EmbedBuilder()
           .setTitle("Grimkeeper game set up")
           .setDescription(
-            `Script: **${script.name}** (${script.roles.length} characters).\nStoryteller: run \`/st do setup-town\` with ordered @mentions to set up players and open voting.${roleHint}${threadHint}${devHint}`,
+            `Game ready in this channel.\nStoryteller: run \`/st do setup-town\` with ordered @mentions to set up players and open voting.${roleHint}${threadHint}${logHint}${devHint}`,
           )
           .addFields({ name: "Game ID", value: gameId }),
       ],
     });
   }
 
-  async create(
-    edition: StandardEditionChoice | undefined,
-    interaction: CommandInteraction,
-  ): Promise<void> {
+  async create(interaction: CommandInteraction): Promise<void> {
     if (!interaction.guildId || !interaction.channelId) {
       await replyOrEditInteraction(interaction, {
         content: "This command must be used in a server channel.",
@@ -319,18 +385,6 @@ export class GameCommandsMinimal {
     if (existing) {
       await replyOrEditInteraction(interaction, {
         content: "An active game already exists in this server.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    let script;
-    try {
-      script = await loadScriptForCreate(edition, undefined);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not load script.";
-      await replyOrEditInteraction(interaction, {
-        content: message,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -367,7 +421,6 @@ export class GameCommandsMinimal {
       guildId: interaction.guildId,
       channelId: interaction.channelId,
       storytellerId: interaction.user.id,
-      script,
     });
 
     await prisma.game.create({
@@ -391,7 +444,7 @@ export class GameCommandsMinimal {
         new EmbedBuilder()
           .setTitle("Grimkeeper game created")
           .setDescription(
-            `Script: **${script.name}** (${script.roles.length} characters).\nStoryteller: run \`/st do setup-town\` with ordered @mentions to set up players and open voting.${roleHint}${threadHint}${devHint}`,
+            `Game lobby created.\nStoryteller: run \`/st do setup-town\` with ordered @mentions to set up players and open voting.${roleHint}${threadHint}${devHint}`,
           )
           .addFields({ name: "Game ID", value: gameId }),
       ],
@@ -439,6 +492,16 @@ export class GameCommandsMinimal {
     const roles = await resolveGameRoles(interaction.guild, game);
     if (roles) {
       await addRoleToUser(interaction.guild, interaction.user.id, roles.playersRole.id);
+      if (interaction.guild) {
+        await postGameLogRoleChange(
+          interaction.guild,
+          game,
+          "added",
+          interaction.user.id,
+          `<@&${roles.playersRole.id}> (player)`,
+          interaction.user.id,
+        );
+      }
     }
     await replyOrEditInteraction(interaction, {
       content: `Joined the game. ${engine.getState().players.length} player(s) in lobby.`,
@@ -489,6 +552,16 @@ export class GameCommandsMinimal {
       const roles = await resolveGameRoles(interaction.guild, game);
       if (roles) {
         await removeRoleFromUser(interaction.guild, interaction.user.id, roles.playersRole.id);
+        if (interaction.guild) {
+          await postGameLogRoleChange(
+            interaction.guild,
+            game,
+            "removed",
+            interaction.user.id,
+            `<@&${roles.playersRole.id}> (player)`,
+            interaction.user.id,
+          );
+        }
       }
       await replyOrEditInteraction(interaction, {
         content: `You left the lobby. ${engine.getState().players.length} player(s) remain.`,

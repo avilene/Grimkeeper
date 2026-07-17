@@ -28,6 +28,7 @@ describe("help content", () => {
     expect(game.data.description).toContain("ALLOWED_USER_IDS");
     expect(st.data.title).toContain("minimal mode");
     expect(st.data.description).toContain("/game do setup");
+    expect(st.data.description).toContain("log thread");
     expect(st.data.fields?.some((field) => field.name?.startsWith("Day testing"))).toBe(true);
   });
 

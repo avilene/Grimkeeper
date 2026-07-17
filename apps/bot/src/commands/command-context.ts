@@ -506,7 +506,7 @@ export async function requireKibThread(
     return false;
   }
 
-  const kib = await getStorytellerThread(interaction.guild, game.channelId);
+  const kib = await getKibThreadForGame(interaction.guild, game);
   if (!kib || interaction.channelId !== kib.id) {
     await replyOrEditInteraction(interaction, {
       content: "Run this from the **kib thread**.",
@@ -586,10 +586,19 @@ export async function finalizeMinimalGameEnd(
   engine: GameEngine,
 ): Promise<void> {
   const { cancelGameReminders } = await import("@grimkeeper/database");
+  const { postGameLog } = await import("../game-log-thread.js");
   await cancelGameReminders(game.id);
   await stripGameRolesFromMembers(guild, game, engine);
   await clearGameChannelPermissions(guild, game.channelId, game);
-  await openStorytellerThread(guild, game.channelId);
+  await openStorytellerThread(guild, game.channelId, game.kibThreadId);
+  await postGameLog(
+    guild,
+    game,
+    `Game ended — roles stripped, reminders cancelled, kib opened.` +
+      (engine.getStorytellerDiscordIds()[0]
+        ? ` Ended by <@${engine.getStorytellerDiscordIds()[0]}>.`
+        : ""),
+  );
 }
 
 type GameRoles = {
@@ -602,6 +611,8 @@ export type GameRoleIds = {
   stRoleId?: string | null;
   playerRoleId?: string | null;
   kibRoleId?: string | null;
+  kibThreadId?: string | null;
+  logThreadId?: string | null;
   channelId: string;
 };
 
@@ -860,36 +871,47 @@ export async function createKibThread(
   interaction: CommandInteraction,
   gameId: string,
   gameRoles?: GameRoles,
-  options?: { kibRoleId?: string },
-): Promise<string | null> {
+  options?: { kibRoleId?: string; existingThreadId?: string },
+): Promise<{ mention: string | null; threadId: string | null }> {
   const guild = interaction.guild;
   const channelId = interaction.channelId;
-  if (!guild || !channelId) return null;
+  if (!guild || !channelId) return { mention: null, threadId: null };
 
   const parent = await guild.channels.fetch(channelId).catch(() => null);
-  if (!isGameTextChannel(parent)) return null;
+  if (!isGameTextChannel(parent)) return { mention: null, threadId: null };
 
   const threadName = kibThreadName(parent.name);
-  let thread = await getStorytellerThread(guild, channelId);
-  if (!thread) {
-    try {
-      thread = await parent.threads.create({
-        name: threadName,
-        autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
-        reason: `Kib thread for game ${gameId}`,
-        ...( {
-          type: ChannelType.PrivateThread,
-          invitable: false,
-        } as Record<string, unknown>),
-      });
-      const roleMention = gameRoles
-        ? ` Roles: <@&${gameRoles.stRole.id}> / <@&${gameRoles.playersRole.id}> / kib <@&${gameRoles.spectatorRole.id}>.`
-        : "";
-      await thread
-        .send(`Kib thread ready.${roleMention} Use \`/st do add-spectator\` to grant kib access.`)
-        .catch(() => undefined);
-    } catch {
-      return null;
+  let thread: AnyThreadChannel | null = null;
+
+  if (options?.existingThreadId) {
+    const existing = await guild.channels.fetch(options.existingThreadId).catch(() => null);
+    if (existing?.isThread() && existing.parentId === channelId) {
+      thread = existing;
+    } else {
+      return { mention: null, threadId: null };
+    }
+  } else {
+    thread = await getStorytellerThread(guild, channelId);
+    if (!thread) {
+      try {
+        thread = await parent.threads.create({
+          name: threadName,
+          autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+          reason: `Kib thread for game ${gameId}`,
+          ...( {
+            type: ChannelType.PrivateThread,
+            invitable: false,
+          } as Record<string, unknown>),
+        });
+        const roleMention = gameRoles
+          ? ` Roles: <@&${gameRoles.stRole.id}> / <@&${gameRoles.playersRole.id}> / kib <@&${gameRoles.spectatorRole.id}>.`
+          : "";
+        await thread
+          .send(`Kib thread ready.${roleMention} Use \`/st do add-spectator\` to grant kib access.`)
+          .catch(() => undefined);
+      } catch {
+        return { mention: null, threadId: null };
+      }
     }
   }
 
@@ -904,7 +926,7 @@ export async function createKibThread(
     await addRoleMembersToThread(guild, thread, kibRoleId);
   }
 
-  return `<#${thread.id}>`;
+  return { mention: `<#${thread.id}>`, threadId: thread.id };
 }
 
 export async function addRoleMembersToThread(
@@ -1103,7 +1125,15 @@ export function isStorytellerThread(
 export async function getStorytellerThread(
   guild: Guild,
   parentChannelId: string,
+  options?: { kibThreadId?: string | null },
 ): Promise<AnyThreadChannel | null> {
+  if (options?.kibThreadId) {
+    const byId = await guild.channels.fetch(options.kibThreadId).catch(() => null);
+    if (byId?.isThread() && byId.parentId === parentChannelId) {
+      return byId;
+    }
+  }
+
   const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
   const parentChannelName = parent && "name" in parent ? parent.name : undefined;
   const expectedName = storytellerThreadName(parentChannelName);
@@ -1121,11 +1151,19 @@ export async function getStorytellerThread(
   return archived?.threads.find((candidate) => candidate.name === expectedName) ?? null;
 }
 
+export async function getKibThreadForGame(
+  guild: Guild,
+  game: { channelId: string; kibThreadId?: string | null },
+): Promise<AnyThreadChannel | null> {
+  return getStorytellerThread(guild, game.channelId, { kibThreadId: game.kibThreadId });
+}
+
 export async function openStorytellerThread(
   guild: Guild,
   parentChannelId: string,
+  kibThreadId?: string | null,
 ): Promise<AnyThreadChannel | null> {
-  const thread = await getStorytellerThread(guild, parentChannelId);
+  const thread = await getStorytellerThread(guild, parentChannelId, { kibThreadId });
   if (!thread) return null;
 
   await thread
@@ -1254,12 +1292,12 @@ export async function refreshNominationEverywhere(
 
 export async function refreshStVoteTrackerForGame(
   guild: Guild,
-  game: { channelId: string },
+  game: { channelId: string; kibThreadId?: string | null },
   engine: GameEngine,
 ): Promise<void> {
   if (!engine.getState().townMode) return;
   const { upsertStVoteTracker } = await import("../st-vote-tracker.js");
-  await upsertStVoteTracker(guild, game.channelId, engine);
+  await upsertStVoteTracker(guild, game.channelId, engine, game.kibThreadId);
 }
 
 export async function createTownVoteThread(

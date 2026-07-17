@@ -23,8 +23,8 @@ function eventFields(event: GameEvent): Record<string, unknown> {
     case GameEventType.GameCreated:
       return {
         storytellerId: event.storytellerId,
-        scriptName: event.script.name,
-        scriptSource: event.script.source,
+        scriptName: event.script?.name ?? null,
+        scriptSource: event.script?.source ?? null,
       };
     case GameEventType.GameStarted:
       return {};

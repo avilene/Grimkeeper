@@ -34,6 +34,19 @@ function withPlayers(count: number): GameEvent[] {
 }
 
 describe("GameEngine", () => {
+  it("creates a game without a script", () => {
+    const engine = new GameEngine(gameId);
+    const events = engine.handle({
+      kind: GameCommandKind.CreateGame,
+      gameId,
+      guildId: "guild-1",
+      channelId: "channel-1",
+      storytellerId: "story-1",
+    });
+    expect(events).toHaveLength(1);
+    expect(engine.getState().script).toBeNull();
+  });
+
   it("replays events into consistent state", () => {
     const events = withPlayers(2);
     const engine = GameEngine.fromEvents(gameId, events);

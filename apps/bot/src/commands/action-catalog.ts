@@ -10,6 +10,7 @@ export type DoAction = {
 export const ST_DO_ACTIONS: DoAction[] = [
   { name: "setup-town", description: "Set roster + seats from ordered @mentions", needs: ["players"] },
   { name: "say", description: "Broadcast to all player threads from kib", needs: ["message"] },
+  { name: "log", description: "Create or reopen the ST-only audit log thread" },
   { name: "end", description: "End the game (strip roles, open kib)" },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
@@ -24,8 +25,8 @@ export const ST_DO_ACTIONS: DoAction[] = [
 ];
 
 export const GAME_DO_ACTIONS: DoAction[] = [
-  { name: "setup", description: "Create a game with existing ST/player/kib roles", needs: ["st", "player_role", "kib", "edition?"] },
-  { name: "create", description: "Create a game in this channel (legacy — prefer setup)", needs: ["edition?"] },
+  { name: "setup", description: "Create a game with existing ST/player/kib roles", needs: ["st", "player_role", "kib", "kib_thread?", "log_thread?"] },
+  { name: "create", description: "Create a game lobby (legacy — prefer setup)" },
   { name: "join", description: "Join the lobby" },
   { name: "leave", description: "Leave the lobby" },
   { name: "list", description: "List active games in this server" },
