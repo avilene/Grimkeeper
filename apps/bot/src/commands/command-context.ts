@@ -1251,36 +1251,42 @@ export async function collectNominationUpdateChannels(
   const channels: DayDiscussionChannel[] = [];
   const voting = await resolveVotingChannel(guild, game, engine);
   if (voting) channels.push(voting);
-  if (engine.getState().townMode) {
-    channels.push(...(await listPersonalPlayerThreads(guild, game, engine)));
-  }
   return channels;
 }
 
 export async function postNominationEverywhere(
   guild: Guild,
-  game: { id: string; channelId: string },
+  game: GameRoleIds & { id: string; channelId: string },
   engine: GameEngine,
   nominationId: string,
-): Promise<{ voteThread: boolean; privateBallots: number }> {
+): Promise<{ voteThread: boolean }> {
   const voting = await resolveVotingChannel(guild, game, engine);
   let voteThread = false;
   if (voting) {
-    voteThread = Boolean(await postNominationToChannel(engine, game.id, voting, nominationId));
+    let pingRoleId = game.playerRoleId ?? null;
+    if (!pingRoleId) {
+      const stored = await prisma.game.findUnique({
+        where: { id: game.id },
+        select: { playerRoleId: true, stRoleId: true, kibRoleId: true },
+      });
+      pingRoleId = stored?.playerRoleId ?? null;
+      if (stored) {
+        game = { ...game, ...stored };
+      }
+    }
+    const roles = await resolveGameRoles(guild, game);
+    voteThread = Boolean(
+      await postNominationToChannel(engine, game.id, voting, nominationId, {
+        pingRoleId: roles?.playersRole.id ?? pingRoleId,
+      }),
+    );
   }
 
-  let privateBallots = 0;
   if (engine.getState().townMode) {
-    for (const thread of await listPersonalPlayerThreads(guild, game, engine)) {
-      const posted = await postNominationToChannel(engine, game.id, thread, nominationId, {
-        privateBallot: true,
-      });
-      if (posted) privateBallots++;
-    }
     await refreshStVoteTrackerForGame(guild, game, engine);
   }
 
-  return { voteThread, privateBallots };
+  return { voteThread };
 }
 
 export async function refreshNominationEverywhere(
@@ -1333,7 +1339,7 @@ export async function createTownVoteThread(
           content: [
             "**Town Voting** — nominations and votes happen here.",
             "You can vote on **any open nomination** with the **Vote** button.",
-            "Prefer a private ballot? Use the Vote button in your personal ST thread.",
+            "Prefer a private ballot? Use `/game do vote` in your personal ST thread (ST sees it on the kib vote tracker).",
             "Players: `/game do nominate` (or type `/game do` and filter).",
             "Storyteller: kib **control panel**, or `/st do resolve-next` / `execute` / `vote-visibility`.",
           ].join("\n"),

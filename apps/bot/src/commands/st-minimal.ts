@@ -602,7 +602,7 @@ export class StCommandsMinimal {
             ? `Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.`
             : "",
           voteThread
-            ? `Voting thread: <#${voteThread.id}> — nominate and vote there (or ballot privately in your ST thread).`
+            ? `Voting thread: <#${voteThread.id}> — nominate and vote there, or cast a private ballot with \`/game do vote\` in your ST thread.`
             : "Players can `/game do nominate` in this channel.",
           "ST control panel + vote tracker are pinned in your kib thread.",
         ]

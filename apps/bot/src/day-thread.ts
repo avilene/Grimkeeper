@@ -266,11 +266,18 @@ export async function postNominationToChannel(
   gameId: string,
   channel: DayDiscussionChannel,
   nominationId: string,
-  options?: { privateBallot?: boolean },
+  options?: {
+    /** @deprecated Personal ST nomination embeds are no longer posted. */
+    privateBallot?: boolean;
+    /** Role to ping when announcing in Town Voting (e.g. player role). */
+    pingRoleId?: string | null;
+  },
 ): Promise<Message | null> {
   const nomination = engine.getNominationById(nominationId);
   if (!nomination) return null;
 
+  const nominator = engine.getPlayerById(nomination.nominatorId);
+  const nominee = engine.getPlayerById(nomination.nomineeId);
   const embed = buildNominationEmbed(engine, nomination);
   if (options?.privateBallot) {
     embed.setDescription(
@@ -278,10 +285,24 @@ export async function postNominationToChannel(
     );
   }
   const row = buildVoteActionRow(gameId, nomination);
+
+  const mentionUsers = [nominator?.discordUserId, nominee?.discordUserId].filter(
+    (id): id is string => Boolean(id),
+  );
+  const pingRoleId = options?.pingRoleId ?? null;
+  const contentParts: string[] = [];
+  if (pingRoleId) contentParts.push(`<@&${pingRoleId}>`);
+  if (!options?.privateBallot) contentParts.push("**New nomination** — vote below or with `/game do vote` in your ST thread.");
+
   return channel
     .send({
+      content: contentParts.length > 0 ? contentParts.join(" ") : undefined,
       embeds: [embed],
       components: row ? [row] : [],
+      allowedMentions: {
+        roles: pingRoleId ? [pingRoleId] : [],
+        users: mentionUsers,
+      },
     })
     .catch(() => null);
 }

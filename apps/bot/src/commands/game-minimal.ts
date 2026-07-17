@@ -26,6 +26,7 @@ import {
   deferInteractionReply,
   ensureGameRoles,
   getGameRoles,
+  isPersonalPlayerThreadChannel,
   loadEngine,
   persistEvents,
   postNominationEverywhere,
@@ -666,9 +667,8 @@ export class GameCommandsMinimal {
         await replyOrEditInteraction(interaction, {
           content: [
             `<@${nominator.discordUserId}> nominates <@${target.discordUserId}>.`,
-            voteThreadId ? `Posted in <#${voteThreadId}>` : "",
-            posted.privateBallots > 0
-              ? `and ${posted.privateBallots} private ST ballots.`
+            voteThreadId
+              ? `Posted in <#${voteThreadId}>${posted.voteThread ? " (players pinged)." : "."}`
               : "",
           ]
             .filter(Boolean)
@@ -779,6 +779,14 @@ export class GameCommandsMinimal {
       const day = updatedEngine.getState().day;
       const isSecret = day?.voteVisibility === "secret";
       const isSt = updatedEngine.isStoryteller(interaction.user.id);
+      const fromPrivateThread =
+        Boolean(interaction.guild) &&
+        (await isPersonalPlayerThreadChannel(
+          interaction.guild!,
+          game,
+          updatedEngine,
+          interaction.channelId,
+        ));
 
       if (interaction.guild) {
         await refreshNominationEverywhere(
@@ -788,6 +796,16 @@ export class GameCommandsMinimal {
           nomination.id,
           { revealSecret: false },
         );
+      }
+
+      if (fromPrivateThread) {
+        await replyOrEditInteraction(interaction, {
+          content: isSecret && !isSt
+            ? "Private vote recorded. The storyteller sees it on the kib vote tracker."
+            : `Private vote recorded (${choice}). The storyteller sees it on the kib vote tracker.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
       }
 
       if (isSecret && !isSt) {

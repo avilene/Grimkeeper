@@ -20,7 +20,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
             "Use **`/game do`** and start typing the action — Discord filters the list.",
             "Nominations and votes happen in the **Town Voting** thread after `/st do setup-town`.",
             "**Voting is allowlist-only** — only users in `ALLOWED_USER_IDS` can nominate, defend, or vote for now.",
-            "You can also cast a **private ballot** from your personal ST thread.",
+            "You can cast a **private ballot** with `/game do vote` in your personal ST thread (ST sees it on the kib tracker).",
             "",
             "Storytellers: see **`/st help`** for setup and day control.",
           ].join("\n"),
@@ -50,9 +50,9 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
           {
             name: "Voting venues",
             value: [
-              "**Town Voting** thread — shared embeds + Vote buttons; public results when visibility is public.",
-              "**Personal ST thread** — private ballot (Vote button); confirmations stay ephemeral.",
-              "You can vote on **any** open nomination; embeds update tallies after each vote.",
+              "**Town Voting** thread — nominations ping the player role; Vote buttons + public results when visibility is public.",
+              "**Personal ST thread** — `/game do vote` for a private ballot; ST sees the vote on the kib **vote tracker**.",
+              "You can vote on **any** open nomination.",
               "ST sets public vs secret tallies with `/st do vote-visibility` or the kib control panel.",
             ].join("\n"),
           },
@@ -161,8 +161,8 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             name: "Notes",
             value: [
               "Player nominate/vote is restricted to **`ALLOWED_USER_IDS`** during development.",
-              "Votes live in the **Town Voting** private thread (all players + ST).",
-              "Private ballots are also posted to each personal ST thread.",
+              "Votes live in the **Town Voting** private thread (players are pinged there on each nomination).",
+              "Private ballots: `/game do vote` in a personal ST thread — ST sees them on the kib vote tracker.",
               "`setup-town` also pins the **control panel** + **vote tracker** in kib.",
               "The **log thread** records role changes, broadcasts, reminders, setup, and game end (ST-only).",
               "Personal player threads stay private after `/st do end`.",

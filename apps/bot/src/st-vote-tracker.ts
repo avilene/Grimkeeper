@@ -78,7 +78,7 @@ export function buildStVoteTrackerEmbed(engine: GameEngine): EmbedBuilder {
 
   const description =
     open.length === 0
-      ? "_No open nominations._ Nominate in Town Voting; this panel updates here for ST tracking."
+      ? "_No open nominations._ Nominate in Town Voting; this panel updates here for ST tracking (including private ST-thread ballots)."
       : open.map((nomination) => nominationTrackerBlock(engine, nomination)).join("\n\n");
 
   const embed = new EmbedBuilder()
