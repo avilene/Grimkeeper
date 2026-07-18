@@ -4,35 +4,26 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("loadCommandModules", () => {
-  const original = process.env.BOT_MODE;
-
   afterEach(() => {
     vi.resetModules();
-    if (original === undefined) {
-      delete process.env.BOT_MODE;
-    } else {
-      process.env.BOT_MODE = original;
-    }
   });
 
-  it("loads minimal command modules when BOT_MODE=minimal", async () => {
-    process.env.BOT_MODE = "minimal";
+  it("loads command modules", async () => {
     const { loadCommandModules } = await import("./load-commands.js");
     await expect(loadCommandModules()).resolves.toBeUndefined();
   });
 
-  it("loads full command modules when BOT_MODE=full", async () => {
-    process.env.BOT_MODE = "full";
-    const { loadCommandModules } = await import("./load-commands.js");
-    await expect(loadCommandModules()).resolves.toBeUndefined();
-  });
-
-  it("imports st-minimal and player-day-minimal in minimal mode", () => {
+  it("imports minimal command modules only", () => {
     const source = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "load-commands.ts"),
       "utf8",
     );
     expect(source).toContain('./commands/st-minimal.js');
     expect(source).toContain('./commands/player-day-minimal.js');
+    expect(source).toContain('./commands/game-minimal.js');
+    expect(source).toContain('./commands/command-help.js');
+    expect(source).not.toContain('./commands/game.js');
+    expect(source).not.toContain('./commands/st.js');
+    expect(source).not.toContain('./commands/dev.js');
   });
 });

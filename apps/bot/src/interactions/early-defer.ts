@@ -1,6 +1,5 @@
-import { type ChatInputCommandInteraction, Interaction, MessageFlags } from "discord.js";
+import { type ChatInputCommandInteraction, type Interaction, MessageFlags } from "discord.js";
 
-import { isMinimalMode } from "../bot-mode.js";
 import { reportError } from "../error-reporter.js";
 import {
   INTERACTION_PENDING_CONTENT,
@@ -8,18 +7,9 @@ import {
 } from "./interaction-response.js";
 import { log } from "../logger.js";
 
-const ST_REMINDER_SUBCOMMANDS = new Set([
-  "remind",
-  "set-reminders",
-  "reminders",
-  "clear-reminders",
-  "delete-reminder",
-  "edit-reminder",
-]);
-
 const FAST_SUBCOMMANDS = new Set(["help", "commands"]);
 
-/** Top-level player day commands (minimal mode). */
+/** Top-level player day commands. */
 const PLAYER_DAY_COMMANDS = new Set(["nominate", "defend", "vote", "roster"]);
 
 const INTERACTION_DEFER_BUDGET_MS = 2_800;
@@ -31,18 +21,16 @@ export function shouldDeferSlashCommand(interaction: Interaction): boolean {
   if (subcommand !== null && FAST_SUBCOMMANDS.has(subcommand)) return false;
 
   if (PLAYER_DAY_COMMANDS.has(interaction.commandName)) {
-    return isMinimalMode();
+    return true;
   }
 
   if (interaction.commandName === "game") {
-    return isMinimalMode();
+    return true;
   }
 
   if (interaction.commandName !== "st") return false;
 
-  if (isMinimalMode()) return true;
-
-  return subcommand !== null && ST_REMINDER_SUBCOMMANDS.has(subcommand);
+  return true;
 }
 
 /** @deprecated Use shouldDeferSlashCommand */
@@ -73,7 +61,6 @@ export function startEarlyDefer(interaction: Interaction): Promise<void> {
       userId: command.user.id,
     };
     log("warn", "interaction.defer.late", context);
-    // Still attempt ack — Discord may accept within the window — but page only when truly late.
     void reportError(
       "interaction.defer.late",
       new Error(`Interaction ack started ${ageMs}ms after create`),
@@ -86,7 +73,6 @@ export function startEarlyDefer(interaction: Interaction): Promise<void> {
     .then(
       () => undefined,
       (error: unknown) => {
-        // 10062/40060: expired token or another replica already acked — not actionable pages.
         if (isBenignInteractionAckError(error)) {
           log("warn", "interaction.defer.skipped", {
             command: command.commandName,

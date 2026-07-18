@@ -28,10 +28,11 @@ export const ST_DO_ACTIONS: DoAction[] = [
   },
   { name: "add-spectator", description: "Assign kib role + thread access", needs: ["user"] },
   { name: "remove-spectator", description: "Remove kib role", needs: ["user"] },
+  { name: "add-st", description: "Promote a co-storyteller (ST role only; no new player thread)", needs: ["user"] },
   { name: "start", description: "Legacy start (prefer setup-town)" },
 ];
 
-/** Lobby / setup under `/game …` (minimal mode). */
+/** Lobby / setup under `/game …`. */
 export const GAME_LOBBY_ACTIONS: DoAction[] = [
   { name: "setup", description: "Create a game with existing ST/player/kib roles", needs: ["st", "player_role", "kib", "kib_thread?", "log_thread?"] },
   { name: "create", description: "Create a game lobby (legacy — prefer setup)" },

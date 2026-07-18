@@ -44,7 +44,7 @@ async function respondVoteNomineeAutocomplete(
   });
 }
 
-/** Top-level player day commands (minimal mode) — `/nominate`, `/defend`, `/vote`, `/roster`. */
+/** Top-level player day commands — `/nominate`, `/defend`, `/vote`, `/roster`. */
 @Discord()
 export class PlayerDayCommandsMinimal {
   @Slash({ name: "nominate", description: "Nominate a player (Town Voting)" })

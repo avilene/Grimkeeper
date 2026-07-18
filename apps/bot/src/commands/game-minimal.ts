@@ -15,12 +15,10 @@ import { GameCommandKind, GameEngine } from "@grimkeeper/engine";
 import { isDevMode } from "../dev.js";
 import { ensureLogThread, postGameLog, postGameLogRoleChange } from "../game-log-thread.js";
 import {
-  GAME_DISCORD_ROLES_ENABLED,
   addRoleToUser,
   applyGameChannelPermissions,
   createKibThread,
   deferInteractionReply,
-  ensureGameRoles,
   loadEngine,
   multipleActiveGamesHint,
   persistEvents,
@@ -257,26 +255,6 @@ export class GameCommandsMinimal {
     await deferInteractionReply(interaction);
 
     const gameId = randomUUID();
-    let roleHint = "";
-    let gameRoles = null;
-    if (GAME_DISCORD_ROLES_ENABLED) {
-      gameRoles = await ensureGameRoles(interaction.guild, interaction.channelId);
-      if (!gameRoles) {
-        await replyOrEditInteraction(interaction, {
-          content: "I couldn't create game roles. Check bot permissions (`Manage Roles`).",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      await addRoleToUser(interaction.guild, interaction.user.id, gameRoles.stRole.id);
-      await applyGameChannelPermissions(
-        interaction.guild!,
-        interaction.channelId,
-        gameRoles.stRole.id,
-        gameRoles.playersRole.id,
-      );
-      roleHint = ` Roles created: <@&${gameRoles.stRole.id}>, <@&${gameRoles.playersRole.id}>, and spectator <@&${gameRoles.spectatorRole.id}>.`;
-    }
 
     const engine = new GameEngine(gameId);
     const events = engine.handle({
@@ -299,16 +277,14 @@ export class GameCommandsMinimal {
     await persistEvents(engine, events);
 
     const devHint = isDevMode() ? " Dev mode: use `/dev fill` to add fake players." : "";
-    const threadHint = isDevMode()
-      ? ""
-      : " Prefer `/game setup` with your existing ST, player, and kib roles.";
+    const threadHint = " Prefer `/game setup` with your existing ST, player, and kib roles.";
 
     await replyOrEditInteraction(interaction, {
       embeds: [
         new EmbedBuilder()
           .setTitle("Grimkeeper game created")
           .setDescription(
-            `Game lobby created.\nStoryteller: run \`/st do setup-town\` with ordered @mentions to set up players and open voting.${roleHint}${threadHint}${devHint}`,
+            `Game lobby created.\nStoryteller: run \`/st do setup-town\` with ordered @mentions to set up players and open voting.${threadHint}${devHint}`,
           )
           .addFields({ name: "Game ID", value: gameId }),
       ],

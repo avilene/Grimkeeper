@@ -45,17 +45,23 @@ Discord -> Adapter -> Engine -> Events -> Projections -> Persistence
 
 If both `ALLOWED_USER_IDS` and `ALLOWED_ROLE_IDS` are empty, everyone in the guild can use bot commands.
 
-## Storyteller commands
+## Commands
+
+Player day play uses top-level slash commands. Storytellers use `/st …`. Guides: **`/game help`**, **`/game commands`**, **`/st help`**.
 
 | Command | Description |
 |---------|-------------|
-| `/game create` | Start a new game in the current channel |
-| `/game join` | Join the lobby |
-| `/game start` | Deal roles and begin night 1 (min 5 players) |
-| `/game night` | Advance to the next night |
-| `/game day` | Advance to the next day |
-| `/game end` | End the game and record the winner |
-| `/game grim-reveal` | Show end-of-game role reveal |
+| `/game setup` | Create a game with existing ST / player / kib roles |
+| `/game help` / `/game commands` | Player command guide |
+| `/nominate` | Nominate a player |
+| `/defend` | Add defense on an open nomination against you |
+| `/vote` | Vote on an open nomination |
+| `/roster` | Show seat order and alive/dead |
+| `/st do setup-town` | Set roster + seats from ordered @mentions |
+| `/st do` | Autocomplete ST actions (resolve, execute, next-phase, …) |
+| `/st panel` | Pin/refresh kib control panel |
+| `/st help` / `/st commands` | Storyteller command guide |
+| `/st remind` / `/st set-reminders` | Scheduled pings |
 
 ## Deploy to Railway
 

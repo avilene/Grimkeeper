@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { roleSlugFromChannelName } from "./commands/command-context.js";
 import { MINIMAL_MIN_PLAYERS, minPlayersForMode } from "./bot-mode.js";
@@ -17,19 +17,8 @@ describe("roleSlugFromChannelName", () => {
   });
 });
 
-describe("minimal mode player gate", () => {
-  const original = process.env.BOT_MODE;
-
-  afterEach(() => {
-    if (original === undefined) {
-      delete process.env.BOT_MODE;
-    } else {
-      process.env.BOT_MODE = original;
-    }
-  });
-
-  it("has no minimum player count in minimal mode", () => {
-    process.env.BOT_MODE = "minimal";
+describe("player gate", () => {
+  it("has no minimum player count", () => {
     expect(MINIMAL_MIN_PLAYERS).toBe(0);
     expect(minPlayersForMode()).toBe(0);
   });

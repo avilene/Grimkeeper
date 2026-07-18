@@ -20,18 +20,10 @@ import {
 } from "@grimkeeper/database";
 import type { ReminderScope } from "@grimkeeper/database";
 import {
-  DEV_MIN_PLAYERS,
-  DEFAULT_MIN_PLAYERS,
   GameEngine,
   GameEngineError,
-  StandardEdition,
-  findScriptRole,
-  getScriptCompositionText,
   isFakePlayer,
-  parseScriptJson,
-  resolveStandardScript,
   type GameEvent,
-  type GameScript,
   type NominationRecord,
   type PlayerState,
 } from "@grimkeeper/engine";
@@ -43,7 +35,6 @@ import {
   getReminderPingRoleId,
   isInExplicitAllowlist,
 } from "../access.js";
-import { isMinimalMode } from "../bot-mode.js";
 import { isDevMode } from "../dev.js";
 import {
   clearNominationMessageInChannel,
@@ -66,11 +57,6 @@ import {
 } from "../interactions/interaction-response.js";
 import { logGameEvent } from "../game-events-log.js";
 import { refreshGameStatusForEngine } from "../game-status.js";
-import { buildRoleDmEmbed } from "../role-embed.js";
-
-/** Full mode creates per-channel Discord roles; minimal mode uses existing roles from setup. */
-export const GAME_DISCORD_ROLES_ENABLED = !isMinimalMode();
-export const STORYTELLER_THREAD_NAME = "ST and the gang";
 
 export function shortGameId(gameId: string): string {
   return gameId.slice(0, 6);
@@ -88,14 +74,10 @@ export function stPlayerThreadName(displayName: string): string {
 }
 
 export function storytellerThreadName(parentChannelName?: string, gameId?: string): string {
-  if (isMinimalMode() && parentChannelName) {
+  if (parentChannelName) {
     return kibThreadName(parentChannelName, gameId);
   }
-  return STORYTELLER_THREAD_NAME;
-}
-
-export function minPlayers(): number {
-  return isDevMode() ? DEV_MIN_PLAYERS : DEFAULT_MIN_PLAYERS;
+  return gameId ? `kib · ${shortGameId(gameId)}`.slice(0, 100) : "kib";
 }
 
 export function resolvePlayerRef(
@@ -120,121 +102,6 @@ export function findOpenNominationForNominee(
     .day?.nominations.find(
       (nomination) => nomination.nomineeId === nomineeId && nomination.status === "open",
     );
-}
-
-export function formatDayStatus(engine: GameEngine): string {
-  const state = engine.getState();
-  const day = state.day;
-  if (state.phase !== "day" || !day) {
-    return `Phase: **${state.phase}** (no active day)`;
-  }
-
-  const lines = [
-    `Day **${state.dayNumber}** — nominations ${day.nominationsOpen ? "open" : "closed"}`,
-    `Vote visibility: **${day.voteVisibility}**`,
-    `Execution used: **${day.executionUsed ? "yes" : "no"}**`,
-    `Day thread: ${day.discordThreadId ? `<#${day.discordThreadId}>` : "not set"}`,
-  ];
-
-  if (day.nominations.length === 0) {
-    lines.push("", "No nominations.");
-    return lines.join("\n");
-  }
-
-  lines.push("", "**Nominations:**");
-  for (const nomination of day.nominations.slice().sort((a, b) => a.order - b.order)) {
-    const nominator = engine.getPlayerById(nomination.nominatorId);
-    const nominee = engine.getPlayerById(nomination.nomineeId);
-    const tally = engine.formatNominationTally(nomination.id, { revealSecret: true });
-    lines.push(
-      `#${nomination.order} ${nominator?.displayName ?? "?"} → ${nominee?.displayName ?? "?"} [${nomination.status}] — ${tally}`,
-    );
-    const votes = day.votes
-      .filter((vote) => vote.nominationId === nomination.id)
-      .map((vote) => {
-        const voter = engine.getPlayerById(vote.voterId);
-        const suffix = vote.reason ? ` (${vote.reason})` : "";
-        return `  - ${voter?.displayName ?? "?"}: ${vote.choice}${suffix}`;
-      });
-    lines.push(...votes);
-  }
-
-  return lines.join("\n");
-}
-
-export async function loadScriptForCreate(
-  edition: string | undefined,
-  scriptUrl: string | undefined,
-): Promise<GameScript> {
-  if (scriptUrl?.trim()) {
-    const response = await fetch(scriptUrl.trim());
-    if (!response.ok) {
-      throw new Error(`Could not fetch script JSON (HTTP ${response.status}).`);
-    }
-    const json: unknown = await response.json();
-    return parseScriptJson(json, { source: "custom", scriptUrl: scriptUrl.trim() });
-  }
-
-  return resolveStandardScript(parseEdition(edition));
-}
-
-export function parseEdition(value: string | undefined): StandardEdition {
-  const normalized = value?.trim().toLowerCase();
-  if (!normalized || normalized === "tb" || normalized === "trouble brewing") {
-    return StandardEdition.TB;
-  }
-  if (normalized === "bmr" || normalized === "bad moon rising") {
-    return StandardEdition.BMR;
-  }
-  if (
-    normalized === "snv" ||
-    normalized === "sects & violets" ||
-    normalized === "sects and violets"
-  ) {
-    return StandardEdition.SNV;
-  }
-  throw new Error("Edition must be TB, BMR, or SNV.");
-}
-
-export async function deliverRolesToPlayers(
-  interaction: CommandInteraction,
-  game: { id: string; channelId: string },
-  engine: GameEngine,
-): Promise<string[]> {
-  const script = engine.getState().script;
-  const roleLines: string[] = [];
-
-  for (const player of engine.getState().players) {
-    const roleId = player.roleId ?? "unknown";
-    const roleName = script ? (findScriptRole(script, roleId)?.name ?? roleId) : roleId;
-    if (isFakePlayer(player.discordUserId) || isDevMode()) {
-      roleLines.push(`${player.displayName}: **${roleName}**${player.isFake ? " (fake)" : ""}`);
-      continue;
-    }
-
-    const playerThread = await getOrCreatePersonalPlayerThread(
-      interaction,
-      game.id,
-      game.channelId,
-      player.discordUserId,
-      player.displayName,
-    );
-    if (playerThread) {
-      await playerThread
-        .send({
-          content: `Your role is ready, <@${player.discordUserId}>.`,
-          embeds: [buildRoleDmEmbed(roleId, script)],
-        })
-        .catch(() => undefined);
-      continue;
-    }
-
-    const member = await interaction.guild?.members.fetch(player.discordUserId).catch(() => null);
-    if (!member) continue;
-    await member.send({ embeds: [buildRoleDmEmbed(roleId, script)] }).catch(() => undefined);
-  }
-
-  return roleLines;
 }
 
 export async function loadEngine(gameId: string): Promise<GameEngine> {
@@ -563,17 +430,13 @@ export async function buildPlayerPingMention(
     return `<@&${gameRoles.playersRole.id}>`;
   }
 
-  if (!GAME_DISCORD_ROLES_ENABLED) {
-    const engine = await loadEngine(gameId);
-    const mentions = engine
-      .getState()
-      .players.filter((player) => !player.isFake)
-      .map((player) => `<@${player.discordUserId}>`)
-      .join(" ");
-    return mentions || null;
-  }
-
-  return null;
+  const engine = await loadEngine(gameId);
+  const mentions = engine
+    .getState()
+    .players.filter((player) => !player.isFake)
+    .map((player) => `<@${player.discordUserId}>`)
+    .join(" ");
+  return mentions || null;
 }
 
 export { buildReminderFireContent };
@@ -778,7 +641,7 @@ export async function resolveGameRoles(
 ): Promise<GameRoles | null> {
   if (!guild) return null;
 
-  if (isMinimalMode() && game.stRoleId && game.playerRoleId && game.kibRoleId) {
+  if (game.stRoleId && game.playerRoleId && game.kibRoleId) {
     await guild.roles.fetch();
     const stRole = guild.roles.cache.get(game.stRoleId);
     const playersRole = guild.roles.cache.get(game.playerRoleId);
@@ -797,28 +660,6 @@ export function roleSlugFromChannelName(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "") || "game";
-}
-
-export async function ensureGameRoles(guild: Guild | null, channelId: string): Promise<GameRoles | null> {
-  if (!guild) return null;
-  const channel = await guild.channels.fetch(channelId).catch(() => null);
-  if (!channel || !("name" in channel)) return null;
-  const slug = roleSlugFromChannelName(channel.name);
-  const stName = `st-${slug}`;
-  const playersName = `p-${slug}`;
-  const spectatorName = `spec-${slug}`;
-
-  const existing = await getGameRolesByName(guild, stName, playersName, spectatorName);
-  if (existing) return existing;
-
-  try {
-    const stRole = await guild.roles.create({ name: stName, mentionable: true });
-    const playersRole = await guild.roles.create({ name: playersName, mentionable: true });
-    const spectatorRole = await guild.roles.create({ name: spectatorName, mentionable: false });
-    return { stRole, playersRole, spectatorRole };
-  } catch {
-    return null;
-  }
 }
 
 export async function getGameRoles(guild: Guild | null, channelId: string): Promise<GameRoles | null> {
@@ -864,17 +705,6 @@ export async function removeRoleFromUser(guild: Guild | null, userId: string, ro
   const member = await guild.members.fetch(userId).catch(() => null);
   if (!member) return;
   await member.roles.remove(roleId).catch(() => undefined);
-}
-
-export async function cleanupGameRoles(guild: Guild | null, channelId: string): Promise<void> {
-  if (!guild) return;
-  const roles = await getGameRoles(guild, channelId);
-  if (!roles) return;
-
-  // Deleting a role removes it from all members automatically.
-  await roles.spectatorRole.delete("Grimkeeper game ended; cleanup game roles.").catch(() => undefined);
-  await roles.playersRole.delete("Grimkeeper game ended; cleanup game roles.").catch(() => undefined);
-  await roles.stRole.delete("Grimkeeper game ended; cleanup game roles.").catch(() => undefined);
 }
 
 export async function applyGameChannelPermissions(
@@ -986,13 +816,8 @@ export async function ensureGameThreads(
 }
 
 export function personalPlayerThreadName(gameId: string, displayName: string): string {
-  const shortGameId = gameId.slice(0, 6);
-  if (isMinimalMode()) {
-    // Include game id so successive games in the same channel do not reuse stale threads.
-    return `ST ${displayName} · ${shortGameId}`.slice(0, 100);
-  }
-  const sanitized = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  return `player-${sanitized || "member"}-${shortGameId}`.slice(0, 100);
+  // Include game id so successive games in the same channel do not reuse stale threads.
+  return `ST ${displayName} · ${gameId.slice(0, 6)}`.slice(0, 100);
 }
 
 export function isGameTextChannel(
@@ -1169,14 +994,12 @@ export async function createPlayerStThreads(
       await thread.members.add(stId).catch(() => undefined);
     }
 
-    if (isMinimalMode()) {
-      await thread
-        .send({
-          content: `Private ST thread for <@${player.discordUserId}>. Only you, the storyteller, and server admins can access this thread.`,
-          allowedMentions: { users: [player.discordUserId] },
-        })
-        .catch(() => undefined);
-    }
+    await thread
+      .send({
+        content: `Private ST thread for <@${player.discordUserId}>. Only you, the storyteller, and server admins can access this thread.`,
+        allowedMentions: { users: [player.discordUserId] },
+      })
+      .catch(() => undefined);
 
     created++;
   }
@@ -1338,7 +1161,7 @@ export async function getStorytellerThread(
   const scoped = storytellerThreadName(parentChannelName, options?.gameId);
   expectedNames.add(scoped);
   // Migrate older kib threads that predate game-id suffixes.
-  if (options?.gameId && parentChannelName && isMinimalMode()) {
+  if (options?.gameId && parentChannelName) {
     expectedNames.add(kibThreadName(parentChannelName));
   }
 

@@ -14,7 +14,6 @@ import "reflect-metadata";
 import { Events, IntentsBitField } from "discord.js";
 import { Client } from "discordx";
 
-import { isMinimalMode } from "./bot-mode.js";
 import { setBotClient } from "./discord-client.js";
 import {
   flushDiscordReports,
@@ -55,16 +54,16 @@ client.once(Events.ClientReady, async () => {
   try {
     await client.initApplicationCommands();
     commandsRegistered = true;
-    log("info", "commands.register.ok", { botMode: isMinimalMode() ? "minimal" : "full" });
+    log("info", "commands.register.ok", { botMode: "minimal" });
   } catch (error) {
-    await reportError("commands.register.failed", error, { botMode: isMinimalMode() ? "minimal" : "full" });
+    await reportError("commands.register.failed", error, { botMode: "minimal" });
   }
   await notifyLifecycle(
     "bot.started",
     {
       tag: client.user?.tag,
       id: client.user?.id,
-      botMode: isMinimalMode() ? "minimal" : "full",
+      botMode: "minimal",
       commandsRegistered,
       deployTrigger: process.env.DEPLOY_TRIGGER ?? "unknown",
       image: process.env.GRIMKEEPER_IMAGE,
@@ -73,7 +72,7 @@ client.once(Events.ClientReady, async () => {
     client,
   );
   await flushDiscordReports(client);
-  log("info", "bot.ready", { tag: client.user?.tag, id: client.user?.id, botMode: isMinimalMode() ? "minimal" : "full" });
+  log("info", "bot.ready", { tag: client.user?.tag, id: client.user?.id, botMode: "minimal" });
 });
 
 client.on("interactionCreate", (interaction) => {

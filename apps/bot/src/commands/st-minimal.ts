@@ -21,10 +21,8 @@ import { parseUserMentionsFromString } from "../town-setup.js";
 import { closeTownNominations, advanceTownPhase } from "../town-day.js";
 import { respondDoAutocomplete, ST_DO_ACTIONS } from "./action-catalog.js";
 import {
-  GAME_DISCORD_ROLES_ENABLED,
   addRoleToUser,
   broadcastToPlayerThreads,
-  cleanupGameRoles,
   createPlayerStThreads,
   createTownVoteThread,
   finalizeMinimalGameEnd,
@@ -71,7 +69,7 @@ export class StCommandsMinimal {
     player: User | undefined,
     @SlashOption({
       name: "user",
-      description: "Target user (add/remove spectator)",
+      description: "Target user (add-st, add/remove spectator)",
       type: ApplicationCommandOptionType.User,
       required: false,
     })
@@ -190,6 +188,13 @@ export class StCommandsMinimal {
           return;
         }
         await this.removeSpectator(user, interaction);
+        return;
+      case "add-st":
+        if (!user) {
+          await missingOption(interaction, "user", "add-st");
+          return;
+        }
+        await this.addSt(user, interaction);
         return;
       case "setup-town":
         if (!players?.trim()) {
@@ -349,19 +354,12 @@ export class StCommandsMinimal {
       });
       await persistEvents(engine, events);
 
-      if (GAME_DISCORD_ROLES_ENABLED) {
-        await setInteractionProgress(interaction, "Cleaning up roles…");
-        await cleanupGameRoles(guild, game.channelId);
-      } else {
-        await setInteractionProgress(interaction, "Removing roles and cancelling reminders…");
-        await finalizeMinimalGameEnd(guild, game, engine);
-      }
+      await setInteractionProgress(interaction, "Removing roles and cancelling reminders…");
+      await finalizeMinimalGameEnd(guild, game, engine);
 
-      const cleanupHint = GAME_DISCORD_ROLES_ENABLED
-        ? " Game roles cleaned up."
-        : " Game roles removed from players, reminders cancelled, and kib thread opened for post-game chat.";
       await replyOrEditInteraction(interaction, {
-        content: `Game ended.${cleanupHint}`,
+        content:
+          "Game ended. Game roles removed from players, reminders cancelled, and kib thread opened for post-game chat.",
       });
     } catch (error) {
       await replyEngineError(interaction, error);
@@ -537,6 +535,76 @@ export class StCommandsMinimal {
       content: `Removed spectator role from <@${user.id}>.`,
       flags: MessageFlags.Ephemeral,
     });
+  }
+
+  /** Promote a co-ST: engine + Discord ST role (+ kib/log access). Does not create a personal player thread. */
+  async addSt(user: User, interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      if (engine.isStoryteller(user.id)) {
+        await replyOrEditInteraction(interaction, {
+          content: "That user is already a storyteller.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const events = engine.handle({
+        kind: GameCommandKind.PromoteStoryteller,
+        gameId: game.id,
+        discordUserId: user.id,
+      });
+      await persistEvents(engine, events);
+
+      const gameRoles = await resolveGameRoles(guild, game);
+      if (gameRoles) {
+        await addRoleToUser(guild, user.id, gameRoles.stRole.id);
+        await postGameLogRoleChange(
+          guild,
+          game,
+          "added",
+          user.id,
+          `<@&${gameRoles.stRole.id}> (ST)`,
+          interaction.user.id,
+        );
+      }
+
+      const kib = await getKibThreadForGame(guild, game);
+      if (kib) {
+        await kib.members.add(user.id).catch(() => undefined);
+      }
+
+      if (game.logThreadId) {
+        const logThread = await guild.channels.fetch(game.logThreadId).catch(() => null);
+        if (logThread?.isThread()) {
+          await logThread.members.add(user.id).catch(() => undefined);
+        }
+      }
+
+      await postGameLog(
+        guild,
+        game,
+        `<@${interaction.user.id}> promoted <@${user.id}> to storyteller.`,
+      );
+
+      const accessHints = [
+        gameRoles ? "ST role assigned" : "ST role missing — run `/game setup` with roles",
+        kib ? `added to <#${kib.id}>` : null,
+        game.logThreadId ? `added to <#${game.logThreadId}>` : null,
+      ].filter(Boolean);
+
+      await replyOrEditInteraction(interaction, {
+        content: `Promoted <@${user.id}> to storyteller (${accessHints.join("; ")}). No personal player thread was created.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
   }
 
   async setupTown(playersInput: string, interaction: CommandInteraction): Promise<void> {

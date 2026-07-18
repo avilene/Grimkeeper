@@ -1,10 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-vi.mock("../bot-mode.js", () => ({
-  isMinimalMode: vi.fn(() => false),
-}));
-
-import { isMinimalMode } from "../bot-mode.js";
 import { shouldDeferSlashCommand, shouldDeferStReminderCommand } from "./early-defer.js";
 
 function chatCommand(commandName: string, subcommand: string | null) {
@@ -22,50 +17,31 @@ function chatCommand(commandName: string, subcommand: string | null) {
 }
 
 describe("shouldDeferSlashCommand", () => {
-  it("defers reminder subcommands in full mode", () => {
-    vi.mocked(isMinimalMode).mockReturnValue(false);
+  it("defers reminder and other /st commands except help", () => {
     expect(shouldDeferSlashCommand(chatCommand("st", "reminders") as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("st", "remind") as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("st", "set-reminders") as never)).toBe(true);
-  });
-
-  it("skips non-reminder /st subcommands in full mode", () => {
-    vi.mocked(isMinimalMode).mockReturnValue(false);
-    expect(shouldDeferSlashCommand(chatCommand("st", "execute") as never)).toBe(false);
-  });
-
-  it("defers all /st commands in minimal mode except help", () => {
-    vi.mocked(isMinimalMode).mockReturnValue(true);
-    expect(shouldDeferSlashCommand(chatCommand("st", "reminders") as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("st", "execute") as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("st", "help") as never)).toBe(false);
     expect(shouldDeferSlashCommand(chatCommand("st", "commands") as never)).toBe(false);
   });
 
-  it("defers /game commands in minimal mode except help", () => {
-    vi.mocked(isMinimalMode).mockReturnValue(true);
+  it("defers /game commands except help/commands", () => {
     expect(shouldDeferSlashCommand(chatCommand("game", "setup") as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("game", "help") as never)).toBe(false);
+    expect(shouldDeferSlashCommand(chatCommand("game", "commands") as never)).toBe(false);
   });
 
-  it("defers top-level day commands in minimal mode", () => {
-    vi.mocked(isMinimalMode).mockReturnValue(true);
+  it("defers top-level day commands", () => {
     expect(shouldDeferSlashCommand(chatCommand("nominate", null) as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("defend", null) as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("vote", null) as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("roster", null) as never)).toBe(true);
   });
-
-  it("skips /game and day commands in full mode", () => {
-    vi.mocked(isMinimalMode).mockReturnValue(false);
-    expect(shouldDeferSlashCommand(chatCommand("game", "create") as never)).toBe(false);
-    expect(shouldDeferSlashCommand(chatCommand("nominate", null) as never)).toBe(false);
-  });
 });
 
 describe("shouldDeferStReminderCommand", () => {
   it("matches shouldDeferSlashCommand", () => {
-    vi.mocked(isMinimalMode).mockReturnValue(false);
     expect(shouldDeferStReminderCommand(chatCommand("st", "remind") as never)).toBe(true);
   });
 });

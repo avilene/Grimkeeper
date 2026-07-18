@@ -18,7 +18,6 @@ import {
 } from "@grimkeeper/engine";
 
 import { isDevMode } from "./dev.js";
-import { isMinimalMode } from "./bot-mode.js";
 import { encodeIdPair, parseIdPair } from "./interaction-ids.js";
 import { discordTimestamp } from "./reminder-message.js";
 
@@ -147,28 +146,18 @@ export function buildDayIntroEmbed(engine: GameEngine): EmbedBuilder {
   const state = engine.getState();
   const day = state.day;
   const visibility = day?.voteVisibility ?? "public";
-  const playerLines = isMinimalMode()
-    ? [
-        "Use `/nominate` to accuse a player.",
-        "Nominees may `/defend`.",
-        "Vote with the **Vote** button on each nomination or `/vote`.",
-      ]
-    : [
-        "Use `/game nominate` to accuse a player.",
-        "Nominees may `/game defend`.",
-        "Vote with the **Vote** button on each nomination or `/game vote`.",
-      ];
-  const stLines = isMinimalMode()
-    ? [
-        "Storyteller: kib **control panel**, or `/st do` (`resolve-next`, `close-nominations`, `next-phase`, `execute`, `vote-visibility`, `nominate`, …).",
-      ]
-    : [
-        "Storyteller: `/st pause-nominations`, `/st vote-visibility`, `/st close-nominations`, `/st resolve-next`, `/st execute`, `/st set-vote`, `/st remind`.",
-      ];
+  const playerLines = [
+    "Use `/nominate` to accuse a player.",
+    "Nominees may `/defend`.",
+    "Vote with the **Vote** button on each nomination or `/vote`.",
+  ];
+  const stLines = [
+    "Storyteller: kib **control panel**, or `/st do` (`resolve-next`, `close-nominations`, `next-phase`, `execute`, `vote-visibility`, `nominate`, …).",
+  ];
   const devLines = isDevMode()
     ? [
         "",
-        "**Dev mode:** `/dev nominate`, `/dev set-vote`, `/dev kill`, `/dev day-status`.",
+        "**Dev mode:** `/dev fill`, `/dev clear`, `/dev setup`, `/dev reminders`.",
       ]
     : [];
   return new EmbedBuilder()
