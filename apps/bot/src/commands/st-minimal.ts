@@ -752,8 +752,6 @@ export class StCommandsMinimal {
       await cancelVoteDeadlineReminder(next.id);
 
       const resolved = engine.getNominationById(next.id);
-      const yesVotes = engine.getEffectiveYesVotes(next.id);
-      const livingCount = engine.countLivingPlayers();
       const passed = resolved?.status === "resolved_pass";
       const tally = engine.formatNominationTally(next.id, { revealSecret: true });
 
@@ -769,17 +767,11 @@ export class StCommandsMinimal {
       const { formatNominationRef, resolveNominationMessageUrl } = await import("../day-thread.js");
       const nomUrl = await resolveNominationMessageUrl(channel, next.id);
       const nom = formatNominationRef(engine, next.id, nomUrl, { capitalize: true });
-      if (channel) {
-        await channel
-          .send(
-            `${nom} ${passed ? "**passed**" : "**failed**"} (${yesVotes}/${livingCount} living, ${tally}).` +
-              (passed ? " ST may run `/st do execute` (or use the control panel)." : ""),
-          )
-          .catch(() => undefined);
-      }
 
       await replyOrEditInteraction(interaction, {
-        content: `${nom} ${passed ? "passed" : "failed"}. ${tally}`,
+        content:
+          `${nom} ${passed ? "passed" : "failed"}. ${tally}` +
+          (passed ? " Use `/st do execute` (or the control panel) if needed." : ""),
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

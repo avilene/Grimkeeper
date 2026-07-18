@@ -697,8 +697,6 @@ export class StCommands {
       await persistEvents(engine, events);
 
       const resolved = engine.getNominationById(next.id);
-      const yesVotes = engine.getEffectiveYesVotes(next.id);
-      const livingCount = engine.countLivingPlayers();
       const passed = resolved?.status === "resolved_pass";
       const tally = engine.formatNominationTally(next.id, { revealSecret: true });
 
@@ -717,18 +715,13 @@ export class StCommands {
             { revealSecret: true },
           );
           nomUrl = await resolveNominationMessageUrl(thread as DayDiscussionChannel, next.id);
-          const nom = formatNominationRef(engine, next.id, nomUrl, { capitalize: true });
-          await thread
-            .send(
-              `${nom} ${passed ? "**passed**" : "**failed**"} (${yesVotes}/${livingCount} living, ${tally}).` +
-                (passed ? " ST may run `/st execute`." : ""),
-            )
-            .catch(() => undefined);
         }
       }
 
       await interaction.reply({
-        content: `${formatNominationRef(engine, next.id, nomUrl, { capitalize: true })} ${passed ? "passed" : "failed"}. ${tally}`,
+        content:
+          `${formatNominationRef(engine, next.id, nomUrl, { capitalize: true })} ${passed ? "passed" : "failed"}. ${tally}` +
+          (passed ? " Use `/st execute` if needed." : ""),
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

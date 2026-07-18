@@ -439,6 +439,8 @@ export interface CloseNominationsCommand {
 export interface ResolveNominationCommand {
   kind: typeof GameCommandKind.ResolveNomination;
   gameId: string;
+  /** When set, resolve this open nomination; otherwise the oldest open one. */
+  nominationId?: string;
 }
 
 export interface ExecutePlayerCommand {
@@ -1018,8 +1020,12 @@ export class GameEngine {
       case GameCommandKind.ResolveNomination: {
         this.assertPhase("day", "Nominations can only be resolved during the day.");
         this.assertDayState();
-        const next = this.getNextOpenNomination();
-        if (!next) {
+        if (command.nominationId) {
+          const nomination = this.getNominationById(command.nominationId);
+          if (!nomination || nomination.status !== "open") {
+            throw new GameEngineError("That nomination is not open.");
+          }
+        } else if (!this.getNextOpenNomination()) {
           throw new GameEngineError("No open nominations remain to resolve.");
         }
         break;
@@ -1412,7 +1418,9 @@ export class GameEngine {
           },
         ];
       case GameCommandKind.ResolveNomination: {
-        const nomination = this.getNextOpenNomination()!;
+        const nomination = command.nominationId
+          ? this.getNominationById(command.nominationId)!
+          : this.getNextOpenNomination()!;
         const yesVotes = this.getEffectiveYesVotes(nomination.id);
         const livingCount = this.countLivingPlayers();
         const passed = passesExecutionVote(yesVotes, livingCount);

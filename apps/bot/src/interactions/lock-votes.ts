@@ -381,14 +381,37 @@ async function announceBlockResult(
 ): Promise<string> {
   const nomination = engine.getNominationById(nominationId);
   if (!nomination) return "Nomination not found.";
+  if (nomination.status !== "open") return "That nomination is already resolved.";
   if (!nomination.votesLocked) {
     return "Lock or finish the vote count before announcing the result.";
   }
 
   const { summary, detail } = describeAnnounceResult(engine, nominationId);
-  await logVoteAction(guild, game, actorId, `announced vote result:\n${summary}\n${detail}`);
 
-  return `${summary}\nLogged to the audit log (not Town Voting).`;
+  const events = engine.handle({
+    kind: GameCommandKind.ResolveNomination,
+    gameId: game.id,
+    nominationId,
+  });
+  await persistEvents(engine, events);
+  await cancelVoteDeadlineReminder(nominationId);
+
+  const resolved = engine.getNominationById(nominationId);
+  const passed = resolved?.status === "resolved_pass";
+
+  await refreshNominationEverywhere(guild, game, engine, nominationId, { revealSecret: true });
+  await upsertStVoteTracker(guild, game.channelId, engine, game.kibThreadId);
+  const { upsertStControlPanel } = await import("../st-control-panel.js");
+  await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
+
+  await logVoteAction(
+    guild,
+    game,
+    actorId,
+    `announced & resolved ${detail}: **${passed ? "passed" : "failed"}**.\n${summary}`,
+  );
+
+  return `${summary}\nResolved as **${passed ? "passed" : "failed"}** (audit log only — not posted to Town Voting).`;
 }
 
 export async function scheduleNominationVoteDeadlineReminder(

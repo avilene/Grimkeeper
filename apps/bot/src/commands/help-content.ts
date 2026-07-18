@@ -182,7 +182,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
               "Votes live in the **Town Voting** private thread (players are pinged there on each nomination).",
               "Private ballots: `/vote` in a personal ST thread — ST sees them on the kib vote tracker.",
               "`setup-town` also pins the **control panel** + **vote tracker** in kib.",
-              "Vote lock/count/announce results go to the **audit log** (not Town Voting). Hand/missing pings stay in Town Voting.",
+              "Vote lock/count stay in Town Voting for hand pings; **Announce & resolve** closes that nomination to the audit log (no Town Voting pass/fail post).",
               "Each living player may nominate once per day; each may be nominated once. Use `/st do nominate` + `override:` to bypass.",
               "`close-nominations` then `next-phase` for Night 2; `next-phase` again for Day 2. Renames the town channel / voting thread when the bot can.",
               "Personal player threads stay private after `/st do end`.",

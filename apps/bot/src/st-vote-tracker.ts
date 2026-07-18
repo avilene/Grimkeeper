@@ -219,7 +219,7 @@ export function buildStVoteTrackerComponents(
       buttons.push(
         new ButtonBuilder()
           .setCustomId(announceBlockButtonCustomId(gameId, nomination.id))
-          .setLabel("Announce result")
+          .setLabel("Announce & resolve")
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId(unlockVotesButtonCustomId(gameId, nomination.id))

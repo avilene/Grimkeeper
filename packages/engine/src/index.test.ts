@@ -424,6 +424,48 @@ describe("GameEngine", () => {
     expect(engine.getNextOpenNomination()?.nomineeId).toBe(players[3]!.id);
   });
 
+  it("can resolve a specific open nomination out of order", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+    const players = engine.getState().players;
+
+    const firstEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "First.",
+    });
+    for (const event of firstEvents) engine.apply(event);
+    const firstId = engine.getState().day!.nominations[0]!.id;
+
+    const secondEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[2]!.id,
+      nomineeId: players[3]!.id,
+      accusation: "Second.",
+    });
+    for (const event of secondEvents) engine.apply(event);
+    const secondId = engine.getState().day!.nominations[1]!.id;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.ResolveNomination,
+      gameId,
+      nominationId: secondId,
+    })) {
+      engine.apply(event);
+    }
+
+    expect(engine.getNominationById(secondId)?.status).toBe("resolved_fail");
+    expect(engine.getNominationById(firstId)?.status).toBe("open");
+  });
+
   it("blocks a second ghost vote", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(3));
     engine.apply({
