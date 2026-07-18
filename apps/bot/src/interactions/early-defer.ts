@@ -19,6 +19,9 @@ const ST_REMINDER_SUBCOMMANDS = new Set([
 
 const FAST_SUBCOMMANDS = new Set(["help", "commands"]);
 
+/** Top-level player day commands (minimal mode). */
+const PLAYER_DAY_COMMANDS = new Set(["nominate", "defend", "vote", "roster"]);
+
 const INTERACTION_DEFER_BUDGET_MS = 2_800;
 
 export function shouldDeferSlashCommand(interaction: Interaction): boolean {
@@ -26,6 +29,10 @@ export function shouldDeferSlashCommand(interaction: Interaction): boolean {
 
   const subcommand = interaction.options.getSubcommand(false);
   if (subcommand !== null && FAST_SUBCOMMANDS.has(subcommand)) return false;
+
+  if (PLAYER_DAY_COMMANDS.has(interaction.commandName)) {
+    return isMinimalMode();
+  }
 
   if (interaction.commandName === "game") {
     return isMinimalMode();

@@ -27,11 +27,12 @@ describe("loadCommandModules", () => {
     await expect(loadCommandModules()).resolves.toBeUndefined();
   });
 
-  it("imports st-minimal in minimal mode", () => {
+  it("imports st-minimal and player-day-minimal in minimal mode", () => {
     const source = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "load-commands.ts"),
       "utf8",
     );
     expect(source).toContain('./commands/st-minimal.js');
+    expect(source).toContain('./commands/player-day-minimal.js');
   });
 });

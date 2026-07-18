@@ -1,5 +1,6 @@
 import {
   AnyThreadChannel,
+  AutocompleteInteraction,
   CommandInteraction,
   EmbedBuilder,
   Guild,
@@ -47,7 +48,8 @@ import { isDevMode } from "../dev.js";
 import {
   clearNominationMessageInChannel,
   dayThreadName,
-  townVoteThreadName,
+  townPhaseThreadName,
+  townVoteThreadNameSuffix,
   postNominationToChannel,
   updateNominationMessagesInChannels,
   addDayThreadMembers,
@@ -262,7 +264,9 @@ export async function syncGameProjection(gameId: string, engine: GameEngine): Pr
   await syncGameProjectionFromEngine(gameId, engine);
 }
 
-async function resolveParentChannelId(interaction: CommandInteraction): Promise<string | null> {
+async function resolveParentChannelId(
+  interaction: CommandInteraction | AutocompleteInteraction,
+): Promise<string | null> {
   if (!interaction.channelId) return null;
   const cached = interaction.channel;
   if (cached?.isThread()) return cached.parentId ?? interaction.channelId;
@@ -276,7 +280,9 @@ async function resolveParentChannelId(interaction: CommandInteraction): Promise<
 }
 
 /** Active game for this interaction’s channel; only falls back to guild when exactly one is active. */
-export async function resolveActiveGameForInteraction(interaction: CommandInteraction) {
+export async function resolveActiveGameForInteraction(
+  interaction: CommandInteraction | AutocompleteInteraction,
+) {
   if (!interaction.guildId) return null;
   const parentChannelId = await resolveParentChannelId(interaction);
   if (parentChannelId) {
@@ -291,6 +297,95 @@ export async function resolveActiveGameForInteraction(interaction: CommandIntera
 
 export function multipleActiveGamesHint(): string {
   return "Multiple active games in this server — run this from that game’s channel, kib, or Town Voting thread.";
+}
+
+export type GamePlayerAutocompleteOptions = {
+  /** Only living players (default for nominate). */
+  aliveOnly?: boolean;
+  /** Exclude this Discord user id (e.g. self). */
+  excludeUserId?: string;
+  /** Only players with an open nomination (for /vote). */
+  openNomineesOnly?: boolean;
+};
+
+/**
+ * Autocomplete choices for in-game players (Discord cannot filter USER pickers by role).
+ * Prefer engine roster; when a player role is set, also require that Discord role (except fake players).
+ */
+export async function respondGamePlayerAutocomplete(
+  interaction: AutocompleteInteraction,
+  options: GamePlayerAutocompleteOptions = {},
+): Promise<void> {
+  try {
+    const game = await resolveActiveGameForInteraction(interaction);
+    if (!game) {
+      await interaction.respond([]);
+      return;
+    }
+
+    const engine = await loadEngine(game.id);
+    let players = [...engine.getState().players];
+
+    if (options.aliveOnly) {
+      players = players.filter((player) => player.alive);
+    }
+    if (options.excludeUserId) {
+      players = players.filter((player) => player.discordUserId !== options.excludeUserId);
+    }
+    if (options.openNomineesOnly) {
+      const openNomineeIds = new Set(
+        (engine.getState().day?.nominations ?? [])
+          .filter((nomination) => nomination.status === "open")
+          .map((nomination) => nomination.nomineeId),
+      );
+      players = players.filter((player) => openNomineeIds.has(player.id));
+    }
+
+    if (game.playerRoleId && interaction.guild) {
+      const role =
+        interaction.guild.roles.cache.get(game.playerRoleId) ??
+        (await interaction.guild.roles.fetch(game.playerRoleId).catch(() => null));
+      if (role) {
+        // Role.members may be incomplete without GuildMembers intent; fetch if empty but role exists.
+        if (role.members.size === 0) {
+          await interaction.guild.members.fetch().catch(() => undefined);
+        }
+        const withRole = new Set(role.members.keys());
+        if (withRole.size > 0) {
+          players = players.filter(
+            (player) => player.isFake || withRole.has(player.discordUserId),
+          );
+        }
+      }
+    }
+
+    const query = interaction.options.getFocused(true).value.trim().toLowerCase();
+    const matches = (
+      query
+        ? players.filter(
+            (player) =>
+              player.displayName.toLowerCase().includes(query) ||
+              player.discordUserId.includes(query) ||
+              (player.seat != null && String(player.seat) === query),
+          )
+        : players
+    )
+      .sort((a, b) => (a.seat ?? 999) - (b.seat ?? 999))
+      .slice(0, 25);
+
+    await interaction.respond(
+      matches.map((player) => {
+        const seat = player.seat != null ? `seat ${player.seat}` : "unseated";
+        const dead = player.alive ? "" : " · dead";
+        return {
+          name: `${player.displayName} (${seat}${dead})`.slice(0, 100),
+          value: player.discordUserId,
+        };
+      }),
+    );
+  } catch {
+    await interaction.respond([]).catch(() => undefined);
+  }
 }
 
 export async function requireStorytellerGame(interaction: CommandInteraction) {
@@ -1463,7 +1558,7 @@ export async function createTownVoteThread(
   const parent = await guild.channels.fetch(game.channelId).catch(() => null);
   if (!isGameTextChannel(parent)) return null;
 
-  const threadName = townVoteThreadName(game.id);
+  const threadName = townPhaseThreadName("day", engine.getState().dayNumber || 1, game.id);
   const existing = await findTownVoteThread(guild, game.channelId, game.id);
   let thread = existing;
 
@@ -1483,15 +1578,17 @@ export async function createTownVoteThread(
           content: [
             "**Town Voting** — nominations and votes happen here.",
             "You can vote on **any open nomination** with the **Vote** button.",
-            "Prefer a private ballot? Use `/game do vote` in your personal ST thread (ST sees it on the kib vote tracker).",
-            "Players: `/game do nominate` (or type `/game do` and filter).",
-            "Storyteller: kib **control panel**, or `/st do resolve-next` / `execute` / `vote-visibility`.",
+            "Prefer a private ballot? Use `/vote` in your personal ST thread (ST sees it on the kib vote tracker).",
+            "Players: `/nominate` / `/defend` / `/vote` / `/roster`.",
+            "Storyteller: kib **control panel**, or `/st do` (`resolve-next`, `close-nominations`, `next-phase`, `execute`, `nominate`, `vote-visibility`, …).",
           ].join("\n"),
         })
         .catch(() => undefined);
     } catch {
       return null;
     }
+  } else if (thread.name !== threadName) {
+    await thread.setName(threadName, "Town day phase rename").catch(() => undefined);
   }
 
   if (thread.archived) {
@@ -1507,17 +1604,20 @@ export async function findTownVoteThread(
   parentChannelId: string,
   gameId: string,
 ): Promise<AnyThreadChannel | null> {
-  const expectedName = townVoteThreadName(gameId);
+  const suffix = townVoteThreadNameSuffix(gameId);
+  const matchesGame = (name: string) =>
+    name.endsWith(suffix) || name.includes(suffix);
+
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
   const activeThread = active?.threads.find(
-    (candidate) => candidate.parentId === parentChannelId && candidate.name === expectedName,
+    (candidate) => candidate.parentId === parentChannelId && matchesGame(candidate.name),
   );
   if (activeThread) return activeThread;
 
   const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
   if (!isGameTextChannel(parent)) return null;
   const archived = await parent.threads.fetchArchived({ type: "private" }).catch(() => null);
-  return archived?.threads.find((candidate) => candidate.name === expectedName) ?? null;
+  return archived?.threads.find((candidate) => matchesGame(candidate.name)) ?? null;
 }
 
 export async function requireTownVotingChannel(
@@ -1533,7 +1633,10 @@ export async function requireTownVotingChannel(
 
   if (state.phase !== "day" || !state.day) {
     await replyOrEditInteraction(interaction, {
-      content: "Town voting is not open yet. The storyteller must run `/st do setup-town`.",
+      content:
+        state.phase === "night"
+          ? `It is **Night ${state.nightNumber}**. Nominations open again when the storyteller starts the next day (\`/st do next-phase\`).`
+          : "Town voting is not open yet. The storyteller must run `/st do setup-town`.",
       flags: MessageFlags.Ephemeral,
     });
     return false;

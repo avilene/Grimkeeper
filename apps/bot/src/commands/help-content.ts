@@ -1,11 +1,56 @@
 import { EmbedBuilder } from "discord.js";
 
 import { isMinimalMode } from "../bot-mode.js";
+import { GAME_LOBBY_ACTIONS, PLAYER_DAY_ACTIONS, ST_DO_ACTIONS, type DoAction } from "./action-catalog.js";
 
 const GUIDE_COLOR = 0x5865f2;
+const FIELD_VALUE_LIMIT = 1024;
 
 function cmd(name: string, description: string): string {
   return `**${name}**\n${description}`;
+}
+
+function formatDoAction(action: DoAction, prefix: string): string {
+  const command = prefix ? `${prefix} ${action.name}` : `/${action.name}`;
+  const needs = action.needs?.length
+    ? ` Needs ${action.needs.map((need) => `\`${need}\``).join(", ")}.`
+    : "";
+  return `**${command}**\n${action.description}.${needs}`;
+}
+
+/** Split catalog entries into embed fields that stay under Discord's 1024-char limit. */
+function doActionFields(
+  catalog: DoAction[],
+  prefix: string,
+  baseName: string,
+): { name: string; value: string }[] {
+  const lines = catalog.map((action) => formatDoAction(action, prefix));
+  const fields: { name: string; value: string }[] = [];
+  let chunk: string[] = [];
+  let chunkLen = 0;
+
+  const flush = () => {
+    if (chunk.length === 0) return;
+    const index = fields.length;
+    fields.push({
+      name: index === 0 ? baseName : `${baseName} (cont. ${index})`,
+      value: chunk.join("\n\n"),
+    });
+    chunk = [];
+    chunkLen = 0;
+  };
+
+  for (const line of lines) {
+    const added = chunkLen === 0 ? line.length : chunkLen + 2 + line.length;
+    if (chunk.length > 0 && added > FIELD_VALUE_LIMIT) {
+      flush();
+    }
+    chunk.push(line);
+    chunkLen = chunkLen === 0 ? line.length : chunkLen + 2 + line.length;
+  }
+  flush();
+
+  return fields;
 }
 
 export function buildGameHelpEmbeds(): EmbedBuilder[] {
@@ -17,41 +62,22 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
         .setDescription(
           [
             "Player commands for minimal-mode town voting.",
-            "Use **`/game do`** and start typing the action — Discord filters the list.",
+            "Lobby: **`/game setup`** (and join/leave/list). Day play: **`/nominate`**, **`/defend`**, **`/vote`**, **`/roster`**.",
             "Nominations and votes happen in the **Town Voting** thread after `/st do setup-town`.",
             "Each living player may nominate **once per day**; each may be nominated **once per day**. Ghosts cannot nominate.",
-            "You can cast a **private ballot** with `/game do vote` in your personal ST thread (ST sees it on the kib tracker).",
+            "You can cast a **private ballot** with `/vote` in your personal ST thread (ST sees it on the kib tracker).",
             "",
             "Storytellers: see **`/st help`** for setup and day control.",
           ].join("\n"),
         )
         .addFields(
-          {
-            name: "Lobby",
-            value: [
-              cmd(
-                "/game do setup",
-                "Create a game with existing roles: `st:`, `player_role:`, `kib:` (+ optional `kib_thread:` / `log_thread:`).",
-              ),
-              cmd("/game do join", "Join the lobby (optional — ST can set roster with setup-town)."),
-              cmd("/game do leave", "Leave the lobby."),
-              cmd("/game do list", "List active games in this server."),
-            ].join("\n\n"),
-          },
-          {
-            name: "Nominations & votes",
-            value: [
-              cmd("/game do nominate", "Needs `player:` + `accusation:`."),
-              cmd("/game do defend", "Needs `text:` — defense on an open nomination against you."),
-              cmd("/game do vote", "Needs `nominee:` + `choice:` (+ `reason:` if conditional)."),
-              cmd("/game do roster", "Show seat order and alive/dead status."),
-            ].join("\n\n"),
-          },
+          ...doActionFields(GAME_LOBBY_ACTIONS, "/game", "Lobby (`/game …`)"),
+          ...doActionFields(PLAYER_DAY_ACTIONS, "", "Day (`/nominate` …)"),
           {
             name: "Voting venues",
             value: [
               "**Town Voting** thread — nominations ping the player role; Vote buttons + public results when visibility is public.",
-              "**Personal ST thread** — `/game do vote` for a private ballot; ST sees the vote on the kib **vote tracker**.",
+              "**Personal ST thread** — `/vote` for a private ballot; ST sees the vote on the kib **vote tracker**.",
               "You can vote on **any** open nomination.",
               "ST sets public vs secret tallies with `/st do vote-visibility` or the kib control panel.",
             ].join("\n"),
@@ -109,7 +135,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
         .setDescription(
           [
             "**Quick start**",
-            "1. `/game do setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles (optional `kib_thread:` / `log_thread:`)",
+            "1. `/game setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles (optional `kib_thread:` / `log_thread:`)",
             "2. `/st do setup-town` with `players:` @mentions in **seat order** (any player count)",
             "3. `/st do say` from kib to broadcast to all player threads",
             "4. `/st remind` / `/st set-reminders` for scheduled pings (ST role or allowlist)",
@@ -123,49 +149,42 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           {
             name: "How to run commands",
             value: [
-              cmd("/st do", "Pick an action via autocomplete, then fill only the options that action needs."),
-              cmd("/st panel", "Pin/refresh button controls in the kib thread (resolve, execute, votes, …)."),
+              cmd(
+                "/st do",
+                "Pick an action via autocomplete, then fill only the options that action needs.",
+              ),
+              cmd(
+                "/st panel",
+                "Pin/refresh kib buttons: resolve, execute, votes, close nominations, next day, …",
+              ),
+              cmd("/st help", "This guide (also `/st commands`)."),
             ].join("\n\n"),
           },
-          {
-            name: "Setup & town (`/st do …`)",
-            value: [
-              cmd("setup-town", "Needs `players:` ordered @mentions — assigns player role + creates threads."),
-              cmd("log", "Create or reopen the ST-only audit log thread."),
-              cmd("say", "Needs `message:` — broadcast from **kib** to every personal player thread."),
-              cmd("end", "End game: remove roles from players, cancel reminders, open kib."),
-              cmd("add-spectator / remove-spectator", "Needs `user:` — assigns/removes the kib role."),
-            ].join("\n\n"),
-          },
-          {
-            name: "Day (`/st do …` or panel)",
-            value: [
-              cmd("resolve-next", "Resolve the oldest open nomination."),
-              cmd("close-nominations", "Stop new nominations until the next day."),
-              cmd("next-day", "Start the next day — clears nominations and reopens them."),
-              cmd("execute", "Needs `player:` after a passed nomination."),
-              cmd("votes", "Refresh the ST vote tracker (Count Yes/No + Lock lives there)."),
-              cmd("vote-visibility", "Needs `mode:` public or secret."),
-              cmd("set-vote", "Needs `choice:` (+ optional voter/nominee/reason)."),
-              cmd("mark-dead", "Needs `player:` (+ optional `alive:`). Corrections only — not execute."),
-            ].join("\n\n"),
-          },
+          ...doActionFields(ST_DO_ACTIONS, "/st do", "Actions (`/st do …`)"),
           {
             name: "Reminders",
             value: [
               cmd("/st remind", "Schedule a reminder (requires ST role, storyteller, or allowlist)."),
-              cmd("/st set-reminders", "Replace this channel’s reminder batch (`1m 30m 1h 4 8`; does not stack)."),
+              cmd(
+                "/st set-reminders",
+                "Replace this channel’s reminder batch (`1m 30m 1h 4 8`; does not stack).",
+              ),
               cmd("/st reminders", "List pending reminders."),
-              cmd("/st edit-reminder / delete-reminder / clear-reminders", "Manage pending reminders."),
+              cmd(
+                "/st edit-reminder / delete-reminder / clear-reminders",
+                "Manage pending reminders for your game/channel.",
+              ),
             ].join("\n\n"),
           },
           {
             name: "Notes",
             value: [
               "Votes live in the **Town Voting** private thread (players are pinged there on each nomination).",
-              "Private ballots: `/game do vote` in a personal ST thread — ST sees them on the kib vote tracker.",
+              "Private ballots: `/vote` in a personal ST thread — ST sees them on the kib vote tracker.",
               "`setup-town` also pins the **control panel** + **vote tracker** in kib.",
-              "The **log thread** records role changes, broadcasts, reminders, setup, and game end (ST-only).",
+              "Vote lock/count/announce results go to the **audit log** (not Town Voting). Hand/missing pings stay in Town Voting.",
+              "Each living player may nominate once per day; each may be nominated once. Use `/st do nominate` + `override:` to bypass.",
+              "`close-nominations` then `next-phase` for Night 2; `next-phase` again for Day 2. Renames the town channel / voting thread when the bot can.",
               "Personal player threads stay private after `/st do end`.",
             ].join("\n"),
           },
@@ -220,7 +239,10 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             cmd("/st ping-players", "Ping all players."),
             cmd("/st ping-st", "Ping storytellers."),
             cmd("/st remind", "Schedule a reminder."),
-            cmd("/st set-reminders", "Replace this channel’s reminder batch (`1m 30m 1h` or `0.5 4 8`)."),
+            cmd(
+              "/st set-reminders",
+              "Replace this channel’s reminder batch (`1m 30m 1h` or `0.5 4 8`).",
+            ),
             cmd("/st reminders", "List pending reminders."),
           ].join("\n\n"),
         },
@@ -241,7 +263,10 @@ export function buildDevHelpEmbeds(): EmbedBuilder[] {
             cmd("/dev fill", "Add fake players to the lobby."),
             cmd("/dev clear", "Remove all fake players."),
             cmd("/dev setup", "Fill lobby with fake players for testing."),
-            cmd("/dev reminders", "List/delete all server reminders (STs use `/st reminders` for their game)."),
+            cmd(
+              "/dev reminders",
+              "List/delete all server reminders (STs use `/st reminders` for their game).",
+            ),
           ].join("\n\n"),
         }),
     ];
@@ -259,7 +284,10 @@ export function buildDevHelpEmbeds(): EmbedBuilder[] {
             cmd("/dev fill", "Add fake players to the lobby."),
             cmd("/dev clear", "Remove all fake players."),
             cmd("/dev setup", "Fill lobby with fake players for testing."),
-            cmd("/dev reminders", "List/delete all server reminders (STs use `/st reminders` for their game)."),
+            cmd(
+              "/dev reminders",
+              "List/delete all server reminders (STs use `/st reminders` for their game).",
+            ),
           ].join("\n\n"),
         },
         {

@@ -794,6 +794,7 @@ describe("GameEngine", () => {
 
     expect(state.phase).toBe("day");
     expect(state.dayNumber).toBe(1);
+    expect(state.nightNumber).toBe(1);
     expect(state.townMode).toBe(true);
     expect(state.players).toHaveLength(3);
     expect(state.players.map((player) => player.seat)).toEqual([1, 2, 3]);
@@ -900,7 +901,7 @@ describe("GameEngine", () => {
     ).toThrow("Ghosts cannot nominate");
   });
 
-  it("starts the next town day and clears nominations", () => {
+  it("cycles town day → night → day and clears nominations on the new day", () => {
     const engine = setupTownEngine(3);
     const players = engine.getState().players;
     for (const event of engine.handle({
@@ -923,11 +924,23 @@ describe("GameEngine", () => {
     for (const event of engine.handle({
       kind: GameCommandKind.AdvancePhase,
       gameId,
+      targetPhase: "night",
+    })) {
+      engine.apply(event);
+    }
+
+    expect(engine.getState().phase).toBe("night");
+    expect(engine.getState().nightNumber).toBe(2);
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.AdvancePhase,
+      gameId,
       targetPhase: "day",
     })) {
       engine.apply(event);
     }
 
+    expect(engine.getState().phase).toBe("day");
     expect(engine.getState().dayNumber).toBe(2);
     expect(engine.getState().day?.nominations).toHaveLength(0);
     expect(engine.getState().day?.nominationsOpen).toBe(true);
@@ -942,6 +955,71 @@ describe("GameEngine", () => {
       engine.apply(event);
     }
     expect(engine.getState().day?.nominations).toHaveLength(1);
+  });
+
+  it("blocks entering night while a nomination is still open", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Still open.",
+    })) {
+      engine.apply(event);
+    }
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.AdvancePhase,
+        gameId,
+        targetPhase: "night",
+      }),
+    ).toThrow("Resolve or clear open nominations");
+  });
+
+  it("allows storyteller duplicate nominations with allowDuplicate", () => {
+    const engine = setupTownEngine(4);
+    const players = engine.getState().players;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "First.",
+    })) {
+      engine.apply(event);
+    }
+    for (const event of engine.handle({
+      kind: GameCommandKind.ResolveNomination,
+      gameId,
+    })) {
+      engine.apply(event);
+    }
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId,
+        nominatorId: players[0]!.id,
+        nomineeId: players[2]!.id,
+        accusation: "Second without override.",
+      }),
+    ).toThrow("already made a nomination today");
+
+    const forced = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Forced re-nomination.",
+      allowDuplicate: true,
+    });
+    expect(forced).toHaveLength(1);
+    for (const event of forced) engine.apply(event);
+    expect(engine.getState().day?.nominations).toHaveLength(2);
   });
 
   it("sets a 24h vote deadline on nominations", () => {

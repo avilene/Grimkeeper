@@ -371,6 +371,8 @@ export interface MakeNominationCommand {
   nominatorId: string;
   nomineeId: string;
   accusation: string;
+  /** Storyteller override: allow a second nomination today for nominator and/or nominee. */
+  allowDuplicate?: boolean;
 }
 
 export interface OpenDayCommand {
@@ -855,20 +857,16 @@ export class GameEngine {
         if (command.targetPhase === "night" && this.state.phase !== "day" && this.state.phase !== "lobby") {
           throw new GameEngineError("Can only enter night from lobby or day.");
         }
-        if (command.targetPhase === "day") {
-          const fromNight = this.state.phase === "night";
-          const townNextDay = this.state.townMode && this.state.phase === "day";
-          if (!fromNight && !townNextDay) {
-            throw new GameEngineError("Can only enter day from night.");
+        if (command.targetPhase === "night" && this.state.townMode && this.state.phase === "day") {
+          const open = this.state.day?.nominations.some((nomination) => nomination.status === "open");
+          if (open) {
+            throw new GameEngineError(
+              "Resolve or clear open nominations before starting the next night.",
+            );
           }
-          if (townNextDay) {
-            const open = this.state.day?.nominations.some((nomination) => nomination.status === "open");
-            if (open) {
-              throw new GameEngineError(
-                "Resolve or clear open nominations before starting the next day.",
-              );
-            }
-          }
+        }
+        if (command.targetPhase === "day" && this.state.phase !== "night") {
+          throw new GameEngineError("Can only enter day from night.");
         }
         break;
       case GameCommandKind.EndGame:
@@ -896,17 +894,21 @@ export class GameEngine {
         if (!command.accusation.trim()) {
           throw new GameEngineError("An accusation is required.");
         }
-        if (
-          this.state.day!.nominations.some(
-            (nomination) => nomination.nominatorId === command.nominatorId,
-          )
-        ) {
-          throw new GameEngineError("You have already made a nomination today.");
-        }
-        if (
-          this.state.day!.nominations.some((nomination) => nomination.nomineeId === command.nomineeId)
-        ) {
-          throw new GameEngineError("That player has already been nominated today.");
+        if (!command.allowDuplicate) {
+          if (
+            this.state.day!.nominations.some(
+              (nomination) => nomination.nominatorId === command.nominatorId,
+            )
+          ) {
+            throw new GameEngineError("You have already made a nomination today.");
+          }
+          if (
+            this.state.day!.nominations.some(
+              (nomination) => nomination.nomineeId === command.nomineeId,
+            )
+          ) {
+            throw new GameEngineError("That player has already been nominated today.");
+          }
         }
         break;
       case GameCommandKind.OpenDay:
@@ -1771,6 +1773,8 @@ export class GameEngine {
         }));
         this.state.phase = "day";
         this.state.dayNumber = 1;
+        // Night 1 is skipped at setup (roles/first night handled offline); next night is Night 2.
+        this.state.nightNumber = 1;
         this.state.townMode = true;
         this.state.seatsOpen = false;
         this.state.day = createEmptyDayState(1);

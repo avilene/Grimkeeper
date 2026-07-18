@@ -24,6 +24,8 @@ export type StPanelAction =
   | "vis-secret"
   | "refresh"
   | "close-noms"
+  | "next-phase"
+  /** Legacy control-panel button id — still handled. */
   | "next-day";
 
 export function stPanelFooter(gameId: string): string {
@@ -84,6 +86,10 @@ export function buildStControlPanelEmbed(engine: GameEngine): EmbedBuilder {
     day?.nominations.filter((n) => n.status === "resolved_pass").length ?? 0;
   const visibility = day?.voteVisibility ?? "public";
   const nominationsOpen = day?.nominationsOpen ?? false;
+  const phaseLabel =
+    state.phase === "night"
+      ? `Night **${state.nightNumber}**`
+      : `Day **${state.dayNumber}**`;
 
   return new EmbedBuilder()
     .setTitle("ST control panel")
@@ -91,8 +97,9 @@ export function buildStControlPanelEmbed(engine: GameEngine): EmbedBuilder {
       [
         "Live storyteller controls for this game.",
         "Type fewer slash commands — use these buttons, or `/st do` with autocomplete.",
+        "Panel: resolve · execute · votes · close nominations · next phase · mark dead/alive · visibility.",
         "",
-        `Day **${state.dayNumber}** · Nominations: **${nominationsOpen ? "open" : "closed"}**`,
+        `${phaseLabel} · Nominations: **${state.phase === "day" && nominationsOpen ? "open" : "closed"}**`,
         `Open nominations: **${open}** · Passed (awaiting execute): **${passed}**`,
         `Vote visibility: **${visibility}**`,
       ].join("\n"),
@@ -103,7 +110,9 @@ export function buildStControlPanelEmbed(engine: GameEngine): EmbedBuilder {
 export function buildStControlPanelComponents(
   engine: GameEngine,
 ): ActionRowBuilder<ButtonBuilder>[] {
-  const gameId = engine.getState().gameId;
+  const state = engine.getState();
+  const gameId = state.gameId;
+  const nextPhaseLabel = state.phase === "night" ? "Start day" : "Start night";
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -145,10 +154,11 @@ export function buildStControlPanelComponents(
       new ButtonBuilder()
         .setCustomId(stPanelButtonCustomId("close-noms", gameId))
         .setLabel("Close nominations")
-        .setStyle(ButtonStyle.Danger),
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(state.phase !== "day"),
       new ButtonBuilder()
-        .setCustomId(stPanelButtonCustomId("next-day", gameId))
-        .setLabel("Next day")
+        .setCustomId(stPanelButtonCustomId("next-phase", gameId))
+        .setLabel(nextPhaseLabel)
         .setStyle(ButtonStyle.Primary),
     ),
   ];

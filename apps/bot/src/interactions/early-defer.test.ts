@@ -44,13 +44,22 @@ describe("shouldDeferSlashCommand", () => {
 
   it("defers /game commands in minimal mode except help", () => {
     vi.mocked(isMinimalMode).mockReturnValue(true);
-    expect(shouldDeferSlashCommand(chatCommand("game", "do") as never)).toBe(true);
+    expect(shouldDeferSlashCommand(chatCommand("game", "setup") as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("game", "help") as never)).toBe(false);
   });
 
-  it("skips /game commands in full mode", () => {
+  it("defers top-level day commands in minimal mode", () => {
+    vi.mocked(isMinimalMode).mockReturnValue(true);
+    expect(shouldDeferSlashCommand(chatCommand("nominate", null) as never)).toBe(true);
+    expect(shouldDeferSlashCommand(chatCommand("defend", null) as never)).toBe(true);
+    expect(shouldDeferSlashCommand(chatCommand("vote", null) as never)).toBe(true);
+    expect(shouldDeferSlashCommand(chatCommand("roster", null) as never)).toBe(true);
+  });
+
+  it("skips /game and day commands in full mode", () => {
     vi.mocked(isMinimalMode).mockReturnValue(false);
     expect(shouldDeferSlashCommand(chatCommand("game", "create") as never)).toBe(false);
+    expect(shouldDeferSlashCommand(chatCommand("nominate", null) as never)).toBe(false);
   });
 });
 

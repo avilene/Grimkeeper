@@ -81,7 +81,7 @@ export async function handleVoteButton(interaction: ButtonInteraction): Promise<
   if (!parsed) {
     await interaction
       .reply({
-        content: "That Vote button is invalid or too old. Use a nomination in **Town Voting**, or `/game do vote` in your ST thread.",
+        content: "That Vote button is invalid or too old. Use a nomination in **Town Voting**, or `/vote` in your ST thread.",
         flags: MessageFlags.Ephemeral,
       })
       .catch(() => undefined);
@@ -153,7 +153,7 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
     await interaction
       .editReply({
         content:
-          "That vote form is invalid or too old. Press **Vote** again in Town Voting, or use `/game do vote`.",
+          "That vote form is invalid or too old. Press **Vote** again in Town Voting, or use `/vote`.",
       })
       .catch(() => undefined);
     return true;
@@ -185,7 +185,7 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
     await interaction
       .editReply({
         content:
-          "Could not find the active game for this vote. Open **Town Voting** and press Vote on the nomination there, or use `/game do vote` in your ST thread.",
+          "Could not find the active game for this vote. Open **Town Voting** and press Vote on the nomination there, or use `/vote` in your ST thread.",
       })
       .catch(() => undefined);
     return true;

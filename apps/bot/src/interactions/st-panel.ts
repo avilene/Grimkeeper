@@ -201,16 +201,24 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       const { closeTownNominations } = await import("../town-day.js");
       const { dayNumber } = await closeTownNominations(guild, game, engine, interaction.user.id);
       await interaction.editReply({
-        content: `Nominations closed for day **${dayNumber}**. Use **Next day** when ready.`,
+        content: `Nominations closed for day **${dayNumber}**. Use **Start night** when ready.`,
       });
       return true;
     }
 
-    if (action === "next-day") {
-      const { startNextTownDay } = await import("../town-day.js");
-      const { dayNumber } = await startNextTownDay(guild, game, engine, interaction.user.id);
+    if (action === "next-phase" || action === "next-day") {
+      const { advanceTownPhase } = await import("../town-day.js");
+      const { phase, phaseNumber } = await advanceTownPhase(
+        guild,
+        game,
+        engine,
+        interaction.user.id,
+      );
       await interaction.editReply({
-        content: `Day **${dayNumber}** started — nominations are open again.`,
+        content:
+          phase === "day"
+            ? `Day **${phaseNumber}** started — nominations are open again.`
+            : `Night **${phaseNumber}** started — nominations are closed until the next day.`,
       });
       return true;
     }

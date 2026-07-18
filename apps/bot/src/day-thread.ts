@@ -18,6 +18,7 @@ import {
 } from "@grimkeeper/engine";
 
 import { isDevMode } from "./dev.js";
+import { isMinimalMode } from "./bot-mode.js";
 import { encodeIdPair, parseIdPair } from "./interaction-ids.js";
 import { discordTimestamp } from "./reminder-message.js";
 
@@ -61,8 +62,28 @@ export function dayThreadName(dayNumber: number): string {
   return `Day ${dayNumber} — Town Square`.slice(0, 100);
 }
 
+/** Stable suffix so renamed Day/Night voting threads stay findable. */
+export function townVoteThreadNameSuffix(gameId: string): string {
+  return `· ${gameId.slice(0, 6)}`;
+}
+
+export function townPhaseThreadName(
+  phase: "day" | "night",
+  phaseNumber: number,
+  gameId: string,
+): string {
+  const label = phase === "day" ? `Day ${phaseNumber}` : `Night ${phaseNumber}`;
+  return `${label} · Voting ${townVoteThreadNameSuffix(gameId)}`.slice(0, 100);
+}
+
+/** @deprecated Prefer townPhaseThreadName — kept for callers that mean day 1. */
 export function townVoteThreadName(gameId: string): string {
-  return `Town Voting · ${gameId.slice(0, 6)}`.slice(0, 100);
+  return townPhaseThreadName("day", 1, gameId);
+}
+
+/** Discord guild channel names are lowercase / hyphenated. */
+export function townPhaseParentChannelName(phase: "day" | "night", phaseNumber: number): string {
+  return `${phase}-${phaseNumber}`.slice(0, 100);
 }
 
 export function parsePauseDurationMinutes(input: string): number | null {
@@ -118,6 +139,24 @@ export function buildDayIntroEmbed(engine: GameEngine): EmbedBuilder {
   const state = engine.getState();
   const day = state.day;
   const visibility = day?.voteVisibility ?? "public";
+  const playerLines = isMinimalMode()
+    ? [
+        "Use `/nominate` to accuse a player.",
+        "Nominees may `/defend`.",
+        "Vote with the **Vote** button on each nomination or `/vote`.",
+      ]
+    : [
+        "Use `/game nominate` to accuse a player.",
+        "Nominees may `/game defend`.",
+        "Vote with the **Vote** button on each nomination or `/game vote`.",
+      ];
+  const stLines = isMinimalMode()
+    ? [
+        "Storyteller: kib **control panel**, or `/st do` (`resolve-next`, `close-nominations`, `next-phase`, `execute`, `vote-visibility`, `nominate`, …).",
+      ]
+    : [
+        "Storyteller: `/st pause-nominations`, `/st vote-visibility`, `/st close-nominations`, `/st resolve-next`, `/st execute`, `/st set-vote`, `/st remind`.",
+      ];
   const devLines = isDevMode()
     ? [
         "",
@@ -128,12 +167,10 @@ export function buildDayIntroEmbed(engine: GameEngine): EmbedBuilder {
     .setTitle(`Day ${state.dayNumber} — Town Square`)
     .setDescription(
       [
-        "Use `/game nominate` to accuse a player.",
-        "Nominees may `/game defend`.",
-        "Vote with the **Vote** button on each nomination or `/game vote`.",
+        ...playerLines,
         `Vote visibility: **${visibility}**${visibility === "secret" ? " (Organ Grinder mode — tallies hidden from players)" : ""}.`,
         "",
-        "Storyteller: `/st pause-nominations`, `/st vote-visibility`, `/st close-nominations`, `/st resolve-next`, `/st execute`, `/st set-vote`, `/st remind`.",
+        ...stLines,
         ...devLines,
       ].join("\n"),
     );
@@ -345,7 +382,7 @@ export async function postNominationToChannel(
   const pingRoleId = options?.pingRoleId ?? null;
   const contentParts: string[] = [];
   if (pingRoleId) contentParts.push(`<@&${pingRoleId}>`);
-  if (!options?.privateBallot) contentParts.push("**New nomination** — vote below or with `/game do vote` in your ST thread.");
+  if (!options?.privateBallot) contentParts.push("**New nomination** — vote below or with `/vote` in your ST thread.");
 
   return channel
     .send({

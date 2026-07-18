@@ -18,7 +18,7 @@ import { runSetPlayerVote } from "../set-vote.js";
 import { upsertStControlPanel } from "../st-control-panel.js";
 import { upsertStVoteTracker } from "../st-vote-tracker.js";
 import { parseUserMentionsFromString } from "../town-setup.js";
-import { closeTownNominations, startNextTownDay } from "../town-day.js";
+import { closeTownNominations, advanceTownPhase } from "../town-day.js";
 import { respondDoAutocomplete, ST_DO_ACTIONS } from "./action-catalog.js";
 import {
   GAME_DISCORD_ROLES_ENABLED,
@@ -31,6 +31,7 @@ import {
   getKibThreadForGame,
   loadEngine,
   persistEvents,
+  postNominationEverywhere,
   refreshNominationEverywhere,
   removeRoleFromUser,
   replyEngineError,
@@ -114,11 +115,32 @@ export class StCommandsMinimal {
     voter: User | undefined,
     @SlashOption({
       name: "nominee",
-      description: "For set-vote: nominated player",
+      description: "For set-vote / nominate: nominated player",
       type: ApplicationCommandOptionType.User,
       required: false,
     })
     nominee: User | undefined,
+    @SlashOption({
+      name: "nominator",
+      description: "For nominate: player making the nomination",
+      type: ApplicationCommandOptionType.User,
+      required: false,
+    })
+    nominator: User | undefined,
+    @SlashOption({
+      name: "accusation",
+      description: "For nominate: accusation text",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    accusation: string | undefined,
+    @SlashOption({
+      name: "override",
+      description: "For nominate: allow re-nominating today",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    override: boolean | undefined,
     @SlashOption({
       name: "reason",
       description: "For set-vote conditional votes",
@@ -192,8 +214,9 @@ export class StCommandsMinimal {
       case "close-nominations":
         await this.closeNominations(interaction);
         return;
+      case "next-phase":
       case "next-day":
-        await this.nextDay(interaction);
+        await this.nextPhase(interaction);
         return;
       case "execute":
         if (!player) {
@@ -228,6 +251,21 @@ export class StCommandsMinimal {
           return;
         }
         await this.setVote(choice, voter, nominee, reason, interaction);
+        return;
+      case "nominate":
+        if (!nominator) {
+          await missingOption(interaction, "nominator", "nominate");
+          return;
+        }
+        if (!nominee) {
+          await missingOption(interaction, "nominee", "nominate");
+          return;
+        }
+        if (!accusation?.trim()) {
+          await missingOption(interaction, "accusation", "nominate");
+          return;
+        }
+        await this.nominateFor(nominator, nominee, accusation, override, interaction);
         return;
       default:
         await replyOrEditInteraction(interaction, {
@@ -431,7 +469,7 @@ export class StCommandsMinimal {
     const gameRoles = await resolveGameRoles(guild, game);
     if (!gameRoles) {
       await replyOrEditInteraction(interaction, {
-        content: "Could not find game roles. Run `/game do setup` with ST, player, and kib roles.",
+        content: "Could not find game roles. Run `/game setup` with ST, player, and kib roles.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -480,7 +518,7 @@ export class StCommandsMinimal {
     const gameRoles = await resolveGameRoles(guild, game);
     if (!gameRoles) {
       await replyOrEditInteraction(interaction, {
-        content: "Could not find game roles. Run `/game do setup` with ST, player, and kib roles.",
+        content: "Could not find game roles. Run `/game setup` with ST, player, and kib roles.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -594,6 +632,15 @@ export class StCommandsMinimal {
         await persistEvents(engine, openEvents);
       }
 
+      const { renameTownPhaseSurfaces } = await import("../town-day.js");
+      await renameTownPhaseSurfaces(
+        guild,
+        game,
+        voteThread?.id ?? null,
+        "day",
+        engine.getState().dayNumber || 1,
+      );
+
       await setInteractionProgress(interaction, "Pinning ST panel…");
       await upsertPinnedGameStatus(guild, game.channelId, engine);
       await upsertStVoteTracker(guild, game.channelId, engine, game.kibThreadId);
@@ -619,8 +666,8 @@ export class StCommandsMinimal {
             ? `Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.`
             : "",
           voteThread
-            ? `Voting thread: <#${voteThread.id}> — nominate and vote there, or cast a private ballot with \`/game do vote\` in your ST thread.`
-            : "Players can `/game do nominate` in this channel.",
+            ? `Voting thread: <#${voteThread.id}> — nominate and vote there, or cast a private ballot with \`/vote\` in your ST thread.`
+            : "Players can `/nominate` in this channel.",
           "ST control panel + vote tracker are pinned in your kib thread.",
         ]
           .filter(Boolean)
@@ -646,7 +693,7 @@ export class StCommandsMinimal {
         interaction.user.id,
       );
       await replyOrEditInteraction(interaction, {
-        content: `Nominations closed for day **${dayNumber}**. Use \`/st do next-day\` when you're ready to reopen.`,
+        content: `Nominations closed for day **${dayNumber}**. Use \`/st do next-phase\` to start night.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -654,21 +701,25 @@ export class StCommandsMinimal {
     }
   }
 
-  async nextDay(interaction: CommandInteraction): Promise<void> {
+  async nextPhase(interaction: CommandInteraction): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
     if (!interaction.guild) return;
 
     try {
       const engine = await loadEngine(game.id);
-      const { dayNumber } = await startNextTownDay(
+      const { phase, phaseNumber } = await advanceTownPhase(
         interaction.guild,
         game,
         engine,
         interaction.user.id,
       );
+      const label = phase === "day" ? "Day" : "Night";
       await replyOrEditInteraction(interaction, {
-        content: `Day **${dayNumber}** started — nominations are open again.`,
+        content:
+          phase === "day"
+            ? `${label} **${phaseNumber}** started — nominations are open again.`
+            : `${label} **${phaseNumber}** started — nominations are closed until the next day.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -917,6 +968,85 @@ export class StCommandsMinimal {
       choice,
       reason: reason ?? null,
     });
+  }
+
+  async nominateFor(
+    nominatorUser: User,
+    nomineeUser: User,
+    accusation: string,
+    override: boolean | undefined,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const nominator = engine.getPlayerByDiscordId(nominatorUser.id);
+      const nominee = engine.getPlayerByDiscordId(nomineeUser.id);
+      if (!nominator) {
+        await replyOrEditInteraction(interaction, {
+          content: "That nominator is not in this game.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (!nominee) {
+        await replyOrEditInteraction(interaction, {
+          content: "That nominee is not in this game.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const allowDuplicate = override === true;
+      const events = engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId: game.id,
+        nominatorId: nominator.id,
+        nomineeId: nominee.id,
+        accusation: accusation.trim(),
+        allowDuplicate,
+      });
+      await persistEvents(engine, events);
+
+      const nominationId = engine.getState().day?.nominations.at(-1)?.id;
+      if (interaction.guild && nominationId) {
+        const posted = await postNominationEverywhere(
+          interaction.guild,
+          game,
+          engine,
+          nominationId,
+        );
+        await upsertStControlPanel(interaction.guild, game.channelId, engine, game.kibThreadId);
+        const voteThreadId = engine.getState().day?.discordThreadId;
+        const overrideNote = allowDuplicate ? " (duplicate override)" : "";
+        await postGameLog(
+          interaction.guild,
+          game,
+          `<@${interaction.user.id}> nominated for <@${nominator.discordUserId}> → <@${nominee.discordUserId}>${overrideNote}: “${accusation.trim()}”`,
+        );
+        await replyOrEditInteraction(interaction, {
+          content: [
+            `Recorded nomination: **${nominator.displayName}** → **${nominee.displayName}**${overrideNote}.`,
+            voteThreadId
+              ? `Posted in <#${voteThreadId}>${posted.voteThread ? " (players pinged)." : "."}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" "),
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await replyOrEditInteraction(interaction, {
+        content: `Recorded nomination: **${nominator.displayName}** → **${nominee.displayName}**.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
   }
 }
 
