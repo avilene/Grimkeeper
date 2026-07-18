@@ -30,15 +30,16 @@ describe("help content", () => {
     const gameText = fieldValues(game);
     const stText = fieldValues(st);
 
-    expect(game.data.title).toBe("Game commands");
+    expect(game.data.title).toBe("Player commands");
     expect(game.data.description).toContain("Town Voting");
-    expect(game.data.fields?.[0]?.name).toContain("/game");
-    for (const action of GAME_LOBBY_ACTIONS) {
-      expect(gameText).toContain(`/game ${action.name}`);
-      expect(gameText).toContain(action.description);
-    }
+    expect(game.data.description).toContain("/nominate");
+    expect(game.data.fields?.[0]?.name).toBe("Day");
     for (const action of PLAYER_DAY_ACTIONS) {
       expect(gameText).toContain(`/${action.name}`);
+      expect(gameText).toContain(action.description);
+    }
+    for (const action of GAME_LOBBY_ACTIONS) {
+      expect(gameText).toContain(`/game ${action.name}`);
       expect(gameText).toContain(action.description);
     }
 

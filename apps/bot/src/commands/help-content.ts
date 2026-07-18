@@ -58,21 +58,21 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
     return [
       new EmbedBuilder()
         .setColor(GUIDE_COLOR)
-        .setTitle("Game commands")
+        .setTitle("Player commands")
         .setDescription(
           [
-            "Player commands for minimal-mode town voting.",
-            "Lobby: **`/game setup`** (and join/leave/list). Day play: **`/nominate`**, **`/defend`**, **`/vote`**, **`/roster`**.",
+            "Day play uses top-level slash commands — not `/game …`.",
+            "**`/nominate`** · **`/defend`** · **`/vote`** · **`/roster`**",
             "Nominations and votes happen in the **Town Voting** thread after `/st do setup-town`.",
             "Each living player may nominate **once per day**; each may be nominated **once per day**. Ghosts cannot nominate.",
-            "You can cast a **private ballot** with `/vote` in your personal ST thread (ST sees it on the kib tracker).",
+            "Private ballot: `/vote` in your personal ST thread (ST sees it on the kib tracker).",
             "",
-            "Storytellers: see **`/st help`** for setup and day control.",
+            "Lobby setup (roles/channels): `/game setup` — see Lobby below. Storytellers: **`/st help`**.",
           ].join("\n"),
         )
         .addFields(
+          ...doActionFields(PLAYER_DAY_ACTIONS, "", "Day"),
           ...doActionFields(GAME_LOBBY_ACTIONS, "/game", "Lobby (`/game …`)"),
-          ...doActionFields(PLAYER_DAY_ACTIONS, "", "Day (`/nominate` …)"),
           {
             name: "Voting venues",
             value: [
