@@ -14,7 +14,7 @@ export const ST_DO_ACTIONS: DoAction[] = [
   { name: "end", description: "End the game (strip roles, open kib)" },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
   { name: "close-nominations", description: "Close nominations for the day (no new noms until next day)" },
-  { name: "next-phase", description: "Advance day ↔ night (Day 1 → Night 2 → Day 2 …); renames town channel when possible" },
+  { name: "next-phase", description: "Advance day ↔ night (Day 1 → Night 2 → Day 2 …); renames town channel to base-dayN / base-nightN" },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
   { name: "mark-dead", description: "Mark a player dead or alive", needs: ["player", "alive?"] },
   { name: "votes", description: "Refresh the ST vote tracker in kib" },

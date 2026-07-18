@@ -184,7 +184,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
               "`setup-town` also pins the **control panel** + **vote tracker** in kib.",
               "Vote lock/count stay in Town Voting for hand pings; **Announce & resolve** closes that nomination to the audit log (no Town Voting pass/fail post).",
               "Each living player may nominate once per day; each may be nominated once. Use `/st do nominate` + `override:` to bypass.",
-              "`close-nominations` then `next-phase` for Night 2; `next-phase` again for Day 2. Renames the town channel / voting thread when the bot can.",
+              "`close-nominations` then `next-phase` for Night 2; `next-phase` again for Day 2. Renames the town channel to `base-dayN` / `base-nightN` (voting thread stays Town Voting).",
               "Personal player threads stay private after `/st do end`.",
             ].join("\n"),
           },

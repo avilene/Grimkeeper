@@ -8,7 +8,12 @@ import {
   StandardEdition,
 } from "@grimkeeper/engine";
 
-import { buildNominationEmbed } from "./day-thread.js";
+import {
+  buildNominationEmbed,
+  townPhaseBaseChannelName,
+  townPhaseParentChannelName,
+  townVoteThreadName,
+} from "./day-thread.js";
 
 const gameId = "day-thread-test";
 const script = resolveStandardScript(StandardEdition.TB);
@@ -112,5 +117,24 @@ describe("buildNominationEmbed", () => {
     );
 
     vi.useRealTimers();
+  });
+});
+
+describe("town phase channel naming", () => {
+  it("keeps a stable Town Voting thread name", () => {
+    expect(townVoteThreadName("abcdef12-3456")).toBe("Town Voting · abcdef");
+  });
+
+  it("builds base-dayN / base-nightN parent names and strips prior suffixes", () => {
+    expect(townPhaseBaseChannelName("trouble-brewing")).toBe("trouble-brewing");
+    expect(townPhaseBaseChannelName("trouble-brewing-day1")).toBe("trouble-brewing");
+    expect(townPhaseBaseChannelName("trouble-brewing-night2")).toBe("trouble-brewing");
+    expect(townPhaseParentChannelName("trouble-brewing", "day", 1)).toBe("trouble-brewing-day1");
+    expect(townPhaseParentChannelName("trouble-brewing-day1", "night", 2)).toBe(
+      "trouble-brewing-night2",
+    );
+    expect(townPhaseParentChannelName("trouble-brewing-night2", "day", 2)).toBe(
+      "trouble-brewing-day2",
+    );
   });
 });

@@ -768,6 +768,14 @@ export class StCommandsMinimal {
       const nomUrl = await resolveNominationMessageUrl(channel, next.id);
       const nom = formatNominationRef(engine, next.id, nomUrl, { capitalize: true });
 
+      if (interaction.guild) {
+        await postGameLog(
+          interaction.guild,
+          game,
+          `<@${interaction.user.id}> resolved ${nom}: **${passed ? "passed" : "failed"}**. ${tally}`,
+        );
+      }
+
       await replyOrEditInteraction(interaction, {
         content:
           `${nom} ${passed ? "passed" : "failed"}. ${tally}` +
@@ -834,6 +842,11 @@ export class StCommandsMinimal {
       if (interaction.guild) {
         await upsertPinnedGameStatus(interaction.guild, game.channelId, engine);
         await upsertStControlPanel(interaction.guild, game.channelId, engine, game.kibThreadId);
+        await postGameLog(
+          interaction.guild,
+          game,
+          `<@${interaction.user.id}> executed <@${target.discordUserId}>.`,
+        );
       }
 
       await replyOrEditInteraction(interaction, {
@@ -876,6 +889,11 @@ export class StCommandsMinimal {
       if (interaction.guild) {
         await upsertPinnedGameStatus(interaction.guild, game.channelId, engine);
         await upsertStControlPanel(interaction.guild, game.channelId, engine, game.kibThreadId);
+        await postGameLog(
+          interaction.guild,
+          game,
+          `<@${interaction.user.id}> marked <@${target.discordUserId}> as **${markAlive ? "alive" : "dead"}**.`,
+        );
       }
 
       await replyOrEditInteraction(interaction, {

@@ -33,37 +33,47 @@ import {
 } from "../st-control-panel.js";
 import { upsertStVoteTracker } from "../st-vote-tracker.js";
 
-async function requirePanelStoryteller(
+async function loadPanelStorytellerContext(
   interaction: ButtonInteraction | UserSelectMenuInteraction,
   gameId: string,
-) {
+): Promise<
+  | { ok: true; game: NonNullable<Awaited<ReturnType<typeof getGameById>>>; engine: Awaited<ReturnType<typeof loadEngine>>; guild: NonNullable<ButtonInteraction["guild"]> }
+  | { ok: false; error: string }
+> {
   if (!interaction.guildId || !interaction.guild) {
-    await interaction.editReply({ content: "This must be used in a server." }).catch(() => undefined);
-    return null;
+    return { ok: false, error: "This must be used in a server." };
   }
 
   const game = await getGameById(gameId);
   if (!game || game.guildId !== interaction.guildId) {
-    await interaction
-      .editReply({
-        content:
-          "No matching game for this panel (it may be from an older game). Run `/st do setup-town` or refresh the panel from kib.",
-      })
-      .catch(() => undefined);
-    return null;
+    return {
+      ok: false,
+      error:
+        "No matching game for this panel (it may be from an older game). Run `/st do setup-town` or refresh the panel from kib.",
+    };
   }
   if (game.phase === "ended") {
-    await interaction.editReply({ content: "That game has ended." }).catch(() => undefined);
-    return null;
+    return { ok: false, error: "That game has ended." };
   }
 
   const engine = await loadEngine(game.id);
   if (!engine.isStoryteller(interaction.user.id)) {
-    await interaction.editReply({ content: "Only storytellers can use the control panel." });
-    return null;
+    return { ok: false, error: "Only storytellers can use the control panel." };
   }
 
-  return { game, engine, guild: interaction.guild };
+  return { ok: true, game, engine, guild: interaction.guild };
+}
+
+async function requirePanelStoryteller(
+  interaction: ButtonInteraction | UserSelectMenuInteraction,
+  gameId: string,
+) {
+  const ctx = await loadPanelStorytellerContext(interaction, gameId);
+  if (!ctx.ok) {
+    await interaction.editReply({ content: ctx.error }).catch(() => undefined);
+    return null;
+  }
+  return { game: ctx.game, engine: ctx.engine, guild: ctx.guild };
 }
 
 async function ensureDeferred(
@@ -181,6 +191,12 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       const nomUrl = await resolveNominationMessageUrl(channel, next.id);
       const nom = formatNominationRef(engine, next.id, nomUrl, { capitalize: true });
 
+      await postGameLog(
+        guild,
+        game,
+        `<@${interaction.user.id}> resolved ${nom}: **${passed ? "passed" : "failed"}**. ${tally}`,
+      );
+
       await interaction.editReply({
         content:
           `${nom} ${passed ? "passed" : "failed"}. ${tally}` +
@@ -233,13 +249,20 @@ export async function handleStPanelUserSelect(
   const parsed = parseStPanelUserSelectCustomId(interaction.customId);
   if (!parsed) return false;
 
-  await ensureDeferred(interaction);
-  const ctx = await requirePanelStoryteller(interaction, parsed.gameId);
-  if (!ctx) return true;
+  // Keep the select prompt as the interaction message so we can delete it when done.
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferUpdate().catch(() => undefined);
+  }
+
+  const ctx = await loadPanelStorytellerContext(interaction, parsed.gameId);
+  if (!ctx.ok) {
+    await dismissPanelSelectPrompt(interaction, ctx.error);
+    return true;
+  }
 
   const selected = interaction.users.first();
   if (!selected) {
-    await interaction.editReply({ content: "No user selected." });
+    await dismissPanelSelectPrompt(interaction, "No user selected.");
     return true;
   }
 
@@ -248,13 +271,31 @@ export async function handleStPanelUserSelect(
     await runPanelUserAction(parsed.action, selected.id, game, guild, engine, interaction);
   } catch (error) {
     try {
-      await replyEngineError(interaction, error);
+      const message =
+        error instanceof Error ? error.message : "Unexpected error running panel action.";
+      await dismissPanelSelectPrompt(interaction, message);
     } catch (replyError) {
       if (!isRecoverableInteractionResponseError(replyError)) throw replyError;
     }
   }
 
   return true;
+}
+
+/** Remove the ephemeral player-select prompt, then confirm with a short follow-up. */
+async function dismissPanelSelectPrompt(
+  interaction: UserSelectMenuInteraction,
+  content: string,
+): Promise<void> {
+  try {
+    await interaction.deleteReply();
+  } catch {
+    await interaction.editReply({ content, components: [] }).catch(() => undefined);
+    return;
+  }
+  await interaction
+    .followUp({ content, flags: MessageFlags.Ephemeral })
+    .catch(() => undefined);
 }
 
 async function runPanelUserAction(
@@ -267,7 +308,7 @@ async function runPanelUserAction(
 ): Promise<void> {
   const target = engine.getPlayerByDiscordId(discordUserId);
   if (!target) {
-    await interaction.editReply({ content: "That user is not in this game." });
+    await dismissPanelSelectPrompt(interaction, "That user is not in this game.");
     return;
   }
 
@@ -279,9 +320,10 @@ async function runPanelUserAction(
           candidate.nomineeId === target.id && candidate.status === "resolved_pass",
       );
     if (!nomination) {
-      await interaction.editReply({
-        content: "That player does not have a passed nomination to execute.",
-      });
+      await dismissPanelSelectPrompt(
+        interaction,
+        "That player does not have a passed nomination to execute.",
+      );
       return;
     }
 
@@ -300,7 +342,12 @@ async function runPanelUserAction(
     await channel?.send(`**${target.displayName}** was executed.`).catch(() => undefined);
     await upsertPinnedGameStatus(guild, game.channelId, engine);
     await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
-    await interaction.editReply({ content: `Executed **${target.displayName}**.` });
+    await postGameLog(
+      guild,
+      game,
+      `<@${interaction.user.id}> executed <@${target.discordUserId}>.`,
+    );
+    await dismissPanelSelectPrompt(interaction, `Executed **${target.displayName}**.`);
     return;
   }
 
@@ -314,7 +361,13 @@ async function runPanelUserAction(
   await persistEvents(engine, events);
   await upsertPinnedGameStatus(guild, game.channelId, engine);
   await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
-  await interaction.editReply({
-    content: `Marked **${target.displayName}** as **${markAlive ? "alive" : "dead"}**.`,
-  });
+  await postGameLog(
+    guild,
+    game,
+    `<@${interaction.user.id}> marked <@${target.discordUserId}> as **${markAlive ? "alive" : "dead"}**.`,
+  );
+  await dismissPanelSelectPrompt(
+    interaction,
+    `Marked **${target.displayName}** as **${markAlive ? "alive" : "dead"}**.`,
+  );
 }

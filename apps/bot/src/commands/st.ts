@@ -724,6 +724,14 @@ export class StCommands {
           (passed ? " Use `/st execute` if needed." : ""),
         flags: MessageFlags.Ephemeral,
       });
+      if (interaction.guild) {
+        const { postGameLog } = await import("../game-log-thread.js");
+        await postGameLog(
+          interaction.guild,
+          game,
+          `<@${interaction.user.id}> resolved ${formatNominationRef(engine, next.id, nomUrl)}: **${passed ? "passed" : "failed"}**. ${tally}`,
+        );
+      }
     } catch (error) {
       await replyEngineError(interaction, error);
     }
@@ -796,6 +804,15 @@ export class StCommands {
       await postToTownChannel(interaction.guild!, game.channelId, {
         content: `<@${target.discordUserId}> was executed on day ${engine.getState().dayNumber}.`,
       });
+
+      if (interaction.guild) {
+        const { postGameLog } = await import("../game-log-thread.js");
+        await postGameLog(
+          interaction.guild,
+          game,
+          `<@${interaction.user.id}> executed <@${target.discordUserId}>.`,
+        );
+      }
 
       await interaction.reply({
         content: `Executed **${target.displayName}**.`,

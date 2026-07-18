@@ -93,6 +93,12 @@ export async function runSetPlayerVote(options: {
         engine,
         nomination.id,
       );
+      const { postGameLog } = await import("./game-log-thread.js");
+      await postGameLog(
+        guild,
+        { id: gameId, channelId: engine.getState().channelId },
+        `<@${interaction.user.id}> set <@${voter.discordUserId}> vote on <@${nominee.discordUserId}> to **${choice}**.`,
+      );
     }
 
     const tally = engine.formatNominationTally(nomination.id, { revealSecret: true });

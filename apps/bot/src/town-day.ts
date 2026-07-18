@@ -10,7 +10,7 @@ import {
 } from "./commands/command-context.js";
 import {
   townPhaseParentChannelName,
-  townPhaseThreadName,
+  townVoteThreadName,
 } from "./day-thread.js";
 import { postGameLog } from "./game-log-thread.js";
 import { upsertStControlPanel } from "./st-control-panel.js";
@@ -61,7 +61,7 @@ export async function closeTownNominations(
   return { dayNumber };
 }
 
-/** Best-effort rename of town channel + voting thread to Day N / Night N. */
+/** Best-effort rename of the town channel to `{base}-{day|night}N`. Voting thread keeps Town Voting. */
 export async function renameTownPhaseSurfaces(
   guild: Guild,
   game: TownGame,
@@ -69,10 +69,12 @@ export async function renameTownPhaseSurfaces(
   phase: "day" | "night",
   phaseNumber: number,
 ): Promise<void> {
-  const parentName = townPhaseParentChannelName(phase, phaseNumber);
   const parent = await guild.channels.fetch(game.channelId).catch(() => null);
-  if (isGameTextChannel(parent) && parent.name !== parentName) {
-    await parent.setName(parentName, `Town ${phase} ${phaseNumber}`).catch(() => undefined);
+  if (isGameTextChannel(parent)) {
+    const parentName = townPhaseParentChannelName(parent.name, phase, phaseNumber);
+    if (parent.name !== parentName) {
+      await parent.setName(parentName, `Town ${phase} ${phaseNumber}`).catch(() => undefined);
+    }
   }
 
   if (!voteThreadId) return;
@@ -80,15 +82,15 @@ export async function renameTownPhaseSurfaces(
   const thread = await guild.channels.fetch(voteThreadId).catch(() => null);
   if (!thread || !("setName" in thread) || typeof thread.setName !== "function") return;
 
-  const threadName = townPhaseThreadName(phase, phaseNumber, game.id);
+  const threadName = townVoteThreadName(game.id);
   if (thread.name !== threadName) {
-    await thread.setName(threadName, `Town ${phase} ${phaseNumber}`).catch(() => undefined);
+    await thread.setName(threadName, "Keep Town Voting thread name").catch(() => undefined);
   }
 }
 
 /**
  * Advance town phase: day → night (Night dayNumber+1), or night → day.
- * Keeps the existing Town Voting thread; renames channel/thread when possible.
+ * Keeps the Town Voting thread name; renames the parent channel when possible.
  */
 export async function advanceTownPhase(
   guild: Guild,

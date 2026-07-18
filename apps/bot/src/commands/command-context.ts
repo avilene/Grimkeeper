@@ -48,7 +48,7 @@ import { isDevMode } from "../dev.js";
 import {
   clearNominationMessageInChannel,
   dayThreadName,
-  townPhaseThreadName,
+  townVoteThreadName,
   townVoteThreadNameSuffix,
   postNominationToChannel,
   updateNominationMessagesInChannels,
@@ -1558,7 +1558,7 @@ export async function createTownVoteThread(
   const parent = await guild.channels.fetch(game.channelId).catch(() => null);
   if (!isGameTextChannel(parent)) return null;
 
-  const threadName = townPhaseThreadName("day", engine.getState().dayNumber || 1, game.id);
+  const threadName = townVoteThreadName(game.id);
   const existing = await findTownVoteThread(guild, game.channelId, game.id);
   let thread = existing;
 
@@ -1588,7 +1588,7 @@ export async function createTownVoteThread(
       return null;
     }
   } else if (thread.name !== threadName) {
-    await thread.setName(threadName, "Town day phase rename").catch(() => undefined);
+    await thread.setName(threadName, "Restore Town Voting thread name").catch(() => undefined);
   }
 
   if (thread.archived) {

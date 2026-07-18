@@ -62,28 +62,36 @@ export function dayThreadName(dayNumber: number): string {
   return `Day ${dayNumber} — Town Square`.slice(0, 100);
 }
 
-/** Stable suffix so renamed Day/Night voting threads stay findable. */
+/** Stable suffix so Town Voting threads stay findable across games. */
 export function townVoteThreadNameSuffix(gameId: string): string {
   return `· ${gameId.slice(0, 6)}`;
 }
 
-export function townPhaseThreadName(
+/** Fixed Town Voting thread name (not renamed each phase). */
+export function townVoteThreadName(gameId: string): string {
+  return `Town Voting ${townVoteThreadNameSuffix(gameId)}`.slice(0, 100);
+}
+
+const TOWN_PHASE_CHANNEL_SUFFIX = /-(day|night)\d+$/i;
+
+/** Strip a prior `-{day|night}N` suffix so renames keep the original base. */
+export function townPhaseBaseChannelName(currentName: string): string {
+  const trimmed = currentName.trim();
+  const base = trimmed.replace(TOWN_PHASE_CHANNEL_SUFFIX, "");
+  return (base || trimmed).slice(0, 100);
+}
+
+/**
+ * Discord guild channel names are lowercase / hyphenated.
+ * Example: `trouble-brewing-day1`, `trouble-brewing-night2`.
+ */
+export function townPhaseParentChannelName(
+  baseOrCurrentName: string,
   phase: "day" | "night",
   phaseNumber: number,
-  gameId: string,
 ): string {
-  const label = phase === "day" ? `Day ${phaseNumber}` : `Night ${phaseNumber}`;
-  return `${label} · Voting ${townVoteThreadNameSuffix(gameId)}`.slice(0, 100);
-}
-
-/** @deprecated Prefer townPhaseThreadName — kept for callers that mean day 1. */
-export function townVoteThreadName(gameId: string): string {
-  return townPhaseThreadName("day", 1, gameId);
-}
-
-/** Discord guild channel names are lowercase / hyphenated. */
-export function townPhaseParentChannelName(phase: "day" | "night", phaseNumber: number): string {
-  return `${phase}-${phaseNumber}`.slice(0, 100);
+  const base = townPhaseBaseChannelName(baseOrCurrentName);
+  return `${base}-${phase}${phaseNumber}`.slice(0, 100);
 }
 
 export function parsePauseDurationMinutes(input: string): number | null {
