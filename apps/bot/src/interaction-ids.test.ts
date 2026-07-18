@@ -8,6 +8,7 @@ import {
   voteModalCustomId,
 } from "./day-thread.js";
 import {
+  announceBlockButtonCustomId,
   cancelCountButtonCustomId,
   countNoButtonCustomId,
   countYesButtonCustomId,
@@ -127,6 +128,13 @@ describe("lock vote custom ids", () => {
       gameId,
       nominationId,
       action: "ping-hand",
+    });
+    expect(
+      parseVoteTrackerButtonCustomId(announceBlockButtonCustomId(gameId, nominationId)),
+    ).toEqual({
+      gameId,
+      nominationId,
+      action: "announce-block",
     });
   });
 });

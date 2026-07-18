@@ -601,6 +601,11 @@ export function passesExecutionVote(yesVotes: number, livingCount: number): bool
   return yesVotes > Math.floor(livingCount / 2);
 }
 
+/** Yes votes required to put a nominee on the block (majority of living players). */
+export function votesNeededOnTheBlock(livingCount: number): number {
+  return Math.floor(livingCount / 2) + 1;
+}
+
 export function createEmptyDayState(dayNumber: number): DayPhaseState {
   return {
     dayNumber,
@@ -706,6 +711,10 @@ export class GameEngine {
 
   countLivingPlayers(): number {
     return countLivingPlayers(this.state);
+  }
+
+  votesNeededOnTheBlock(): number {
+    return votesNeededOnTheBlock(this.countLivingPlayers());
   }
 
   static fromEvents(gameId: string, events: GameEvent[]): GameEngine {
@@ -1858,7 +1867,7 @@ export class GameEngine {
       const seat = player.seat != null ? `seat ${player.seat}` : "unseated";
       const vote = votesByVoter.get(player.id);
       const deadTag = player.alive ? "" : " [dead]";
-      const handTag = player.id === handPlayerId ? " 👉" : "";
+      const underHand = player.id === handPlayerId;
       let status: string;
       if (vote) {
         const reason = vote.reason ? ` — ${vote.reason}` : "";
@@ -1871,7 +1880,8 @@ export class GameEngine {
       } else {
         status = "_pending_";
       }
-      return `${index + 1}. ${player.displayName}${deadTag}${handTag} (${seat}): ${status}`;
+      const line = `${index + 1}. ${player.displayName}${deadTag} (${seat}): ${status}`;
+      return underHand ? `👉 **${line}**` : line;
     });
 
     return lines.join("\n");

@@ -87,6 +87,33 @@ function nominationStatusLabel(status: NominationRecord["status"], votesLocked?:
   }
 }
 
+/** e.g. `nomination of Alice on Bob` */
+export function formatNominationPhrase(
+  engine: GameEngine,
+  nominationId: string,
+  options?: { capitalize?: boolean },
+): string {
+  const nomination = engine.getNominationById(nominationId);
+  if (!nomination) return options?.capitalize ? "Nomination" : "nomination";
+  const nominator = engine.getPlayerById(nomination.nominatorId);
+  const nominee = engine.getPlayerById(nomination.nomineeId);
+  const phrase = `nomination of ${nominator?.displayName ?? "?"} on ${nominee?.displayName ?? "?"}`;
+  if (!options?.capitalize) return phrase;
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
+}
+
+/** Wrap a nomination phrase in a Discord markdown jump link when a message URL is known. */
+export function formatNominationRef(
+  engine: GameEngine,
+  nominationId: string,
+  messageUrl?: string | null,
+  options?: { capitalize?: boolean },
+): string {
+  const phrase = formatNominationPhrase(engine, nominationId, options);
+  if (!messageUrl) return phrase;
+  return `[${phrase}](${messageUrl})`;
+}
+
 export function buildDayIntroEmbed(engine: GameEngine): EmbedBuilder {
   const state = engine.getState();
   const day = state.day;
@@ -120,6 +147,8 @@ export function buildNominationEmbed(
   const nominator = engine.getPlayerById(nomination.nominatorId);
   const nominee = engine.getPlayerById(nomination.nomineeId);
   const tallyText = engine.formatNominationTally(nomination.id, options);
+  const living = engine.countLivingPlayers();
+  const needed = engine.votesNeededOnTheBlock();
   const fields: APIEmbedField[] = [
     {
       name: "Accusation",
@@ -132,6 +161,11 @@ export function buildNominationEmbed(
     {
       name: "Votes",
       value: tallyText,
+    },
+    {
+      name: "On the block",
+      value: `**${needed}** yes needed (${living} alive)`,
+      inline: true,
     },
     {
       name: "Status",
@@ -154,9 +188,7 @@ export function buildNominationEmbed(
   }
 
   return new EmbedBuilder()
-    .setTitle(
-      `Nomination #${nomination.order}: ${nominee?.displayName ?? "Unknown"}`,
-    )
+    .setTitle(formatNominationPhrase(engine, nomination.id, { capitalize: true }))
     .setDescription(
       `<@${nominator?.discordUserId ?? "unknown"}> nominates <@${nominee?.discordUserId ?? "unknown"}>`,
     )
@@ -207,6 +239,15 @@ export async function findNominationMessage(
     if (footerId === nominationId) return message;
   }
   return null;
+}
+
+export async function resolveNominationMessageUrl(
+  channel: DayDiscussionChannel | null | undefined,
+  nominationId: string,
+): Promise<string | null> {
+  if (!channel) return null;
+  const message = await findNominationMessage(channel, nominationId);
+  return message?.url ?? null;
 }
 
 export async function updateNominationMessage(

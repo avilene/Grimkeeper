@@ -24,6 +24,7 @@ export const COUNT_NO_BUTTON_PREFIX = "gk:count-no:";
 export const CANCEL_COUNT_BUTTON_PREFIX = "gk:cancel-count:";
 export const PING_MISSING_BUTTON_PREFIX = "gk:ping-missing:";
 export const PING_HAND_BUTTON_PREFIX = "gk:ping-hand:";
+export const ANNOUNCE_BLOCK_BUTTON_PREFIX = "gk:announce-block:";
 
 export function voteTrackerFooter(gameId: string): string {
   return `${VOTE_TRACKER_FOOTER_PREFIX}${gameId}`;
@@ -66,6 +67,10 @@ export function pingHandButtonCustomId(gameId: string, nominationId: string): st
   return `${PING_HAND_BUTTON_PREFIX}${encodeIdPair(gameId, nominationId)}`;
 }
 
+export function announceBlockButtonCustomId(gameId: string, nominationId: string): string {
+  return `${ANNOUNCE_BLOCK_BUTTON_PREFIX}${encodeIdPair(gameId, nominationId)}`;
+}
+
 export type VoteTrackerButtonAction =
   | "lock"
   | "unlock"
@@ -74,7 +79,8 @@ export type VoteTrackerButtonAction =
   | "count-no"
   | "cancel-count"
   | "ping-missing"
-  | "ping-hand";
+  | "ping-hand"
+  | "announce-block";
 
 const VOTE_TRACKER_BUTTON_PREFIXES: { prefix: string; action: VoteTrackerButtonAction }[] = [
   { prefix: LOCK_VOTES_BUTTON_PREFIX, action: "lock" },
@@ -85,6 +91,7 @@ const VOTE_TRACKER_BUTTON_PREFIXES: { prefix: string; action: VoteTrackerButtonA
   { prefix: CANCEL_COUNT_BUTTON_PREFIX, action: "cancel-count" },
   { prefix: PING_MISSING_BUTTON_PREFIX, action: "ping-missing" },
   { prefix: PING_HAND_BUTTON_PREFIX, action: "ping-hand" },
+  { prefix: ANNOUNCE_BLOCK_BUTTON_PREFIX, action: "announce-block" },
 ];
 
 export function parseLockVotesButtonCustomId(
@@ -123,7 +130,7 @@ function nominationTrackerBlock(engine: GameEngine, nomination: NominationRecord
   if (nomination.votesLocked) {
     lockLabel = "🔒 **LOCKED**";
   } else if (hand) {
-    lockLabel = `🖐 Counting — hand on **${hand.displayName}**`;
+    lockLabel = `🖐 **HAND → ${hand.displayName}**`;
   } else {
     lockLabel = "🔓 Open for changes";
   }
@@ -133,7 +140,7 @@ function nominationTrackerBlock(engine: GameEngine, nomination: NominationRecord
       : nomination.status.replace("resolved_", "").replace("_", " ");
 
   return [
-    `**#${nomination.order}** ${nominator?.displayName ?? "?"} → **${nominee?.displayName ?? "?"}** (${status})`,
+    `**${nominator?.displayName ?? "?"}** → **${nominee?.displayName ?? "?"}** (${status})`,
     `_Lock-in order: after nominee, around the circle (nominee last)._`,
     tally,
     roll,
@@ -151,12 +158,22 @@ export function buildStVoteTrackerEmbed(engine: GameEngine): EmbedBuilder {
       ? "_No open nominations._ Nominate in Town Voting; this panel updates here for ST tracking (including private ST-thread ballots)."
       : open.map((nomination) => nominationTrackerBlock(engine, nomination)).join("\n\n");
 
-  const embed = new EmbedBuilder()
-    .setTitle("ST vote tracker")
-    .setDescription(description.slice(0, 4000))
-    .setFooter({ text: voteTrackerFooter(engine.getState().gameId) });
+    const living = engine.countLivingPlayers();
+    const needed = engine.votesNeededOnTheBlock();
+    const embed = new EmbedBuilder()
+      .setTitle("ST vote tracker")
+      .setDescription(description.slice(0, 4000))
+      .setFooter({ text: voteTrackerFooter(engine.getState().gameId) });
 
-  if (resolved.length > 0) {
+    if (open.length > 0) {
+      embed.addFields({
+        name: "On the block",
+        value: `**${needed}** yes needed (${living} alive)`,
+        inline: true,
+      });
+    }
+
+    if (resolved.length > 0) {
     embed.addFields({
       name: "Recently resolved",
       value: resolved
@@ -199,6 +216,10 @@ export function buildStVoteTrackerComponents(
 
     if (nomination.votesLocked) {
       buttons.push(
+        new ButtonBuilder()
+          .setCustomId(announceBlockButtonCustomId(gameId, nomination.id))
+          .setLabel("Announce result")
+          .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId(unlockVotesButtonCustomId(gameId, nomination.id))
           .setLabel(`Unlock ${labelBase}`.slice(0, 80))

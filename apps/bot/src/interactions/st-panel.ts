@@ -172,7 +172,6 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       const resolved = engine.getNominationById(next.id);
       const yesVotes = engine.getEffectiveYesVotes(next.id);
       const livingCount = engine.countLivingPlayers();
-      const nominee = engine.getPlayerById(next.nomineeId);
       const passed = resolved?.status === "resolved_pass";
       const tally = engine.formatNominationTally(next.id, { revealSecret: true });
 
@@ -180,17 +179,20 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
 
       const channel = await resolveVotingChannel(guild, game, engine);
+      const { formatNominationRef, resolveNominationMessageUrl } = await import("../day-thread.js");
+      const nomUrl = await resolveNominationMessageUrl(channel, next.id);
+      const nom = formatNominationRef(engine, next.id, nomUrl, { capitalize: true });
       if (channel) {
         await channel
           .send(
-            `Nomination #${next.order} for **${nominee?.displayName ?? "Unknown"}** ${passed ? "**passed**" : "**failed**"} (${yesVotes}/${livingCount} living, ${tally}).` +
+            `${nom} ${passed ? "**passed**" : "**failed**"} (${yesVotes}/${livingCount} living, ${tally}).` +
               (passed ? " ST may use **Execute…** on the control panel." : ""),
           )
           .catch(() => undefined);
       }
 
       await interaction.editReply({
-        content: `Nomination #${next.order} ${passed ? "passed" : "failed"}. ${tally}`,
+        content: `${nom} ${passed ? "passed" : "failed"}. ${tally}`,
       });
       return true;
     }

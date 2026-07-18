@@ -1,6 +1,10 @@
 import { MessageFlags, type ButtonInteraction, type Guild } from "discord.js";
 import { createReminder, getGameById, prisma } from "@grimkeeper/database";
-import { GameCommandKind, type GameEngine } from "@grimkeeper/engine";
+import {
+  GameCommandKind,
+  passesExecutionVote,
+  type GameEngine,
+} from "@grimkeeper/engine";
 
 import {
   loadEngine,
@@ -10,6 +14,10 @@ import {
   resolveVotingChannel,
   getStorytellerThread,
 } from "../commands/command-context.js";
+import {
+  formatNominationRef,
+  resolveNominationMessageUrl,
+} from "../day-thread.js";
 import {
   parseVoteTrackerButtonCustomId,
   upsertStVoteTracker,
@@ -73,6 +81,17 @@ export async function handleLockVotesButton(interaction: ButtonInteraction): Pro
   return true;
 }
 
+async function nominationLink(
+  guild: Guild,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+  nominationId: string,
+): Promise<string> {
+  const voting = await resolveVotingChannel(guild, game, engine);
+  const url = await resolveNominationMessageUrl(voting, nominationId);
+  return formatNominationRef(engine, nominationId, url);
+}
+
 async function runVoteTrackerAction(
   guild: Guild,
   game: { id: string; channelId: string; kibThreadId?: string | null; guildId: string },
@@ -90,6 +109,9 @@ async function runVoteTrackerAction(
   }
   if (action === "ping-hand") {
     return pingCountHand(guild, game, engine, nominationId, { force: true });
+  }
+  if (action === "announce-block") {
+    return announceBlockResult(guild, game, engine, nominationId);
   }
 
   const kind =
@@ -124,33 +146,33 @@ async function runVoteTrackerAction(
   await refreshNominationEverywhere(guild, game, engine, nominationId);
 
   const updated = engine.getNominationById(nominationId);
-  const order = updated?.order ?? nomination.order;
+  const nom = await nominationLink(guild, game, engine, nominationId);
 
   if (action === "lock") {
     await cancelVoteDeadlineReminder(nominationId);
-    return `Votes locked on nomination #${order}. Players can no longer change votes.`;
+    return `Votes locked on ${nom}. Players can no longer change votes.`;
   }
   if (action === "unlock") {
-    return `Votes unlocked on nomination #${order}.`;
+    return `Votes unlocked on ${nom}.`;
   }
   if (action === "cancel-count") {
-    return `Vote count cancelled on nomination #${order}.`;
+    return `Vote count cancelled on ${nom}.`;
   }
   if (action === "start-count") {
-    const handNote = await pingCountHand(guild, game, engine, nominationId);
-    return `Counting nomination #${order}. ${handNote}`;
+    const hand = engine.getCountHandPlayer(nominationId);
+    return `Counting ${nom}. Hand on **${hand?.displayName ?? "?"}** — press **Ping hand** when ready.`;
   }
   if (action === "count-yes" || action === "count-no") {
     const finished = updated?.votesLocked;
     if (finished) {
       await cancelVoteDeadlineReminder(nominationId);
-      return `Counted **${action === "count-yes" ? "yes" : "no"}** — nomination #${order} is locked.`;
+      return `Counted **${action === "count-yes" ? "yes" : "no"}** — ${nom} is locked.`;
     }
-    const handNote = await pingCountHand(guild, game, engine, nominationId);
-    return `Counted **${action === "count-yes" ? "yes" : "no"}**. ${handNote}`;
+    const hand = engine.getCountHandPlayer(nominationId);
+    return `Counted **${action === "count-yes" ? "yes" : "no"}**. Next hand: **${hand?.displayName ?? "?"}**.`;
   }
 
-  return `Updated nomination #${order}.`;
+  return `Updated ${nom}.`;
 }
 
 async function pingMissingVoters(
@@ -165,18 +187,22 @@ async function pingMissingVoters(
   const missing = engine
     .getPlayersMissingVotes(nominationId)
     .filter((player) => !player.isFake && !player.discordUserId.startsWith("dev:"));
-  if (missing.length === 0) {
-    return `No missing votes on nomination #${nomination.order}.`;
-  }
 
   const voting = await resolveVotingChannel(guild, game, engine);
+  const url = await resolveNominationMessageUrl(voting, nominationId);
+  const nom = formatNominationRef(engine, nominationId, url);
+
+  if (missing.length === 0) {
+    return `No missing votes on ${nom}.`;
+  }
+
   if (!voting) {
     return "Could not find Town Voting to ping missing voters.";
   }
 
   const mentions = missing.map((player) => `<@${player.discordUserId}>`).join(" ");
   await voting.send({
-    content: `${mentions} — still need your vote on nomination **#${nomination.order}**.`,
+    content: `${mentions} — still need your vote on ${nom}.`,
     allowedMentions: { users: missing.map((player) => player.discordUserId) },
   });
   return `Pinged **${missing.length}** missing voter${missing.length === 1 ? "" : "s"} in Town Voting.`;
@@ -203,11 +229,55 @@ async function pingCountHand(
     return `Hand is on **${hand.displayName}** (Town Voting unavailable).`;
   }
 
+  const url = await resolveNominationMessageUrl(voting, nominationId);
+  const nom = formatNominationRef(engine, nominationId, url);
+
   await voting.send({
-    content: `<@${hand.discordUserId}> — the vote count hand is on you for nomination **#${nomination.order}**.`,
+    content: `<@${hand.discordUserId}> — the vote count hand is on you for ${nom}.`,
     allowedMentions: { users: [hand.discordUserId] },
   });
   return `Hand on <@${hand.discordUserId}>.`;
+}
+
+async function announceBlockResult(
+  guild: Guild,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+  nominationId: string,
+): Promise<string> {
+  const nomination = engine.getNominationById(nominationId);
+  if (!nomination) return "Nomination not found.";
+  if (!nomination.votesLocked) {
+    return "Lock or finish the vote count before announcing the result.";
+  }
+
+  const voting = await resolveVotingChannel(guild, game, engine);
+  if (!voting) {
+    return "Could not find Town Voting to announce the result.";
+  }
+
+  const yesVotes = engine.getEffectiveYesVotes(nominationId);
+  const living = engine.countLivingPlayers();
+  const needed = engine.votesNeededOnTheBlock();
+  const onBlock = passesExecutionVote(yesVotes, living);
+  const nominee = engine.getPlayerById(nomination.nomineeId);
+  const url = await resolveNominationMessageUrl(voting, nominationId);
+  const nom = formatNominationRef(engine, nominationId, url);
+  const nomineeName = nominee?.displayName ?? "The nominee";
+  const tally = engine.formatNominationTally(nominationId, { revealSecret: true });
+
+  const resultLine = onBlock
+    ? `**${nomineeName}** is **on the block** with **${yesVotes}** yes (needed ${needed} of ${living} alive).`
+    : `**${nomineeName}** is **not** on the block with **${yesVotes}** yes (needed ${needed} of ${living} alive).`;
+
+  await voting.send({
+    content: `${resultLine}\n${nom} — ${tally}`,
+    allowedMentions: { parse: [] },
+  });
+
+  return onBlock
+    ? `Announced: **${nomineeName}** is on the block (${yesVotes}/${needed}).`
+    : `Announced: **${nomineeName}** is not on the block (${yesVotes}/${needed}).`;
 }
 
 export async function scheduleNominationVoteDeadlineReminder(
@@ -228,13 +298,14 @@ export async function scheduleNominationVoteDeadlineReminder(
 
   const stIds = engine.getStorytellerDiscordIds();
   const stMentions = stIds.map((id) => `<@${id}>`).join(" ");
-  const nominee = engine.getPlayerById(nomination.nomineeId);
+  const voting = await resolveVotingChannel(guild, game, engine);
+  const url = await resolveNominationMessageUrl(voting, nominationId);
 
   await createReminder({
     gameId: game.id,
     guildId: game.guildId,
     channelId: kib.id,
-    message: `${stMentions} Nomination #${nomination.order} (${nominee?.displayName ?? "nominee"}) hit the 24h vote deadline — check the vote on the tracker.`
+    message: `${stMentions} ${formatNominationRef(engine, nominationId, url, { capitalize: true })} hit the 24h vote deadline — check the vote on the tracker.`
       .replace(/\s+/g, " ")
       .trim(),
     fireAt: new Date(nomination.voteDeadlineAt),
