@@ -29,6 +29,9 @@ export const GameCommandKind = {
   SetPlayerAlive: "SetPlayerAlive",
   LockNominationVotes: "LockNominationVotes",
   UnlockNominationVotes: "UnlockNominationVotes",
+  StartNominationCount: "StartNominationCount",
+  CountHandVote: "CountHandVote",
+  CancelNominationCount: "CancelNominationCount",
 } as const;
 
 export type GameCommandKind = (typeof GameCommandKind)[keyof typeof GameCommandKind];

@@ -26,6 +26,9 @@ export const GameEventType = {
   PlayerAliveChanged: "PlayerAliveChanged",
   NominationVotesLocked: "NominationVotesLocked",
   NominationVotesUnlocked: "NominationVotesUnlocked",
+  NominationCountStarted: "NominationCountStarted",
+  NominationCountHandAdvanced: "NominationCountHandAdvanced",
+  NominationCountFinished: "NominationCountFinished",
 } as const;
 
 export type GameEventType = (typeof GameEventType)[keyof typeof GameEventType];

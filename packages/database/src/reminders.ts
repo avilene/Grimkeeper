@@ -367,3 +367,40 @@ export async function cancelReminderByIdPrefix(scope: ReminderScope, idPrefix: s
   });
   return result.count;
 }
+
+/** All pending reminders in a guild (any game / channel). For /dev reminders. */
+export async function listPendingRemindersForGuild(guildId: string) {
+  return prisma.gameReminder.findMany({
+    where: { guildId, fired: false },
+    orderBy: { fireAt: "asc" },
+  });
+}
+
+export async function cancelReminderByIdPrefixInGuild(
+  guildId: string,
+  idPrefix: string,
+): Promise<number> {
+  const trimmed = idPrefix.trim();
+  if (!trimmed) return 0;
+
+  const reminders = await prisma.gameReminder.findMany({
+    where: { guildId, fired: false },
+    select: { id: true },
+  });
+  const matches = reminders.filter((reminder) => matchesIdPrefix(reminder.id, trimmed));
+  if (matches.length === 0) return 0;
+
+  const result = await prisma.gameReminder.updateMany({
+    where: { id: { in: matches.map((reminder) => reminder.id) }, fired: false },
+    data: { fired: true, sourceKey: null },
+  });
+  return result.count;
+}
+
+export async function cancelAllPendingRemindersForGuild(guildId: string): Promise<number> {
+  const result = await prisma.gameReminder.updateMany({
+    where: { guildId, fired: false },
+    data: { fired: true, sourceKey: null },
+  });
+  return result.count;
+}

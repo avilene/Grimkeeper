@@ -141,7 +141,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             value: [
               cmd("resolve-next", "Resolve the oldest open nomination."),
               cmd("execute", "Needs `player:` after a passed nomination."),
-              cmd("votes", "Refresh the ST vote tracker (Lock/Unlock lives there)."),
+              cmd("votes", "Refresh the ST vote tracker (Count Yes/No + Lock lives there)."),
               cmd("vote-visibility", "Needs `mode:` public or secret."),
               cmd("set-vote", "Needs `choice:` (+ optional voter/nominee/reason)."),
               cmd("mark-dead", "Needs `player:` (+ optional `alive:`). Corrections only — not execute."),
@@ -238,6 +238,7 @@ export function buildDevHelpEmbeds(): EmbedBuilder[] {
             cmd("/dev fill", "Add fake players to the lobby."),
             cmd("/dev clear", "Remove all fake players."),
             cmd("/dev setup", "Fill lobby with fake players for testing."),
+            cmd("/dev reminders", "List/delete all server reminders (STs use `/st reminders` for their game)."),
           ].join("\n\n"),
         }),
     ];
@@ -255,6 +256,7 @@ export function buildDevHelpEmbeds(): EmbedBuilder[] {
             cmd("/dev fill", "Add fake players to the lobby."),
             cmd("/dev clear", "Remove all fake players."),
             cmd("/dev setup", "Fill lobby with fake players for testing."),
+            cmd("/dev reminders", "List/delete all server reminders (STs use `/st reminders` for their game)."),
           ].join("\n\n"),
         },
         {

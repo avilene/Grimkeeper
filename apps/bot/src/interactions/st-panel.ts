@@ -166,6 +166,9 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       });
       await persistEvents(engine, events);
 
+      const { cancelVoteDeadlineReminder } = await import("./lock-votes.js");
+      await cancelVoteDeadlineReminder(next.id);
+
       const resolved = engine.getNominationById(next.id);
       const yesVotes = engine.getEffectiveYesVotes(next.id);
       const livingCount = engine.countLivingPlayers();

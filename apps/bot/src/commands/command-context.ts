@@ -1374,7 +1374,12 @@ export async function collectNominationUpdateChannels(
 
 export async function postNominationEverywhere(
   guild: Guild,
-  game: GameRoleIds & { id: string; channelId: string },
+  game: GameRoleIds & {
+    id: string;
+    channelId: string;
+    kibThreadId?: string | null;
+    guildId?: string;
+  },
   engine: GameEngine,
   nominationId: string,
 ): Promise<{ voteThread: boolean }> {
@@ -1403,6 +1408,19 @@ export async function postNominationEverywhere(
   if (engine.getState().townMode) {
     await refreshStVoteTrackerForGame(guild, game, engine);
   }
+
+  const { scheduleNominationVoteDeadlineReminder } = await import("../interactions/lock-votes.js");
+  await scheduleNominationVoteDeadlineReminder(
+    guild,
+    {
+      id: game.id,
+      channelId: game.channelId,
+      kibThreadId: game.kibThreadId,
+      guildId: game.guildId ?? engine.getState().guildId,
+    },
+    engine,
+    nominationId,
+  ).catch(() => undefined);
 
   return { voteThread };
 }

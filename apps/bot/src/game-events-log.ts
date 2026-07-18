@@ -89,6 +89,23 @@ function eventFields(event: GameEvent): Record<string, unknown> {
       return { nominationId: event.nominationId };
     case GameEventType.NominationVotesUnlocked:
       return { nominationId: event.nominationId };
+    case GameEventType.NominationCountStarted:
+      return {
+        nominationId: event.nominationId,
+        handPlayerId: event.handPlayerId,
+        handIndex: event.handIndex,
+      };
+    case GameEventType.NominationCountHandAdvanced:
+      return {
+        nominationId: event.nominationId,
+        voterId: event.voterId,
+        choice: event.choice,
+        handPlayerId: event.handPlayerId,
+        handIndex: event.handIndex,
+        finished: event.finished,
+      };
+    case GameEventType.NominationCountFinished:
+      return { nominationId: event.nominationId };
   }
 }
 

@@ -374,6 +374,108 @@ export class DevCommands {
     });
   }
 
+  @Slash({
+    name: "reminders",
+    description: "List or cancel pending reminders across the whole server",
+  })
+  async reminders(
+    @SlashOption({
+      name: "delete",
+      description: "Cancel one reminder by ID prefix from the list",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    deleteId: string | undefined,
+    @SlashOption({
+      name: "clear_all",
+      description: "Cancel every pending reminder in this server",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    clearAll: boolean | undefined,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    if (!(await this.requireDev(interaction))) return;
+    if (!interaction.guildId) {
+      await interaction.reply({
+        content: "This command must be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const {
+      cancelAllPendingRemindersForGuild,
+      cancelReminderByIdPrefixInGuild,
+      listPendingRemindersForGuild,
+    } = await import("@grimkeeper/database");
+    const {
+      discordRelativeWithTime,
+      formatPingRoleMentions,
+      formatReminderText,
+    } = await import("../reminder-message.js");
+
+    if (clearAll) {
+      const cancelled = await cancelAllPendingRemindersForGuild(interaction.guildId);
+      await interaction.reply({
+        content:
+          cancelled === 0
+            ? "No pending reminders to cancel."
+            : `Cancelled **${cancelled}** reminder${cancelled === 1 ? "" : "s"} across this server.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (deleteId?.trim()) {
+      const cancelled = await cancelReminderByIdPrefixInGuild(
+        interaction.guildId,
+        deleteId.trim(),
+      );
+      await interaction.reply({
+        content:
+          cancelled === 0
+            ? `No pending reminder found with ID prefix \`${deleteId.trim()}\`.`
+            : `Cancelled **${cancelled}** reminder${cancelled === 1 ? "" : "s"}.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const pending = await listPendingRemindersForGuild(interaction.guildId);
+    if (pending.length === 0) {
+      await interaction.reply({
+        content: "No pending reminders in this server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const lines = pending.slice(0, 40).map((reminder) => {
+      const when = discordRelativeWithTime(reminder.fireAt);
+      const pingMentions = reminder.pingPlayers
+        ? formatPingRoleMentions(reminder.pingRoleId)
+        : null;
+      const pingNote = reminder.pingPlayers ? ` ping ${pingMentions ?? "players"}` : "";
+      const gameNote = reminder.gameId ? ` game \`${reminder.gameId.slice(0, 8)}\`` : " channel";
+      return `- \`${reminder.id.slice(0, 8)}\` ${when} in <#${reminder.channelId}>${gameNote}${pingNote}: ${formatReminderText(reminder.message, reminder.emoji)}`;
+    });
+    const truncated =
+      pending.length > 40 ? `\n\n_…and ${pending.length - 40} more._` : "";
+
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("Pending reminders (server-wide)")
+          .setDescription(
+            `${lines.join("\n")}${truncated}\n\nDelete one: \`/dev reminders delete:<prefix>\`. Clear all: \`/dev reminders clear_all:True\`.\nOther STs manage only their game via \`/st reminders\`.`,
+          ),
+      ],
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
   private async requireDev(interaction: CommandInteraction): Promise<boolean> {
     try {
       requireDevMode();

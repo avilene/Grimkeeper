@@ -157,6 +157,28 @@ export interface NominationVotesUnlockedEvent extends GameEventBase {
   nominationId: string;
 }
 
+export interface NominationCountStartedEvent extends GameEventBase {
+  type: typeof GameEventType.NominationCountStarted;
+  nominationId: string;
+  handPlayerId: string;
+  handIndex: number;
+}
+
+export interface NominationCountHandAdvancedEvent extends GameEventBase {
+  type: typeof GameEventType.NominationCountHandAdvanced;
+  nominationId: string;
+  voterId: string;
+  choice: VoteChoice;
+  handPlayerId: string | null;
+  handIndex: number | null;
+  finished: boolean;
+}
+
+export interface NominationCountFinishedEvent extends GameEventBase {
+  type: typeof GameEventType.NominationCountFinished;
+  nominationId: string;
+}
+
 export interface SeatPickedEvent extends GameEventBase {
   type: typeof GameEventType.SeatPicked;
   playerId: string;
@@ -214,7 +236,10 @@ export type GameEvent =
   | TownSetupEvent
   | PlayerAliveChangedEvent
   | NominationVotesLockedEvent
-  | NominationVotesUnlockedEvent;
+  | NominationVotesUnlockedEvent
+  | NominationCountStartedEvent
+  | NominationCountHandAdvancedEvent
+  | NominationCountFinishedEvent;
 
 export interface PlayerState {
   id: string;
@@ -237,6 +262,8 @@ export interface NominationRecord {
   status: NominationStatus;
   voteDeadlineAt: string | null;
   votesLocked: boolean;
+  /** Index into eligible count order; null when not counting. */
+  countHandIndex: number | null;
 }
 
 export interface VoteRecord {
@@ -482,6 +509,25 @@ export interface UnlockNominationVotesCommand {
   nominationId: string;
 }
 
+export interface StartNominationCountCommand {
+  kind: typeof GameCommandKind.StartNominationCount;
+  gameId: string;
+  nominationId: string;
+}
+
+export interface CountHandVoteCommand {
+  kind: typeof GameCommandKind.CountHandVote;
+  gameId: string;
+  nominationId: string;
+  choice: "yes" | "no";
+}
+
+export interface CancelNominationCountCommand {
+  kind: typeof GameCommandKind.CancelNominationCount;
+  gameId: string;
+  nominationId: string;
+}
+
 export type GameCommand =
   | CreateGameCommand
   | AddPlayerCommand
@@ -512,7 +558,10 @@ export type GameCommand =
   | SetupTownCommand
   | SetPlayerAliveCommand
   | LockNominationVotesCommand
-  | UnlockNominationVotesCommand;
+  | UnlockNominationVotesCommand
+  | StartNominationCountCommand
+  | CountHandVoteCommand
+  | CancelNominationCountCommand;
 
 export const DEFAULT_MIN_PLAYERS = 5;
 export const DEV_MIN_PLAYERS = 3;
@@ -843,6 +892,9 @@ export class GameEngine {
         if (nomination.votesLocked) {
           throw new GameEngineError("Votes are locked on this nomination. Ask the storyteller to unlock.");
         }
+        if (nomination.countHandIndex != null) {
+          throw new GameEngineError("A vote count is in progress. Wait for the storyteller.");
+        }
         if (!voter.alive) {
           if (voter.ghostVoteUsed) {
             throw new GameEngineError("You have already used your ghost vote.");
@@ -966,8 +1018,56 @@ export class GameEngine {
         if (!nomination || nomination.status !== "open") {
           throw new GameEngineError("That nomination is not open.");
         }
-        if (!nomination.votesLocked) {
+        if (!nomination.votesLocked && nomination.countHandIndex == null) {
           throw new GameEngineError("Votes are not locked on this nomination.");
+        }
+        break;
+      }
+      case GameCommandKind.StartNominationCount: {
+        this.assertPhase("day", "Vote counts can only start during the day.");
+        this.assertDayState();
+        const nomination = this.getNominationById(command.nominationId);
+        if (!nomination || nomination.status !== "open") {
+          throw new GameEngineError("That nomination is not open.");
+        }
+        if (nomination.votesLocked) {
+          throw new GameEngineError("Votes are already locked on this nomination.");
+        }
+        if (nomination.countHandIndex != null) {
+          throw new GameEngineError("A vote count is already in progress.");
+        }
+        if (this.getCountEligiblePlayers(nomination.nomineeId).length === 0) {
+          throw new GameEngineError("No eligible voters to count.");
+        }
+        break;
+      }
+      case GameCommandKind.CountHandVote: {
+        this.assertPhase("day", "Vote counts can only advance during the day.");
+        this.assertDayState();
+        const nomination = this.getNominationById(command.nominationId);
+        if (!nomination || nomination.status !== "open") {
+          throw new GameEngineError("That nomination is not open.");
+        }
+        if (nomination.countHandIndex == null) {
+          throw new GameEngineError("Start the vote count first.");
+        }
+        if (nomination.votesLocked) {
+          throw new GameEngineError("Votes are already locked.");
+        }
+        if (command.choice !== "yes" && command.choice !== "no") {
+          throw new GameEngineError("Count votes must be yes or no.");
+        }
+        break;
+      }
+      case GameCommandKind.CancelNominationCount: {
+        this.assertPhase("day", "Vote counts can only be cancelled during the day.");
+        this.assertDayState();
+        const nomination = this.getNominationById(command.nominationId);
+        if (!nomination || nomination.status !== "open") {
+          throw new GameEngineError("That nomination is not open.");
+        }
+        if (nomination.countHandIndex == null) {
+          throw new GameEngineError("No vote count is in progress.");
         }
         break;
       }
@@ -1347,6 +1447,72 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
+      case GameCommandKind.StartNominationCount: {
+        const nomination = this.getNominationById(command.nominationId)!;
+        const handPlayer = this.getCountEligiblePlayers(nomination.nomineeId)[0]!;
+        return [
+          {
+            type: GameEventType.NominationCountStarted,
+            gameId: command.gameId,
+            nominationId: command.nominationId,
+            handPlayerId: handPlayer.id,
+            handIndex: 0,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
+      case GameCommandKind.CountHandVote: {
+        const nomination = this.getNominationById(command.nominationId)!;
+        const eligible = this.getCountEligiblePlayers(nomination.nomineeId);
+        const handIndex = nomination.countHandIndex ?? 0;
+        const voter = eligible[handIndex];
+        if (!voter) {
+          throw new GameEngineError("No voter under the hand.");
+        }
+        const nextIndex = handIndex + 1;
+        const finished = nextIndex >= eligible.length;
+        const nextPlayer = finished ? null : eligible[nextIndex]!;
+        return [
+          {
+            type: GameEventType.NominationCountHandAdvanced,
+            gameId: command.gameId,
+            nominationId: command.nominationId,
+            voterId: voter.id,
+            choice: command.choice,
+            handPlayerId: nextPlayer?.id ?? null,
+            handIndex: finished ? null : nextIndex,
+            finished,
+            timestamp: new Date().toISOString(),
+          },
+          ...(finished
+            ? [
+                {
+                  type: GameEventType.NominationCountFinished,
+                  gameId: command.gameId,
+                  nominationId: command.nominationId,
+                  timestamp: new Date().toISOString(),
+                } as const,
+                {
+                  type: GameEventType.NominationVotesLocked,
+                  gameId: command.gameId,
+                  nominationId: command.nominationId,
+                  timestamp: new Date().toISOString(),
+                } as const,
+              ]
+            : []),
+        ];
+      }
+      case GameCommandKind.CancelNominationCount:
+        return [
+          {
+            type: GameEventType.NominationCountFinished,
+            gameId: command.gameId,
+            nominationId: command.nominationId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      default:
+        return [];
     }
   }
 
@@ -1435,6 +1601,7 @@ export class GameEngine {
           status: "open",
           voteDeadlineAt: event.voteDeadlineAt ?? null,
           votesLocked: false,
+          countHandIndex: null,
         });
         break;
       }
@@ -1555,6 +1722,7 @@ export class GameEngine {
         const nomination = this.getNominationById(event.nominationId);
         if (nomination) {
           nomination.votesLocked = true;
+          nomination.countHandIndex = null;
         }
         break;
       }
@@ -1562,6 +1730,48 @@ export class GameEngine {
         const nomination = this.getNominationById(event.nominationId);
         if (nomination) {
           nomination.votesLocked = false;
+          nomination.countHandIndex = null;
+        }
+        break;
+      }
+      case GameEventType.NominationCountStarted: {
+        const nomination = this.getNominationById(event.nominationId);
+        if (nomination) {
+          nomination.countHandIndex = event.handIndex;
+        }
+        break;
+      }
+      case GameEventType.NominationCountHandAdvanced: {
+        if (!this.state.day) break;
+        const existingIndex = this.state.day.votes.findIndex(
+          (vote) =>
+            vote.nominationId === event.nominationId && vote.voterId === event.voterId,
+        );
+        const voteRecord: VoteRecord = {
+          nominationId: event.nominationId,
+          voterId: event.voterId,
+          choice: event.choice,
+          reason: null,
+        };
+        if (existingIndex >= 0) {
+          this.state.day.votes[existingIndex] = voteRecord;
+        } else {
+          this.state.day.votes.push(voteRecord);
+        }
+        const voter = this.getPlayerById(event.voterId);
+        if (voter && !voter.alive && event.choice === "yes") {
+          voter.ghostVoteUsed = true;
+        }
+        const nomination = this.getNominationById(event.nominationId);
+        if (nomination) {
+          nomination.countHandIndex = event.handIndex;
+        }
+        break;
+      }
+      case GameEventType.NominationCountFinished: {
+        const nomination = this.getNominationById(event.nominationId);
+        if (nomination) {
+          nomination.countHandIndex = null;
         }
         break;
       }
@@ -1639,10 +1849,16 @@ export class GameEngine {
         .map((vote) => [vote.voterId, vote] as const),
     );
 
+    const handPlayerId =
+      nomination.countHandIndex != null
+        ? this.getCountEligiblePlayers(nomination.nomineeId)[nomination.countHandIndex]?.id
+        : null;
+
     const lines = ordered.map((player, index) => {
       const seat = player.seat != null ? `seat ${player.seat}` : "unseated";
       const vote = votesByVoter.get(player.id);
       const deadTag = player.alive ? "" : " [dead]";
+      const handTag = player.id === handPlayerId ? " 👉" : "";
       let status: string;
       if (vote) {
         const reason = vote.reason ? ` — ${vote.reason}` : "";
@@ -1655,7 +1871,7 @@ export class GameEngine {
       } else {
         status = "_pending_";
       }
-      return `${index + 1}. ${player.displayName}${deadTag} (${seat}): ${status}`;
+      return `${index + 1}. ${player.displayName}${deadTag}${handTag} (${seat}): ${status}`;
     });
 
     return lines.join("\n");
@@ -1697,6 +1913,31 @@ export class GameEngine {
       ordered.push(seated[(start + offset) % seated.length]!);
     }
     return ordered;
+  }
+
+  /** Players who can participate in a counted vote (alive, or dead with ghost remaining). */
+  getCountEligiblePlayers(nomineeId: string): PlayerState[] {
+    return this.getVoteLockInOrder(nomineeId).filter(
+      (player) => player.alive || !player.ghostVoteUsed,
+    );
+  }
+
+  getCountHandPlayer(nominationId: string): PlayerState | null {
+    const nomination = this.getNominationById(nominationId);
+    if (!nomination || nomination.countHandIndex == null) return null;
+    return this.getCountEligiblePlayers(nomination.nomineeId)[nomination.countHandIndex] ?? null;
+  }
+
+  getPlayersMissingVotes(nominationId: string): PlayerState[] {
+    const day = this.state.day;
+    const nomination = this.getNominationById(nominationId);
+    if (!day || !nomination) return [];
+    const voted = new Set(
+      day.votes.filter((vote) => vote.nominationId === nominationId).map((vote) => vote.voterId),
+    );
+    return this.getCountEligiblePlayers(nomination.nomineeId).filter(
+      (player) => !voted.has(player.id),
+    );
   }
 
   getSeatingChart(): string[] {

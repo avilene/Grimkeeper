@@ -1040,4 +1040,98 @@ describe("GameEngine", () => {
     expect(firstLine).toContain("seat 3");
     expect(roll.split("\n").at(-1)).toContain(players[1]!.displayName);
   });
+
+  it("counts votes one-by-one with yes/no and locks when finished", () => {
+    const engine = setupTownEngine(4);
+    const players = engine.getState().players;
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Count test.",
+    });
+    for (const event of nominationEvents) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    const start = engine.handle({
+      kind: GameCommandKind.StartNominationCount,
+      gameId,
+      nominationId: nomination.id,
+    });
+    for (const event of start) engine.apply(event);
+    expect(engine.getCountHandPlayer(nomination.id)?.id).toBe(players[2]!.id);
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.CastVote,
+        gameId,
+        nominationId: nomination.id,
+        voterId: players[0]!.id,
+        choice: "yes",
+      }),
+    ).toThrow("vote count is in progress");
+
+    const eligible = engine.getCountEligiblePlayers(players[1]!.id);
+    for (const [index, player] of eligible.entries()) {
+      const events = engine.handle({
+        kind: GameCommandKind.CountHandVote,
+        gameId,
+        nominationId: nomination.id,
+        choice: index % 2 === 0 ? "yes" : "no",
+      });
+      for (const event of events) engine.apply(event);
+      if (index < eligible.length - 1) {
+        expect(engine.getCountHandPlayer(nomination.id)?.id).toBe(eligible[index + 1]!.id);
+      }
+    }
+
+    expect(engine.getNominationById(nomination.id)?.votesLocked).toBe(true);
+    expect(engine.getNominationById(nomination.id)?.countHandIndex).toBeNull();
+    expect(engine.getCountHandPlayer(nomination.id)).toBeNull();
+    expect(engine.formatNominationTally(nomination.id, { revealSecret: true })).toContain("Yes: 2");
+  });
+
+  it("cancels an in-progress count without locking", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Cancel count.",
+    });
+    for (const event of nominationEvents) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.StartNominationCount,
+      gameId,
+      nominationId: nomination.id,
+    })) {
+      engine.apply(event);
+    }
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CountHandVote,
+      gameId,
+      nominationId: nomination.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CancelNominationCount,
+      gameId,
+      nominationId: nomination.id,
+    })) {
+      engine.apply(event);
+    }
+
+    expect(engine.getNominationById(nomination.id)?.countHandIndex).toBeNull();
+    expect(engine.getNominationById(nomination.id)?.votesLocked).toBe(false);
+    expect(engine.formatNominationTally(nomination.id, { revealSecret: true })).toContain("Yes: 1");
+  });
 });

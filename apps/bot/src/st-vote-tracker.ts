@@ -18,6 +18,12 @@ import { log } from "./logger.js";
 export const VOTE_TRACKER_FOOTER_PREFIX = "grimkeeper:vote-tracker:";
 export const LOCK_VOTES_BUTTON_PREFIX = "gk:lock-votes:";
 export const UNLOCK_VOTES_BUTTON_PREFIX = "gk:unlock-votes:";
+export const START_COUNT_BUTTON_PREFIX = "gk:start-count:";
+export const COUNT_YES_BUTTON_PREFIX = "gk:count-yes:";
+export const COUNT_NO_BUTTON_PREFIX = "gk:count-no:";
+export const CANCEL_COUNT_BUTTON_PREFIX = "gk:cancel-count:";
+export const PING_MISSING_BUTTON_PREFIX = "gk:ping-missing:";
+export const PING_HAND_BUTTON_PREFIX = "gk:ping-hand:";
 
 export function voteTrackerFooter(gameId: string): string {
   return `${VOTE_TRACKER_FOOTER_PREFIX}${gameId}`;
@@ -36,21 +42,74 @@ export function unlockVotesButtonCustomId(gameId: string, nominationId: string):
   return `${UNLOCK_VOTES_BUTTON_PREFIX}${encodeIdPair(gameId, nominationId)}`;
 }
 
+export function startCountButtonCustomId(gameId: string, nominationId: string): string {
+  return `${START_COUNT_BUTTON_PREFIX}${encodeIdPair(gameId, nominationId)}`;
+}
+
+export function countYesButtonCustomId(gameId: string, nominationId: string): string {
+  return `${COUNT_YES_BUTTON_PREFIX}${encodeIdPair(gameId, nominationId)}`;
+}
+
+export function countNoButtonCustomId(gameId: string, nominationId: string): string {
+  return `${COUNT_NO_BUTTON_PREFIX}${encodeIdPair(gameId, nominationId)}`;
+}
+
+export function cancelCountButtonCustomId(gameId: string, nominationId: string): string {
+  return `${CANCEL_COUNT_BUTTON_PREFIX}${encodeIdPair(gameId, nominationId)}`;
+}
+
+export function pingMissingButtonCustomId(gameId: string, nominationId: string): string {
+  return `${PING_MISSING_BUTTON_PREFIX}${encodeIdPair(gameId, nominationId)}`;
+}
+
+export function pingHandButtonCustomId(gameId: string, nominationId: string): string {
+  return `${PING_HAND_BUTTON_PREFIX}${encodeIdPair(gameId, nominationId)}`;
+}
+
+export type VoteTrackerButtonAction =
+  | "lock"
+  | "unlock"
+  | "start-count"
+  | "count-yes"
+  | "count-no"
+  | "cancel-count"
+  | "ping-missing"
+  | "ping-hand";
+
+const VOTE_TRACKER_BUTTON_PREFIXES: { prefix: string; action: VoteTrackerButtonAction }[] = [
+  { prefix: LOCK_VOTES_BUTTON_PREFIX, action: "lock" },
+  { prefix: UNLOCK_VOTES_BUTTON_PREFIX, action: "unlock" },
+  { prefix: START_COUNT_BUTTON_PREFIX, action: "start-count" },
+  { prefix: COUNT_YES_BUTTON_PREFIX, action: "count-yes" },
+  { prefix: COUNT_NO_BUTTON_PREFIX, action: "count-no" },
+  { prefix: CANCEL_COUNT_BUTTON_PREFIX, action: "cancel-count" },
+  { prefix: PING_MISSING_BUTTON_PREFIX, action: "ping-missing" },
+  { prefix: PING_HAND_BUTTON_PREFIX, action: "ping-hand" },
+];
+
 export function parseLockVotesButtonCustomId(
   customId: string,
 ): { gameId: string; nominationId: string; lock: boolean } | null {
-  const lock = customId.startsWith(LOCK_VOTES_BUTTON_PREFIX);
-  const unlock = customId.startsWith(UNLOCK_VOTES_BUTTON_PREFIX);
-  if (!lock && !unlock) return null;
-  const rest = customId.slice(
-    lock ? LOCK_VOTES_BUTTON_PREFIX.length : UNLOCK_VOTES_BUTTON_PREFIX.length,
-  );
-  const parsed = parseIdPair(rest);
+  const parsed = parseVoteTrackerButtonCustomId(customId);
+  if (!parsed || (parsed.action !== "lock" && parsed.action !== "unlock")) return null;
+  return {
+    gameId: parsed.gameId,
+    nominationId: parsed.nominationId,
+    lock: parsed.action === "lock",
+  };
+}
+
+export function parseVoteTrackerButtonCustomId(
+  customId: string,
+): { gameId: string; nominationId: string; action: VoteTrackerButtonAction } | null {
+  const match = VOTE_TRACKER_BUTTON_PREFIXES.find(({ prefix }) => customId.startsWith(prefix));
+  if (!match) return null;
+  const parsed = parseIdPair(customId.slice(match.prefix.length));
   if (!parsed) return null;
   return {
     gameId: parsed.left,
     nominationId: parsed.right,
-    lock,
+    action: match.action,
   };
 }
 
@@ -59,7 +118,15 @@ function nominationTrackerBlock(engine: GameEngine, nomination: NominationRecord
   const nominee = engine.getPlayerById(nomination.nomineeId);
   const tally = engine.formatNominationTally(nomination.id, { revealSecret: true });
   const roll = engine.formatNominationVoteRoll(nomination.id);
-  const lockLabel = nomination.votesLocked ? "🔒 **LOCKED**" : "🔓 Open for changes";
+  const hand = engine.getCountHandPlayer(nomination.id);
+  let lockLabel: string;
+  if (nomination.votesLocked) {
+    lockLabel = "🔒 **LOCKED**";
+  } else if (hand) {
+    lockLabel = `🖐 Counting — hand on **${hand.displayName}**`;
+  } else {
+    lockLabel = "🔓 Open for changes";
+  }
   const status =
     nomination.status === "open"
       ? lockLabel
@@ -125,10 +192,11 @@ export function buildStVoteTrackerComponents(
   const gameId = engine.getState().gameId;
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
-  const buttons: ButtonBuilder[] = [];
-  for (const nomination of open.slice(0, 10)) {
+  for (const nomination of open.slice(0, 4)) {
     const nominee = engine.getPlayerById(nomination.nomineeId);
-    const labelBase = `#${nomination.order} ${nominee?.displayName ?? "nom"}`.slice(0, 60);
+    const labelBase = `#${nomination.order} ${nominee?.displayName ?? "nom"}`.slice(0, 40);
+    const buttons: ButtonBuilder[] = [];
+
     if (nomination.votesLocked) {
       buttons.push(
         new ButtonBuilder()
@@ -136,18 +204,47 @@ export function buildStVoteTrackerComponents(
           .setLabel(`Unlock ${labelBase}`.slice(0, 80))
           .setStyle(ButtonStyle.Secondary),
       );
+    } else if (nomination.countHandIndex != null) {
+      buttons.push(
+        new ButtonBuilder()
+          .setCustomId(countYesButtonCustomId(gameId, nomination.id))
+          .setLabel(`Yes ${labelBase}`.slice(0, 80))
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(countNoButtonCustomId(gameId, nomination.id))
+          .setLabel(`No ${labelBase}`.slice(0, 80))
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId(cancelCountButtonCustomId(gameId, nomination.id))
+          .setLabel("Cancel count")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(pingHandButtonCustomId(gameId, nomination.id))
+          .setLabel("Ping hand")
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(pingMissingButtonCustomId(gameId, nomination.id))
+          .setLabel("Ping missing")
+          .setStyle(ButtonStyle.Primary),
+      );
     } else {
       buttons.push(
         new ButtonBuilder()
+          .setCustomId(startCountButtonCustomId(gameId, nomination.id))
+          .setLabel(`Count ${labelBase}`.slice(0, 80))
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
           .setCustomId(lockVotesButtonCustomId(gameId, nomination.id))
-          .setLabel(`Lock ${labelBase}`.slice(0, 80))
+          .setLabel(`Lock all ${labelBase}`.slice(0, 80))
           .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId(pingMissingButtonCustomId(gameId, nomination.id))
+          .setLabel("Ping missing")
+          .setStyle(ButtonStyle.Secondary),
       );
     }
-  }
 
-  for (let i = 0; i < buttons.length; i += 5) {
-    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons.slice(i, i + 5)));
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons.slice(0, 5)));
   }
   return rows;
 }

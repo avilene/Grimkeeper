@@ -8,8 +8,15 @@ import {
   voteModalCustomId,
 } from "./day-thread.js";
 import {
+  cancelCountButtonCustomId,
+  countNoButtonCustomId,
+  countYesButtonCustomId,
   lockVotesButtonCustomId,
   parseLockVotesButtonCustomId,
+  parseVoteTrackerButtonCustomId,
+  pingHandButtonCustomId,
+  pingMissingButtonCustomId,
+  startCountButtonCustomId,
   unlockVotesButtonCustomId,
 } from "./st-vote-tracker.js";
 
@@ -83,6 +90,43 @@ describe("lock vote custom ids", () => {
       gameId,
       nominationId,
       lock: false,
+    });
+  });
+
+  it("parses count and ping tracker buttons", () => {
+    expect(parseVoteTrackerButtonCustomId(startCountButtonCustomId(gameId, nominationId))).toEqual({
+      gameId,
+      nominationId,
+      action: "start-count",
+    });
+    expect(parseVoteTrackerButtonCustomId(countYesButtonCustomId(gameId, nominationId))).toEqual({
+      gameId,
+      nominationId,
+      action: "count-yes",
+    });
+    expect(parseVoteTrackerButtonCustomId(countNoButtonCustomId(gameId, nominationId))).toEqual({
+      gameId,
+      nominationId,
+      action: "count-no",
+    });
+    expect(parseVoteTrackerButtonCustomId(cancelCountButtonCustomId(gameId, nominationId))).toEqual(
+      {
+        gameId,
+        nominationId,
+        action: "cancel-count",
+      },
+    );
+    expect(parseVoteTrackerButtonCustomId(pingMissingButtonCustomId(gameId, nominationId))).toEqual(
+      {
+        gameId,
+        nominationId,
+        action: "ping-missing",
+      },
+    );
+    expect(parseVoteTrackerButtonCustomId(pingHandButtonCustomId(gameId, nominationId))).toEqual({
+      gameId,
+      nominationId,
+      action: "ping-hand",
     });
   });
 });
