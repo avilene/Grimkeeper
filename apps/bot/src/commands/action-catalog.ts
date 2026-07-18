@@ -13,6 +13,8 @@ export const ST_DO_ACTIONS: DoAction[] = [
   { name: "log", description: "Create or reopen the ST-only audit log thread" },
   { name: "end", description: "End the game (strip roles, open kib)" },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
+  { name: "close-nominations", description: "Close nominations for the day (no new noms until next day)" },
+  { name: "next-day", description: "Start the next day (reset nominations; reopen voting)" },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
   { name: "mark-dead", description: "Mark a player dead or alive", needs: ["player", "alive?"] },
   { name: "votes", description: "Refresh the ST vote tracker in kib" },

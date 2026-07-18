@@ -18,6 +18,7 @@ import { runSetPlayerVote } from "../set-vote.js";
 import { upsertStControlPanel } from "../st-control-panel.js";
 import { upsertStVoteTracker } from "../st-vote-tracker.js";
 import { parseUserMentionsFromString } from "../town-setup.js";
+import { closeTownNominations, startNextTownDay } from "../town-day.js";
 import { respondDoAutocomplete, ST_DO_ACTIONS } from "./action-catalog.js";
 import {
   GAME_DISCORD_ROLES_ENABLED,
@@ -187,6 +188,12 @@ export class StCommandsMinimal {
         return;
       case "resolve-next":
         await this.resolveNext(interaction);
+        return;
+      case "close-nominations":
+        await this.closeNominations(interaction);
+        return;
+      case "next-day":
+        await this.nextDay(interaction);
         return;
       case "execute":
         if (!player) {
@@ -618,6 +625,50 @@ export class StCommandsMinimal {
         ]
           .filter(Boolean)
           .join("\n"),
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async closeNominations(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    if (!interaction.guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const { dayNumber } = await closeTownNominations(
+        interaction.guild,
+        game,
+        engine,
+        interaction.user.id,
+      );
+      await replyOrEditInteraction(interaction, {
+        content: `Nominations closed for day **${dayNumber}**. Use \`/st do next-day\` when you're ready to reopen.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async nextDay(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    if (!interaction.guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const { dayNumber } = await startNextTownDay(
+        interaction.guild,
+        game,
+        engine,
+        interaction.user.id,
+      );
+      await replyOrEditInteraction(interaction, {
+        content: `Day **${dayNumber}** started — nominations are open again.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

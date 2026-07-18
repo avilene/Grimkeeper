@@ -606,6 +606,61 @@ export function votesNeededOnTheBlock(livingCount: number): number {
   return Math.floor(livingCount / 2) + 1;
 }
 
+export interface NominationVoteStanding {
+  nominationId: string;
+  nomineeId: string;
+  yesVotes: number;
+  hasMajority: boolean;
+}
+
+export type BlockContest =
+  | { kind: "empty" }
+  | { kind: "sole"; leader: NominationVoteStanding }
+  | { kind: "tie"; leaders: NominationVoteStanding[]; yesVotes: number };
+
+/**
+ * Among locked nominations with a majority, who currently holds the block.
+ * A tie for most votes means nobody is uniquely on the block.
+ */
+export function getBlockContest(
+  state: GameState,
+  options?: { includeNominationIds?: string[] },
+): BlockContest {
+  const day = state.day;
+  if (!day) return { kind: "empty" };
+
+  const living = countLivingPlayers(state);
+  const standings: NominationVoteStanding[] = [];
+
+  for (const nomination of day.nominations) {
+    if (nomination.status !== "open" && nomination.status !== "resolved_pass") continue;
+    if (!nomination.votesLocked && nomination.status === "open") continue;
+    if (
+      options?.includeNominationIds &&
+      !options.includeNominationIds.includes(nomination.id)
+    ) {
+      continue;
+    }
+    const yesVotes = getEffectiveYesVotes(state, nomination.id);
+    standings.push({
+      nominationId: nomination.id,
+      nomineeId: nomination.nomineeId,
+      yesVotes,
+      hasMajority: passesExecutionVote(yesVotes, living),
+    });
+  }
+
+  const majority = standings.filter((standing) => standing.hasMajority);
+  if (majority.length === 0) return { kind: "empty" };
+
+  const topYes = Math.max(...majority.map((standing) => standing.yesVotes));
+  const leaders = majority.filter((standing) => standing.yesVotes === topYes);
+  if (leaders.length === 1) {
+    return { kind: "sole", leader: leaders[0]! };
+  }
+  return { kind: "tie", leaders, yesVotes: topYes };
+}
+
 export function createEmptyDayState(dayNumber: number): DayPhaseState {
   return {
     dayNumber,
@@ -717,6 +772,10 @@ export class GameEngine {
     return votesNeededOnTheBlock(this.countLivingPlayers());
   }
 
+  getBlockContest(options?: { includeNominationIds?: string[] }): BlockContest {
+    return getBlockContest(this.state, options);
+  }
+
   static fromEvents(gameId: string, events: GameEvent[]): GameEngine {
     const engine = new GameEngine(gameId);
     for (const event of events) {
@@ -796,8 +855,20 @@ export class GameEngine {
         if (command.targetPhase === "night" && this.state.phase !== "day" && this.state.phase !== "lobby") {
           throw new GameEngineError("Can only enter night from lobby or day.");
         }
-        if (command.targetPhase === "day" && this.state.phase !== "night") {
-          throw new GameEngineError("Can only enter day from night.");
+        if (command.targetPhase === "day") {
+          const fromNight = this.state.phase === "night";
+          const townNextDay = this.state.townMode && this.state.phase === "day";
+          if (!fromNight && !townNextDay) {
+            throw new GameEngineError("Can only enter day from night.");
+          }
+          if (townNextDay) {
+            const open = this.state.day?.nominations.some((nomination) => nomination.status === "open");
+            if (open) {
+              throw new GameEngineError(
+                "Resolve or clear open nominations before starting the next day.",
+              );
+            }
+          }
         }
         break;
       case GameCommandKind.EndGame:
@@ -817,7 +888,7 @@ export class GameEngine {
         this.assertPhase("day", "Nominations can only be made during the day.");
         this.assertDayState();
         this.assertNominationsAcceptingNew();
-        this.assertAlivePlayer(command.nominatorId, "Only alive players can nominate.");
+        this.assertAlivePlayer(command.nominatorId, "Ghosts cannot nominate.");
         this.assertAlivePlayer(command.nomineeId, "You can only nominate alive players.");
         if (command.nominatorId === command.nomineeId) {
           throw new GameEngineError("You cannot nominate yourself.");
@@ -825,30 +896,14 @@ export class GameEngine {
         if (!command.accusation.trim()) {
           throw new GameEngineError("An accusation is required.");
         }
-        if (this.state.townMode) {
-          if (
-            this.state.day!.nominations.some(
-              (nomination) =>
-                nomination.nominatorId === command.nominatorId && nomination.status === "open",
-            )
-          ) {
-            throw new GameEngineError("You already have an open nomination.");
-          }
-          if (
-            this.state.day!.nominations.some(
-              (nomination) =>
-                nomination.nomineeId === command.nomineeId && nomination.status === "open",
-            )
-          ) {
-            throw new GameEngineError("That player already has an open nomination.");
-          }
-        } else if (
+        if (
           this.state.day!.nominations.some(
             (nomination) => nomination.nominatorId === command.nominatorId,
           )
         ) {
           throw new GameEngineError("You have already made a nomination today.");
-        } else if (
+        }
+        if (
           this.state.day!.nominations.some((nomination) => nomination.nomineeId === command.nomineeId)
         ) {
           throw new GameEngineError("That player has already been nominated today.");

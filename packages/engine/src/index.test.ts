@@ -802,7 +802,7 @@ describe("GameEngine", () => {
     expect(state.day?.discordThreadId).toBeNull();
   });
 
-  it("allows town-mode nominations again after prior nominations are resolved", () => {
+  it("enforces one nomination per player and nominee per day in town mode", () => {
     const engine = setupTownEngine(4);
     const players = engine.getState().players;
 
@@ -823,19 +823,28 @@ describe("GameEngine", () => {
     for (const event of resolveEvents) engine.apply(event);
     expect(engine.getNominationById(nomination.id)?.status).toBe("resolved_fail");
 
-    const second = engine.handle({
-      kind: GameCommandKind.MakeNomination,
-      gameId,
-      nominatorId: players[0]!.id,
-      nomineeId: players[2]!.id,
-      accusation: "Second accusation.",
-    });
-    expect(second).toHaveLength(1);
-    for (const event of second) engine.apply(event);
-    expect(engine.getState().day?.nominations).toHaveLength(2);
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId,
+        nominatorId: players[0]!.id,
+        nomineeId: players[2]!.id,
+        accusation: "Second accusation.",
+      }),
+    ).toThrow("already made a nomination today");
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId,
+        nominatorId: players[2]!.id,
+        nomineeId: players[1]!.id,
+        accusation: "Same nominee again.",
+      }),
+    ).toThrow("already been nominated today");
   });
 
-  it("blocks town-mode nominations only while another is open", () => {
+  it("blocks a second open nomination from the same nominator or on the same nominee", () => {
     const engine = setupTownEngine(4);
     const players = engine.getState().players;
 
@@ -856,7 +865,7 @@ describe("GameEngine", () => {
         nomineeId: players[2]!.id,
         accusation: "Duplicate nominator.",
       }),
-    ).toThrow("open nomination");
+    ).toThrow("already made a nomination today");
 
     expect(() =>
       engine.handle({
@@ -866,7 +875,73 @@ describe("GameEngine", () => {
         nomineeId: players[1]!.id,
         accusation: "Duplicate nominee.",
       }),
-    ).toThrow("open nomination");
+    ).toThrow("already been nominated today");
+  });
+
+  it("blocks ghosts from nominating", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    engine.apply({
+      type: GameEventType.PlayerDied,
+      gameId,
+      playerId: players[0]!.id,
+      cause: "night",
+      timestamp: new Date().toISOString(),
+    });
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId,
+        nominatorId: players[0]!.id,
+        nomineeId: players[1]!.id,
+        accusation: "Ghost accusation.",
+      }),
+    ).toThrow("Ghosts cannot nominate");
+  });
+
+  it("starts the next town day and clears nominations", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Day 1 nomination.",
+    })) {
+      engine.apply(event);
+    }
+    for (const event of engine.handle({ kind: GameCommandKind.ResolveNomination, gameId })) {
+      engine.apply(event);
+    }
+    for (const event of engine.handle({ kind: GameCommandKind.CloseNominations, gameId })) {
+      engine.apply(event);
+    }
+    expect(engine.getState().day?.nominationsOpen).toBe(false);
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.AdvancePhase,
+      gameId,
+      targetPhase: "day",
+    })) {
+      engine.apply(event);
+    }
+
+    expect(engine.getState().dayNumber).toBe(2);
+    expect(engine.getState().day?.nominations).toHaveLength(0);
+    expect(engine.getState().day?.nominationsOpen).toBe(true);
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Day 2 nomination.",
+    })) {
+      engine.apply(event);
+    }
+    expect(engine.getState().day?.nominations).toHaveLength(1);
   });
 
   it("sets a 24h vote deadline on nominations", () => {
@@ -1133,5 +1208,61 @@ describe("GameEngine", () => {
     expect(engine.getNominationById(nomination.id)?.countHandIndex).toBeNull();
     expect(engine.getNominationById(nomination.id)?.votesLocked).toBe(false);
     expect(engine.formatNominationTally(nomination.id, { revealSecret: true })).toContain("Yes: 1");
+  });
+
+  it("treats equal majority tallies as a block tie", () => {
+    const engine = setupTownEngine(5);
+    const players = engine.getState().players;
+
+    const makeAndLock = (nominator: number, nominee: number, yesVoters: number[]) => {
+      for (const event of engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId,
+        nominatorId: players[nominator]!.id,
+        nomineeId: players[nominee]!.id,
+        accusation: "Block contest.",
+      })) {
+        engine.apply(event);
+      }
+      const nomination = engine.getState().day!.nominations.at(-1)!;
+      for (const voter of yesVoters) {
+        for (const event of engine.handle({
+          kind: GameCommandKind.CastVote,
+          gameId,
+          nominationId: nomination.id,
+          voterId: players[voter]!.id,
+          choice: "yes",
+        })) {
+          engine.apply(event);
+        }
+      }
+      for (const event of engine.handle({
+        kind: GameCommandKind.LockNominationVotes,
+        gameId,
+        nominationId: nomination.id,
+      })) {
+        engine.apply(event);
+      }
+      return nomination;
+    };
+
+    const first = makeAndLock(0, 1, [0, 2, 3]);
+    const sole = engine.getBlockContest();
+    expect(sole.kind).toBe("sole");
+    if (sole.kind === "sole") {
+      expect(sole.leader.nominationId).toBe(first.id);
+    }
+
+    // Resolve first so the same players can nominate again? Wait - once per day rules block.
+    // Second nominator/nominee must be different players.
+    const second = makeAndLock(2, 3, [0, 2, 4]);
+    const tied = engine.getBlockContest();
+    expect(tied.kind).toBe("tie");
+    if (tied.kind === "tie") {
+      expect(tied.yesVotes).toBe(3);
+      expect(tied.leaders.map((leader) => leader.nominationId).sort()).toEqual(
+        [first.id, second.id].sort(),
+      );
+    }
   });
 });

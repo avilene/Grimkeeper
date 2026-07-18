@@ -197,6 +197,24 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       return true;
     }
 
+    if (action === "close-noms") {
+      const { closeTownNominations } = await import("../town-day.js");
+      const { dayNumber } = await closeTownNominations(guild, game, engine, interaction.user.id);
+      await interaction.editReply({
+        content: `Nominations closed for day **${dayNumber}**. Use **Next day** when ready.`,
+      });
+      return true;
+    }
+
+    if (action === "next-day") {
+      const { startNextTownDay } = await import("../town-day.js");
+      const { dayNumber } = await startNextTownDay(guild, game, engine, interaction.user.id);
+      await interaction.editReply({
+        content: `Day **${dayNumber}** started — nominations are open again.`,
+      });
+      return true;
+    }
+
     await interaction.editReply({ content: "Unknown panel action." });
   } catch (error) {
     try {

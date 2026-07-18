@@ -1,10 +1,6 @@
 import { MessageFlags, type ButtonInteraction, type Guild } from "discord.js";
 import { createReminder, getGameById, prisma } from "@grimkeeper/database";
-import {
-  GameCommandKind,
-  passesExecutionVote,
-  type GameEngine,
-} from "@grimkeeper/engine";
+import { GameCommandKind, type GameEngine } from "@grimkeeper/engine";
 
 import {
   loadEngine,
@@ -15,9 +11,11 @@ import {
   getStorytellerThread,
 } from "../commands/command-context.js";
 import {
+  formatNominationPhrase,
   formatNominationRef,
   resolveNominationMessageUrl,
 } from "../day-thread.js";
+import { postGameLog } from "../game-log-thread.js";
 import {
   parseVoteTrackerButtonCustomId,
   upsertStVoteTracker,
@@ -27,6 +25,14 @@ import {
   INTERACTION_PENDING_CONTENT,
   isRecoverableInteractionResponseError,
 } from "./interaction-response.js";
+
+type TrackerGame = {
+  id: string;
+  channelId: string;
+  kibThreadId?: string | null;
+  guildId: string;
+  logThreadId?: string | null;
+};
 
 export async function handleLockVotesButton(interaction: ButtonInteraction): Promise<boolean> {
   const parsed = parseVoteTrackerButtonCustomId(interaction.customId);
@@ -68,6 +74,7 @@ export async function handleLockVotesButton(interaction: ButtonInteraction): Pro
       engine,
       parsed.nominationId,
       parsed.action,
+      interaction.user.id,
     );
     await interaction.editReply({ content: reply });
   } catch (error) {
@@ -92,12 +99,98 @@ async function nominationLink(
   return formatNominationRef(engine, nominationId, url);
 }
 
+async function logVoteAction(
+  guild: Guild,
+  game: TrackerGame,
+  actorId: string,
+  message: string,
+): Promise<void> {
+  await postGameLog(guild, game, `<@${actorId}> ${message}`);
+}
+
+function formatNomineeNames(engine: GameEngine, nomineeIds: string[]): string {
+  return nomineeIds
+    .map((id) => engine.getPlayerById(id)?.displayName ?? "?")
+    .join(", ");
+}
+
+function describeBlockContest(engine: GameEngine): string {
+  const contest = engine.getBlockContest();
+  const needed = engine.votesNeededOnTheBlock();
+  const living = engine.countLivingPlayers();
+  if (contest.kind === "empty") {
+    return `Block empty (need ${needed} of ${living} alive).`;
+  }
+  if (contest.kind === "sole") {
+    const name = engine.getPlayerById(contest.leader.nomineeId)?.displayName ?? "?";
+    return `**${name}** on the block with **${contest.leader.yesVotes}** yes (need ${needed} of ${living}).`;
+  }
+  const names = formatNomineeNames(
+    engine,
+    contest.leaders.map((leader) => leader.nomineeId),
+  );
+  return `**Tie** on the block between ${names} at **${contest.yesVotes}** yes (need ${needed} of ${living}) — nobody uniquely on the block.`;
+}
+
+function describeAnnounceResult(
+  engine: GameEngine,
+  nominationId: string,
+): { summary: string; detail: string } {
+  const nomination = engine.getNominationById(nominationId)!;
+  const nominee = engine.getPlayerById(nomination.nomineeId);
+  const nomineeName = nominee?.displayName ?? "The nominee";
+  const yesVotes = engine.getEffectiveYesVotes(nominationId);
+  const living = engine.countLivingPlayers();
+  const needed = engine.votesNeededOnTheBlock();
+  const tally = engine.formatNominationTally(nominationId, { revealSecret: true });
+  const phrase = formatNominationPhrase(engine, nominationId);
+  const contest = engine.getBlockContest();
+
+  let summary: string;
+  if (contest.kind === "sole" && contest.leader.nominationId === nominationId) {
+    summary = `**${nomineeName}** is **on the block** with **${yesVotes}** yes (needed ${needed} of ${living} alive).`;
+  } else if (contest.kind === "tie" && contest.leaders.some((leader) => leader.nominationId === nominationId)) {
+    const others = formatNomineeNames(
+      engine,
+      contest.leaders
+        .filter((leader) => leader.nominationId !== nominationId)
+        .map((leader) => leader.nomineeId),
+    );
+    summary =
+      `**${nomineeName}** is **tied** on the block with **${yesVotes}** yes` +
+      (others ? ` (also: ${others})` : "") +
+      ` (needed ${needed} of ${living} alive) — nobody uniquely on the block.`;
+  } else if (yesVotes >= needed) {
+    const leaderNote =
+      contest.kind === "sole"
+        ? ` **${engine.getPlayerById(contest.leader.nomineeId)?.displayName ?? "?"}** remains on the block with **${contest.leader.yesVotes}** yes.`
+        : contest.kind === "tie"
+          ? ` Current tie: ${formatNomineeNames(engine, contest.leaders.map((l) => l.nomineeId))} at **${contest.yesVotes}** yes.`
+          : "";
+    summary = `**${nomineeName}** has majority (**${yesVotes}** yes) but is **not** uniquely on the block.${leaderNote}`;
+  } else {
+    const leaderNote =
+      contest.kind === "sole"
+        ? ` **${engine.getPlayerById(contest.leader.nomineeId)?.displayName ?? "?"}** is on the block with **${contest.leader.yesVotes}** yes.`
+        : contest.kind === "tie"
+          ? ` Current tie: ${formatNomineeNames(engine, contest.leaders.map((l) => l.nomineeId))} at **${contest.yesVotes}** yes.`
+          : " Block is empty.";
+    summary = `**${nomineeName}** is **not** on the block with **${yesVotes}** yes (needed ${needed} of ${living} alive).${leaderNote}`;
+  }
+
+  return {
+    summary,
+    detail: `${phrase} — ${tally}`,
+  };
+}
+
 async function runVoteTrackerAction(
   guild: Guild,
-  game: { id: string; channelId: string; kibThreadId?: string | null; guildId: string },
+  game: TrackerGame,
   engine: GameEngine,
   nominationId: string,
   action: VoteTrackerButtonAction,
+  actorId: string,
 ): Promise<string> {
   const nomination = engine.getNominationById(nominationId);
   if (!nomination || nomination.status !== "open") {
@@ -111,7 +204,7 @@ async function runVoteTrackerAction(
     return pingCountHand(guild, game, engine, nominationId, { force: true });
   }
   if (action === "announce-block") {
-    return announceBlockResult(guild, game, engine, nominationId);
+    return announceBlockResult(guild, game, engine, nominationId, actorId);
   }
 
   const kind =
@@ -131,6 +224,11 @@ async function runVoteTrackerAction(
     return "Unknown vote tracker action.";
   }
 
+  const handBefore =
+    action === "count-yes" || action === "count-no"
+      ? engine.getCountHandPlayer(nominationId)
+      : null;
+
   const events =
     kind === GameCommandKind.CountHandVote
       ? engine.handle({
@@ -147,29 +245,64 @@ async function runVoteTrackerAction(
 
   const updated = engine.getNominationById(nominationId);
   const nom = await nominationLink(guild, game, engine, nominationId);
+  const phrase = formatNominationPhrase(engine, nominationId);
 
   if (action === "lock") {
     await cancelVoteDeadlineReminder(nominationId);
+    await logVoteAction(
+      guild,
+      game,
+      actorId,
+      `locked votes on ${phrase}. ${describeBlockContest(engine)}`,
+    );
     return `Votes locked on ${nom}. Players can no longer change votes.`;
   }
   if (action === "unlock") {
+    await logVoteAction(guild, game, actorId, `unlocked votes on ${phrase}.`);
     return `Votes unlocked on ${nom}.`;
   }
   if (action === "cancel-count") {
+    await logVoteAction(guild, game, actorId, `cancelled the vote count on ${phrase}.`);
     return `Vote count cancelled on ${nom}.`;
   }
   if (action === "start-count") {
     const hand = engine.getCountHandPlayer(nominationId);
+    await logVoteAction(
+      guild,
+      game,
+      actorId,
+      `started the vote count on ${phrase}. Hand on **${hand?.displayName ?? "?"}**.`,
+    );
     return `Counting ${nom}. Hand on **${hand?.displayName ?? "?"}** — press **Ping hand** when ready.`;
   }
   if (action === "count-yes" || action === "count-no") {
+    const choice = action === "count-yes" ? "yes" : "no";
+    const voterName = handBefore?.displayName ?? "?";
+    const ghostNote =
+      handBefore && !handBefore.alive
+        ? action === "count-yes"
+          ? " (took ghost vote)"
+          : " (kept ghost vote)"
+        : "";
     const finished = updated?.votesLocked;
     if (finished) {
       await cancelVoteDeadlineReminder(nominationId);
-      return `Counted **${action === "count-yes" ? "yes" : "no"}** — ${nom} is locked.`;
+      await logVoteAction(
+        guild,
+        game,
+        actorId,
+        `counted **${choice}** for **${voterName}**${ghostNote} on ${phrase} — count finished / votes locked. ${describeBlockContest(engine)}`,
+      );
+      return `Counted **${choice}**${ghostNote} — ${nom} is locked.`;
     }
     const hand = engine.getCountHandPlayer(nominationId);
-    return `Counted **${action === "count-yes" ? "yes" : "no"}**. Next hand: **${hand?.displayName ?? "?"}**.`;
+    await logVoteAction(
+      guild,
+      game,
+      actorId,
+      `counted **${choice}** for **${voterName}**${ghostNote} on ${phrase}. Next hand: **${hand?.displayName ?? "?"}**.`,
+    );
+    return `Counted **${choice}**${ghostNote}. Next hand: **${hand?.displayName ?? "?"}**.`;
   }
 
   return `Updated ${nom}.`;
@@ -241,9 +374,10 @@ async function pingCountHand(
 
 async function announceBlockResult(
   guild: Guild,
-  game: { id: string; channelId: string },
+  game: TrackerGame,
   engine: GameEngine,
   nominationId: string,
+  actorId: string,
 ): Promise<string> {
   const nomination = engine.getNominationById(nominationId);
   if (!nomination) return "Nomination not found.";
@@ -251,33 +385,10 @@ async function announceBlockResult(
     return "Lock or finish the vote count before announcing the result.";
   }
 
-  const voting = await resolveVotingChannel(guild, game, engine);
-  if (!voting) {
-    return "Could not find Town Voting to announce the result.";
-  }
+  const { summary, detail } = describeAnnounceResult(engine, nominationId);
+  await logVoteAction(guild, game, actorId, `announced vote result:\n${summary}\n${detail}`);
 
-  const yesVotes = engine.getEffectiveYesVotes(nominationId);
-  const living = engine.countLivingPlayers();
-  const needed = engine.votesNeededOnTheBlock();
-  const onBlock = passesExecutionVote(yesVotes, living);
-  const nominee = engine.getPlayerById(nomination.nomineeId);
-  const url = await resolveNominationMessageUrl(voting, nominationId);
-  const nom = formatNominationRef(engine, nominationId, url);
-  const nomineeName = nominee?.displayName ?? "The nominee";
-  const tally = engine.formatNominationTally(nominationId, { revealSecret: true });
-
-  const resultLine = onBlock
-    ? `**${nomineeName}** is **on the block** with **${yesVotes}** yes (needed ${needed} of ${living} alive).`
-    : `**${nomineeName}** is **not** on the block with **${yesVotes}** yes (needed ${needed} of ${living} alive).`;
-
-  await voting.send({
-    content: `${resultLine}\n${nom} — ${tally}`,
-    allowedMentions: { parse: [] },
-  });
-
-  return onBlock
-    ? `Announced: **${nomineeName}** is on the block (${yesVotes}/${needed}).`
-    : `Announced: **${nomineeName}** is not on the block (${yesVotes}/${needed}).`;
+  return `${summary}\nLogged to the audit log (not Town Voting).`;
 }
 
 export async function scheduleNominationVoteDeadlineReminder(

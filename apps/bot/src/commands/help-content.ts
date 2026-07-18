@@ -19,6 +19,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
             "Player commands for minimal-mode town voting.",
             "Use **`/game do`** and start typing the action — Discord filters the list.",
             "Nominations and votes happen in the **Town Voting** thread after `/st do setup-town`.",
+            "Each living player may nominate **once per day**; each may be nominated **once per day**. Ghosts cannot nominate.",
             "You can cast a **private ballot** with `/game do vote` in your personal ST thread (ST sees it on the kib tracker).",
             "",
             "Storytellers: see **`/st help`** for setup and day control.",
@@ -140,6 +141,8 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             name: "Day (`/st do …` or panel)",
             value: [
               cmd("resolve-next", "Resolve the oldest open nomination."),
+              cmd("close-nominations", "Stop new nominations until the next day."),
+              cmd("next-day", "Start the next day — clears nominations and reopens them."),
               cmd("execute", "Needs `player:` after a passed nomination."),
               cmd("votes", "Refresh the ST vote tracker (Count Yes/No + Lock lives there)."),
               cmd("vote-visibility", "Needs `mode:` public or secret."),

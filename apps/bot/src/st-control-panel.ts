@@ -22,7 +22,9 @@ export type StPanelAction =
   | "mark-alive"
   | "vis-public"
   | "vis-secret"
-  | "refresh";
+  | "refresh"
+  | "close-noms"
+  | "next-day";
 
 export function stPanelFooter(gameId: string): string {
   return `${ST_PANEL_FOOTER_PREFIX}${gameId}`;
@@ -81,6 +83,7 @@ export function buildStControlPanelEmbed(engine: GameEngine): EmbedBuilder {
   const passed =
     day?.nominations.filter((n) => n.status === "resolved_pass").length ?? 0;
   const visibility = day?.voteVisibility ?? "public";
+  const nominationsOpen = day?.nominationsOpen ?? false;
 
   return new EmbedBuilder()
     .setTitle("ST control panel")
@@ -89,6 +92,7 @@ export function buildStControlPanelEmbed(engine: GameEngine): EmbedBuilder {
         "Live storyteller controls for this game.",
         "Type fewer slash commands — use these buttons, or `/st do` with autocomplete.",
         "",
+        `Day **${state.dayNumber}** · Nominations: **${nominationsOpen ? "open" : "closed"}**`,
         `Open nominations: **${open}** · Passed (awaiting execute): **${passed}**`,
         `Vote visibility: **${visibility}**`,
       ].join("\n"),
@@ -136,6 +140,16 @@ export function buildStControlPanelComponents(
         .setCustomId(stPanelButtonCustomId("vis-secret", gameId))
         .setLabel("Secret votes")
         .setStyle(ButtonStyle.Secondary),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(stPanelButtonCustomId("close-noms", gameId))
+        .setLabel("Close nominations")
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId(stPanelButtonCustomId("next-day", gameId))
+        .setLabel("Next day")
+        .setStyle(ButtonStyle.Primary),
     ),
   ];
 }

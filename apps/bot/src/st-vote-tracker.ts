@@ -130,7 +130,8 @@ function nominationTrackerBlock(engine: GameEngine, nomination: NominationRecord
   if (nomination.votesLocked) {
     lockLabel = "🔒 **LOCKED**";
   } else if (hand) {
-    lockLabel = `🖐 **HAND → ${hand.displayName}**`;
+    const ghostNote = hand.alive ? "" : " (ghost available)";
+    lockLabel = `🖐 **HAND → ${hand.displayName}${ghostNote}**`;
   } else {
     lockLabel = "🔓 Open for changes";
   }
@@ -226,14 +227,19 @@ export function buildStVoteTrackerComponents(
           .setStyle(ButtonStyle.Secondary),
       );
     } else if (nomination.countHandIndex != null) {
+      const hand = engine.getCountHandPlayer(nomination.id);
+      const ghostHand = Boolean(hand && !hand.alive);
+      const yesLabel = ghostHand
+        ? "Yes & take ghost vote"
+        : `Yes ${labelBase}`.slice(0, 80);
       buttons.push(
         new ButtonBuilder()
           .setCustomId(countYesButtonCustomId(gameId, nomination.id))
-          .setLabel(`Yes ${labelBase}`.slice(0, 80))
+          .setLabel(yesLabel.slice(0, 80))
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId(countNoButtonCustomId(gameId, nomination.id))
-          .setLabel(`No ${labelBase}`.slice(0, 80))
+          .setLabel(ghostHand ? "No (keep ghost)" : `No ${labelBase}`.slice(0, 80))
           .setStyle(ButtonStyle.Danger),
         new ButtonBuilder()
           .setCustomId(cancelCountButtonCustomId(gameId, nomination.id))
