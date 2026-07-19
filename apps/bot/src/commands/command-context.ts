@@ -57,6 +57,7 @@ import {
 } from "../interactions/interaction-response.js";
 import { logGameEvent } from "../game-events-log.js";
 import { refreshGameStatusForEngine } from "../game-status.js";
+import { log, serializeError } from "../logger.js";
 
 export function shortGameId(gameId: string): string {
   return gameId.slice(0, 6);
@@ -173,11 +174,66 @@ export type GamePlayerAutocompleteOptions = {
   excludeUserId?: string;
   /** Only players with an open nomination (for /vote). */
   openNomineesOnly?: boolean;
+  /** Player ids that currently have an open nomination. */
+  openNomineeIds?: ReadonlySet<string>;
 };
+
+/** Normalize typed autocomplete text (`@Alice`, extra spaces). */
+export function normalizePlayerAutocompleteQuery(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^<@!?(\d+)>$/, "$1")
+    .replace(/^@+/, "")
+    .toLowerCase();
+}
+
+export function playerMatchesAutocompleteQuery(
+  player: Pick<PlayerState, "displayName" | "discordUserId" | "seat">,
+  query: string,
+): boolean {
+  if (!query) return true;
+  const name = player.displayName.toLowerCase();
+  if (name.includes(query)) return true;
+  if (player.discordUserId.includes(query)) return true;
+  if (player.seat != null) {
+    const seat = String(player.seat);
+    if (seat === query || `seat ${seat}` === query || `#${seat}` === query) return true;
+  }
+  return false;
+}
+
+/**
+ * Filter engine roster for Discord autocomplete.
+ * Uses the game roster only — do not gate on Discord role.members (partial without GuildMembers intent).
+ */
+export function filterPlayersForAutocomplete(
+  players: PlayerState[],
+  options: GamePlayerAutocompleteOptions = {},
+  queryRaw = "",
+): PlayerState[] {
+  let filtered = [...players];
+
+  if (options.aliveOnly) {
+    filtered = filtered.filter((player) => player.alive);
+  }
+  if (options.excludeUserId) {
+    filtered = filtered.filter((player) => player.discordUserId !== options.excludeUserId);
+  }
+  if (options.openNomineesOnly) {
+    const openNomineeIds = options.openNomineeIds ?? new Set<string>();
+    filtered = filtered.filter((player) => openNomineeIds.has(player.id));
+  }
+
+  const query = normalizePlayerAutocompleteQuery(queryRaw);
+  return filtered
+    .filter((player) => playerMatchesAutocompleteQuery(player, query))
+    .sort((a, b) => (a.seat ?? 999) - (b.seat ?? 999))
+    .slice(0, 25);
+}
 
 /**
  * Autocomplete choices for in-game players (Discord cannot filter USER pickers by role).
- * Prefer engine roster; when a player role is set, also require that Discord role (except fake players).
+ * Source of truth is the engine roster from setup-town.
  */
 export async function respondGamePlayerAutocomplete(
   interaction: AutocompleteInteraction,
@@ -191,54 +247,19 @@ export async function respondGamePlayerAutocomplete(
     }
 
     const engine = await loadEngine(game.id);
-    let players = [...engine.getState().players];
+    const openNomineeIds = options.openNomineesOnly
+      ? new Set(
+          (engine.getState().day?.nominations ?? [])
+            .filter((nomination) => nomination.status === "open")
+            .map((nomination) => nomination.nomineeId),
+        )
+      : undefined;
 
-    if (options.aliveOnly) {
-      players = players.filter((player) => player.alive);
-    }
-    if (options.excludeUserId) {
-      players = players.filter((player) => player.discordUserId !== options.excludeUserId);
-    }
-    if (options.openNomineesOnly) {
-      const openNomineeIds = new Set(
-        (engine.getState().day?.nominations ?? [])
-          .filter((nomination) => nomination.status === "open")
-          .map((nomination) => nomination.nomineeId),
-      );
-      players = players.filter((player) => openNomineeIds.has(player.id));
-    }
-
-    if (game.playerRoleId && interaction.guild) {
-      const role =
-        interaction.guild.roles.cache.get(game.playerRoleId) ??
-        (await interaction.guild.roles.fetch(game.playerRoleId).catch(() => null));
-      if (role) {
-        // Role.members may be incomplete without GuildMembers intent; fetch if empty but role exists.
-        if (role.members.size === 0) {
-          await interaction.guild.members.fetch().catch(() => undefined);
-        }
-        const withRole = new Set(role.members.keys());
-        if (withRole.size > 0) {
-          players = players.filter(
-            (player) => player.isFake || withRole.has(player.discordUserId),
-          );
-        }
-      }
-    }
-
-    const query = interaction.options.getFocused(true).value.trim().toLowerCase();
-    const matches = (
-      query
-        ? players.filter(
-            (player) =>
-              player.displayName.toLowerCase().includes(query) ||
-              player.discordUserId.includes(query) ||
-              (player.seat != null && String(player.seat) === query),
-          )
-        : players
-    )
-      .sort((a, b) => (a.seat ?? 999) - (b.seat ?? 999))
-      .slice(0, 25);
+    const matches = filterPlayersForAutocomplete(
+      engine.getState().players,
+      { ...options, openNomineeIds },
+      interaction.options.getFocused(true).value,
+    );
 
     await interaction.respond(
       matches.map((player) => {
@@ -250,7 +271,14 @@ export async function respondGamePlayerAutocomplete(
         };
       }),
     );
-  } catch {
+  } catch (error) {
+    log("warn", "autocomplete.players.failed", {
+      command: interaction.commandName,
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+      userId: interaction.user.id,
+      ...serializeError(error),
+    });
     await interaction.respond([]).catch(() => undefined);
   }
 }
