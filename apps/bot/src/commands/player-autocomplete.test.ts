@@ -51,17 +51,17 @@ describe("filterPlayersForAutocomplete", () => {
     player({ id: "p3", discordUserId: "333", displayName: "Carol", seat: 3 }),
   ];
 
-  it("returns living players excluding self for nominate", () => {
+  it("returns all living nominees excluding self for nominate", () => {
     const matches = filterPlayersForAutocomplete(
       roster,
-      { aliveOnly: true, excludeUserId: "111" },
+      { excludeUserId: "111" },
       "",
     );
-    expect(matches.map((p) => p.displayName)).toEqual(["Carol"]);
+    expect(matches.map((p) => p.displayName)).toEqual(["Bob", "Carol"]);
   });
 
   it("filters by typed name without requiring Discord role membership", () => {
-    const matches = filterPlayersForAutocomplete(roster, { aliveOnly: true }, "@car");
+    const matches = filterPlayersForAutocomplete(roster, {}, "@car");
     expect(matches.map((p) => p.displayName)).toEqual(["Carol"]);
   });
 

@@ -2,13 +2,14 @@ import {
   AnyThreadChannel,
   ChannelType,
   Guild,
-  ThreadAutoArchiveDuration,
 } from "discord.js";
 import type { GameEngine } from "@grimkeeper/engine";
 
 import { getAdminRoleIds } from "./access.js";
 import {
   addRoleMembersToThread,
+  DEFAULT_THREAD_AUTO_ARCHIVE,
+  ensureThreadAutoArchive,
   GameRoleIds,
   isGameTextChannel,
   shortGameId,
@@ -167,7 +168,7 @@ export async function ensureLogThread(
     try {
       thread = await parent.threads.create({
         name: threadName,
-        autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+        autoArchiveDuration: DEFAULT_THREAD_AUTO_ARCHIVE,
         reason: `ST audit log for game ${game.id}`,
         ...( {
           type: ChannelType.PrivateThread,
@@ -186,6 +187,7 @@ export async function ensureLogThread(
   if (thread.archived) {
     await thread.setArchived(false, "Reopening game audit log.").catch(() => undefined);
   }
+  await ensureThreadAutoArchive(thread);
 
   if (options?.invokerId) {
     await thread.members.add(options.invokerId).catch(() => undefined);

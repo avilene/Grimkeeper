@@ -31,7 +31,6 @@ async function respondNominatePlayerAutocomplete(
   interaction: AutocompleteInteraction,
 ): Promise<void> {
   await respondGamePlayerAutocomplete(interaction, {
-    aliveOnly: true,
     excludeUserId: interaction.user.id,
   });
 }

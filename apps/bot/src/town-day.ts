@@ -174,7 +174,7 @@ export async function advanceTownPhase(
       await voting
         .send(
           `**Day ${dayNumber}** has begun — nominations are open again.\n` +
-            `_Each living player may nominate once today, and each living player may be nominated once._`,
+            `_Each living player may nominate once today, and each player (alive or dead) may be nominated once._`,
         )
         .catch(() => undefined);
     }

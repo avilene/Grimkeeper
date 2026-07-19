@@ -1,26 +1,26 @@
 import type { Client } from "discord.js";
-import { claimReminderAndDuplicates, listDueReminders } from "@grimkeeper/database";
+import {
+  claimReminderAndDuplicates,
+  listDueReminders,
+  normalizeReminderMessage,
+} from "@grimkeeper/database";
 
 import { buildReminderPingMention, buildReminderFireContent } from "./commands/command-context.js";
 import { logReminderAction } from "./action-log.js";
-import { formatFiredReminderBody } from "./reminder-message.js";
 import { reportError } from "./error-reporter.js";
 
 let schedulerStarted = false;
 let processingDueReminders = false;
 
-function normalizeReminderMessage(message: string): string {
-  return message.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-/** Collapse duplicate due rows (same channel/message/fire minute) within one tick. */
+/** Collapse duplicate due rows (same channel/message/near fire time) within one tick. */
 export function reminderSendDedupeKey(reminder: {
   channelId: string;
   message: string;
   fireAt: Date;
 }): string {
-  const fireMinute = Math.floor(new Date(reminder.fireAt).getTime() / 60_000);
-  return `${reminder.channelId}:${fireMinute}:${normalizeReminderMessage(reminder.message)}`;
+  // 3-minute buckets so stacked rows a few seconds apart share a key.
+  const bucket = Math.floor(new Date(reminder.fireAt).getTime() / 180_000);
+  return `${reminder.channelId}:${bucket}:${normalizeReminderMessage(reminder.message)}`;
 }
 
 export async function processDueReminders(client: Client): Promise<void> {
@@ -45,17 +45,19 @@ export async function processDueReminders(client: Client): Promise<void> {
 
         const channel = await client.channels.fetch(reminder.channelId).catch(() => null);
         if (channel?.isTextBased() && !channel.isDMBased()) {
-          const body = formatFiredReminderBody(
-            reminder.message,
-            reminder.fireAt,
-            reminder.emoji,
-            reminder.seriesEndAt,
-          );
-          let content = body;
+          let content: string;
           if (reminder.pingPlayers) {
             const ping = await buildReminderPingMention(reminder);
             content = buildReminderFireContent(
               ping,
+              reminder.message,
+              reminder.fireAt,
+              reminder.emoji,
+              reminder.seriesEndAt,
+            );
+          } else {
+            content = buildReminderFireContent(
+              null,
               reminder.message,
               reminder.fireAt,
               reminder.emoji,

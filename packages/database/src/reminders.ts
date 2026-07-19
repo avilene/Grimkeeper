@@ -117,9 +117,23 @@ export async function claimReminderForFire(id: string): Promise<boolean> {
   return result.count > 0;
 }
 
+export function normalizeReminderMessage(message: string): string {
+  return message.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Collapse near-simultaneous duplicate rows (±90s) with the same channel + message. */
+export function reminderDuplicateWindow(fireAt: Date): { start: Date; end: Date } {
+  const t = new Date(fireAt).getTime();
+  return {
+    start: new Date(t - 90_000),
+    end: new Date(t + 90_000),
+  };
+}
+
 /**
- * Claim one due reminder and mark same-channel/message/minute siblings fired so
- * stacked duplicate rows cannot send again (works across processes).
+ * Claim one due reminder and mark same-channel/message near-time siblings fired.
+ * Only the earliest matching row (by fireAt, then id) may send — prevents dual-bot races
+ * where each process claimed a different duplicate before siblings were marked.
  */
 export async function claimReminderAndDuplicates(reminder: {
   id: string;
@@ -127,35 +141,35 @@ export async function claimReminderAndDuplicates(reminder: {
   message: string;
   fireAt: Date;
 }): Promise<boolean> {
-  const claimed = await claimReminderForFire(reminder.id);
-  if (!claimed) return false;
+  const { start, end } = reminderDuplicateWindow(reminder.fireAt);
+  const normalized = normalizeReminderMessage(reminder.message);
 
-  const fireMinute = Math.floor(new Date(reminder.fireAt).getTime() / 60_000);
-  const minuteStart = new Date(fireMinute * 60_000);
-  const minuteEnd = new Date((fireMinute + 1) * 60_000);
-  const normalized = reminder.message.trim().toLowerCase().replace(/\s+/g, " ");
+  return prisma.$transaction(async (tx) => {
+    const candidates = await tx.gameReminder.findMany({
+      where: {
+        channelId: reminder.channelId,
+        fired: false,
+        fireAt: { gte: start, lte: end },
+      },
+      orderBy: [{ fireAt: "asc" }, { id: "asc" }],
+      select: { id: true, message: true },
+    });
 
-  const siblings = await prisma.gameReminder.findMany({
-    where: {
-      id: { not: reminder.id },
-      channelId: reminder.channelId,
-      fired: false,
-      fireAt: { gte: minuteStart, lt: minuteEnd },
-    },
-    select: { id: true, message: true },
-  });
-  const siblingIds = siblings
-    .filter(
-      (row) => row.message.trim().toLowerCase().replace(/\s+/g, " ") === normalized,
-    )
-    .map((row) => row.id);
-  if (siblingIds.length > 0) {
-    await prisma.gameReminder.updateMany({
-      where: { id: { in: siblingIds } },
+    const matching = candidates.filter(
+      (row) => normalizeReminderMessage(row.message) === normalized,
+    );
+    if (matching.length === 0) return false;
+
+    const winnerId = matching[0]!.id;
+    // Non-winners leave rows unclaimed so the winner (or a later tick) can claim the batch.
+    if (reminder.id !== winnerId) return false;
+
+    const result = await tx.gameReminder.updateMany({
+      where: { id: { in: matching.map((row) => row.id) }, fired: false },
       data: { fired: true, sourceKey: null },
     });
-  }
-  return true;
+    return result.count > 0;
+  });
 }
 
 export async function cancelGameReminders(gameId: string) {

@@ -63,6 +63,21 @@ export function shortGameId(gameId: string): string {
   return gameId.slice(0, 6);
 }
 
+/** Keep game threads visible longer; Discord may reject this on unboosted servers. */
+export const DEFAULT_THREAD_AUTO_ARCHIVE = ThreadAutoArchiveDuration.ThreeDays;
+
+/** Prefer 3-day archive; fall back to 1 day if the guild does not allow it. */
+export async function ensureThreadAutoArchive(thread: AnyThreadChannel): Promise<void> {
+  if (thread.autoArchiveDuration === DEFAULT_THREAD_AUTO_ARCHIVE) return;
+  try {
+    await thread.setAutoArchiveDuration(DEFAULT_THREAD_AUTO_ARCHIVE);
+  } catch {
+    if (thread.autoArchiveDuration !== ThreadAutoArchiveDuration.OneDay) {
+      await thread.setAutoArchiveDuration(ThreadAutoArchiveDuration.OneDay).catch(() => undefined);
+    }
+  }
+}
+
 export function kibThreadName(parentChannelName: string, gameId?: string): string {
   if (gameId) {
     return `kib-${parentChannelName} · ${shortGameId(gameId)}`.slice(0, 100);
@@ -931,7 +946,7 @@ export async function createKibThread(
       try {
         thread = await parent.threads.create({
           name: threadName,
-          autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+          autoArchiveDuration: DEFAULT_THREAD_AUTO_ARCHIVE,
           reason: `Kib thread for game ${gameId}`,
           ...( {
             type: ChannelType.PrivateThread,
@@ -953,6 +968,7 @@ export async function createKibThread(
   if (thread.archived) {
     await thread.setArchived(false, "Game created; reopening kib thread.").catch(() => undefined);
   }
+  await ensureThreadAutoArchive(thread);
 
   await thread.members.add(interaction.user.id).catch(() => undefined);
 
@@ -1016,6 +1032,7 @@ export async function createPlayerStThreads(
     if (thread.archived) {
       await thread.setArchived(false, "Game started; reopening player thread.").catch(() => undefined);
     }
+    await ensureThreadAutoArchive(thread);
 
     await thread.members.add(player.discordUserId).catch(() => undefined);
     for (const stId of storytellerIds) {
@@ -1050,7 +1067,7 @@ export async function ensureStorytellerThread(
     try {
       thread = await parent.threads.create({
         name: threadName,
-        autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+        autoArchiveDuration: DEFAULT_THREAD_AUTO_ARCHIVE,
         reason: `Storyteller thread for game ${gameId}`,
         ...( {
           type: ChannelType.PrivateThread,
@@ -1070,6 +1087,7 @@ export async function ensureStorytellerThread(
   if (thread.archived) {
     await thread.setArchived(false, "Game started; reopening storyteller thread.").catch(() => undefined);
   }
+  await ensureThreadAutoArchive(thread);
 
   return thread;
 }
@@ -1089,6 +1107,7 @@ export async function getOrCreatePersonalPlayerThread(
     if (existing.archived) {
       await existing.setArchived(false, "Game in progress; reopening player thread.").catch(() => undefined);
     }
+    await ensureThreadAutoArchive(existing);
     await existing.members.add(userId).catch(() => undefined);
     return existing;
   }
@@ -1132,7 +1151,7 @@ export async function createPersonalPlayerThread(
   try {
     const thread = await parent.threads.create({
       name: threadName,
-      autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+      autoArchiveDuration: DEFAULT_THREAD_AUTO_ARCHIVE,
       reason: `Private player thread for ${displayName} in game ${gameId}`,
       ...( {
         type: ChannelType.PrivateThread,
@@ -1417,7 +1436,7 @@ export async function createTownVoteThread(
     try {
       thread = await parent.threads.create({
         name: threadName,
-        autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+        autoArchiveDuration: DEFAULT_THREAD_AUTO_ARCHIVE,
         reason: `Town voting thread for game ${game.id}`,
         ...( {
           type: ChannelType.PrivateThread,
@@ -1445,6 +1464,7 @@ export async function createTownVoteThread(
   if (thread.archived) {
     await thread.setArchived(false, "Town setup; reopening vote thread.").catch(() => undefined);
   }
+  await ensureThreadAutoArchive(thread);
 
   await addDayThreadMembers(guild, thread.id, engine);
   return thread;
@@ -1558,7 +1578,7 @@ export async function createDayThread(
   try {
     const thread = await parent.threads.create({
       name: dayThreadName(dayNumber),
-      autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+      autoArchiveDuration: DEFAULT_THREAD_AUTO_ARCHIVE,
       reason: `Day ${dayNumber} thread for game ${gameId}`,
     });
 

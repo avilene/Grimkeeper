@@ -26,7 +26,7 @@ describe("batchReminderSourceKey", () => {
 });
 
 describe("reminderSendDedupeKey", () => {
-  it("collapses same channel/message/minute", () => {
+  it("collapses same channel/message within the duplicate window", () => {
     const key = reminderSendDedupeKey({
       channelId: "c1",
       message: "Noms close",
@@ -36,12 +36,12 @@ describe("reminderSendDedupeKey", () => {
       reminderSendDedupeKey({
         channelId: "c1",
         message: " noms close ",
-        fireAt: new Date("2026-07-17T10:00:55Z"),
+        fireAt: new Date("2026-07-17T10:01:00Z"),
       }),
     ).toBe(key);
   });
 
-  it("keeps distinct fire minutes separate", () => {
+  it("keeps far-apart fire times separate", () => {
     const early = reminderSendDedupeKey({
       channelId: "c1",
       message: "Noms close",

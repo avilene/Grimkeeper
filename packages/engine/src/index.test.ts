@@ -943,6 +943,29 @@ describe("GameEngine", () => {
     ).toThrow("Ghosts cannot nominate");
   });
 
+  it("allows nominating a dead player", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    engine.apply({
+      type: GameEventType.PlayerDied,
+      gameId,
+      playerId: players[1]!.id,
+      cause: "night",
+      timestamp: new Date().toISOString(),
+    });
+
+    const events = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "The dead did it.",
+    });
+    expect(events.some((event) => event.type === GameEventType.NominationMade)).toBe(true);
+    for (const event of events) engine.apply(event);
+    expect(engine.getState().day?.nominations[0]?.nomineeId).toBe(players[1]!.id);
+  });
+
   it("cycles town day → night → day and clears nominations on the new day", () => {
     const engine = setupTownEngine(3);
     const players = engine.getState().players;

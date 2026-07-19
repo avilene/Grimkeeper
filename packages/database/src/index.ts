@@ -12,6 +12,8 @@ export {
   markReminderFired,
   claimReminderForFire,
   claimReminderAndDuplicates,
+  normalizeReminderMessage,
+  reminderDuplicateWindow,
   cancelGameReminders,
   cancelReminders,
   cancelReminderByIdPrefix,

@@ -889,7 +889,6 @@ export class GameEngine {
         this.assertDayState();
         this.assertNominationsAcceptingNew();
         this.assertAlivePlayer(command.nominatorId, "Ghosts cannot nominate.");
-        this.assertAlivePlayer(command.nomineeId, "You can only nominate alive players.");
         if (command.nominatorId === command.nomineeId) {
           throw new GameEngineError("You cannot nominate yourself.");
         }
