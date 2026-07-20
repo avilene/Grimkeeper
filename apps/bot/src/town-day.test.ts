@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { formatVoteThreadDayStartMessage } from "./town-day.js";
+import { formatKibPhaseHeader, formatVoteThreadDayStartMessage } from "./town-day.js";
+
+describe("formatKibPhaseHeader", () => {
+  it("formats day and night headers", () => {
+    expect(formatKibPhaseHeader("day", 2)).toBe("## Day 2");
+    expect(formatKibPhaseHeader("night", 3)).toBe("## Night 3");
+  });
+});
 
 describe("formatVoteThreadDayStartMessage", () => {
   it("starts with a day header", () => {

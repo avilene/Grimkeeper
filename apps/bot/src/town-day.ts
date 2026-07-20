@@ -2,6 +2,7 @@ import type { Guild } from "discord.js";
 import { GameCommandKind, type GameEngine } from "@grimkeeper/engine";
 
 import {
+  getKibThreadForGame,
   isGameTextChannel,
   persistEvents,
   refreshStVoteTrackerForGame,
@@ -91,6 +92,28 @@ export async function postVoteThreadDayStart(
     .catch(() => undefined);
 }
 
+/** Kib thread banner when a new day or night begins. */
+export function formatKibPhaseHeader(phase: "day" | "night", phaseNumber: number): string {
+  const label = phase === "day" ? "Day" : "Night";
+  return `## ${label} ${phaseNumber}`;
+}
+
+export async function postKibPhaseHeader(
+  guild: Guild,
+  game: TownGame,
+  phase: "day" | "night",
+  phaseNumber: number,
+): Promise<void> {
+  const kib = await getKibThreadForGame(guild, game);
+  if (!kib) return;
+  await kib
+    .send({
+      content: formatKibPhaseHeader(phase, phaseNumber),
+      allowedMentions: { parse: [] },
+    })
+    .catch(() => undefined);
+}
+
 /** Best-effort rename of the town channel to `{base}-{day|night}N`. Voting thread keeps Town Voting. */
 export async function renameTownPhaseSurfaces(
   guild: Guild,
@@ -155,6 +178,8 @@ export async function advanceTownPhase(
     const nightNumber = engine.getState().nightNumber;
     await renameTownPhaseSurfaces(guild, game, voteThreadId, "night", nightNumber);
 
+    await postKibPhaseHeader(guild, game, "night", nightNumber);
+
     const voting = await resolveVotingChannel(guild, game, engine);
     if (voting) {
       await voting
@@ -199,6 +224,7 @@ export async function advanceTownPhase(
     await syncGameProjection(game.id, engine);
     await renameTownPhaseSurfaces(guild, game, voteThreadId ?? null, "day", dayNumber);
 
+    await postKibPhaseHeader(guild, game, "day", dayNumber);
     await postVoteThreadDayStart(guild, game, engine, dayNumber);
 
     await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
