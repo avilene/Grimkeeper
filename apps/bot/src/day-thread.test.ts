@@ -71,6 +71,10 @@ describe("buildNominationEmbed", () => {
     expect(embed.data.fields?.find((field) => field.name === "On the block")?.value).toBe(
       "**2** yes needed (2 alive)",
     );
+    const voteOrder = embed.data.fields?.find((field) => field.name === "Vote order")?.value;
+    expect(voteOrder).toContain("1. Alice");
+    expect(voteOrder).toContain("2. Bob");
+    expect(voteOrder).toContain("_pending_");
   });
 
   it("includes a vote deadline field when voteDeadlineAt is set", () => {
@@ -117,6 +121,53 @@ describe("buildNominationEmbed", () => {
     );
 
     vi.useRealTimers();
+  });
+
+  it("hides the vote order list in secret visibility", () => {
+    const engine = GameEngine.fromEvents(gameId, baseEvents());
+    engine.apply({
+      type: GameEventType.TownSetup,
+      gameId,
+      channelId: "channel-1",
+      players: [
+        {
+          playerId: "p1",
+          discordUserId: "u1",
+          displayName: "Alice",
+          seat: 1,
+        },
+        {
+          playerId: "p2",
+          discordUserId: "u2",
+          displayName: "Bob",
+          seat: 2,
+        },
+      ],
+      timestamp: new Date().toISOString(),
+    });
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: "p1",
+      nomineeId: "p2",
+      accusation: "Looks evil.",
+    })) {
+      engine.apply(event);
+    }
+    for (const event of engine.handle({
+      kind: GameCommandKind.SetVoteVisibility,
+      gameId,
+      visibility: "secret",
+    })) {
+      engine.apply(event);
+    }
+
+    const nomination = engine.getState().day!.nominations[0]!;
+    const embed = buildNominationEmbed(engine, nomination);
+    expect(embed.data.fields?.find((field) => field.name === "Votes")?.value).toBe(
+      "Votes recorded (secret mode)",
+    );
+    expect(embed.data.fields?.find((field) => field.name === "Vote order")).toBeUndefined();
   });
 });
 

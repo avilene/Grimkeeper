@@ -183,6 +183,8 @@ export function buildNominationEmbed(
   const tallyText = engine.formatNominationTally(nomination.id, options);
   const living = engine.countLivingPlayers();
   const needed = engine.votesNeededOnTheBlock();
+  const secret =
+    engine.getState().day?.voteVisibility === "secret" && !options?.revealSecret;
   const fields: APIEmbedField[] = [
     {
       name: "Accusation",
@@ -196,6 +198,16 @@ export function buildNominationEmbed(
       name: "Votes",
       value: tallyText,
     },
+  ];
+
+  if (!secret) {
+    fields.push({
+      name: "Vote order",
+      value: engine.formatNominationVoteRoll(nomination.id).slice(0, 1024),
+    });
+  }
+
+  fields.push(
     {
       name: "On the block",
       value: `**${needed}** yes needed (${living} alive)`,
@@ -211,7 +223,7 @@ export function buildNominationEmbed(
       value: `#${nomination.order}`,
       inline: true,
     },
-  ];
+  );
 
   if (nomination.voteDeadlineAt) {
     fields.push({
