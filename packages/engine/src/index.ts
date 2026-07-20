@@ -2165,7 +2165,8 @@ export class GameEngine {
         status = "_pending_";
       }
       const line = `${index + 1}. ${player.displayName}${deadTag} (${seat}): ${status}`;
-      return underHand ? `👉 **${line}**` : line;
+      // Do not wrap the whole line in ** — status already uses bold and Discord breaks nested markers.
+      return underHand ? `👉 ${line}` : line;
     });
 
     return lines.join("\n");

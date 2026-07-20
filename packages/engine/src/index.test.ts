@@ -1300,6 +1300,10 @@ describe("GameEngine", () => {
     for (const event of start) engine.apply(event);
     expect(engine.getCountHandPlayer(nomination.id)?.id).toBe(players[2]!.id);
 
+    const roll = engine.formatNominationVoteRoll(nomination.id, { audience: "storyteller" });
+    expect(roll).toMatch(/^👉 \d+\./m);
+    expect(roll).not.toMatch(/👉 \*\*/);
+
     expect(() =>
       engine.handle({
         kind: GameCommandKind.CastVote,

@@ -399,7 +399,20 @@ async function announceBlockResult(
     `announced & resolved ${detail}: **${passed ? "passed" : "failed"}**.\n${summary}`,
   );
 
-  return `${summary}\nResolved as **${passed ? "passed" : "failed"}** (audit log only — not posted to Town Voting).`;
+  const voting = await resolveVotingChannel(guild, game, engine);
+  const nomUrl = await resolveNominationMessageUrl(voting, nominationId);
+  const nom = formatNominationRef(engine, nominationId, nomUrl, { capitalize: true });
+  if (voting) {
+    await voting
+      .send({
+        content: `${nom}: **${passed ? "passed" : "failed"}**.\n${summary}`,
+        allowedMentions: { parse: [] },
+      })
+      .catch(() => undefined);
+    return `${summary}\nResolved as **${passed ? "passed" : "failed"}** — posted to Town Voting.`;
+  }
+
+  return `${summary}\nResolved as **${passed ? "passed" : "failed"}** (Town Voting unavailable — audit log only).`;
 }
 
 export async function scheduleNominationVoteDeadlineReminder(

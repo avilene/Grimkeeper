@@ -61,6 +61,36 @@ export async function closeTownNominations(
   return { dayNumber };
 }
 
+/** Town Voting thread banner when a new day opens. */
+export function formatVoteThreadDayStartMessage(dayNumber: number): string {
+  const openLine =
+    dayNumber === 1
+      ? `**Day ${dayNumber}** has begun — nominations are open.`
+      : `**Day ${dayNumber}** has begun — nominations are open again.`;
+  return [
+    `## Day ${dayNumber}`,
+    "",
+    openLine,
+    "_Each living player may nominate once today, and each player (alive or dead) may be nominated once._",
+  ].join("\n");
+}
+
+export async function postVoteThreadDayStart(
+  guild: Guild,
+  game: TownGame,
+  engine: GameEngine,
+  dayNumber: number,
+): Promise<void> {
+  const voting = await resolveVotingChannel(guild, game, engine);
+  if (!voting) return;
+  await voting
+    .send({
+      content: formatVoteThreadDayStartMessage(dayNumber),
+      allowedMentions: { parse: [] },
+    })
+    .catch(() => undefined);
+}
+
 /** Best-effort rename of the town channel to `{base}-{day|night}N`. Voting thread keeps Town Voting. */
 export async function renameTownPhaseSurfaces(
   guild: Guild,
@@ -169,15 +199,7 @@ export async function advanceTownPhase(
     await syncGameProjection(game.id, engine);
     await renameTownPhaseSurfaces(guild, game, voteThreadId ?? null, "day", dayNumber);
 
-    const voting = await resolveVotingChannel(guild, game, engine);
-    if (voting) {
-      await voting
-        .send(
-          `**Day ${dayNumber}** has begun — nominations are open again.\n` +
-            `_Each living player may nominate once today, and each player (alive or dead) may be nominated once._`,
-        )
-        .catch(() => undefined);
-    }
+    await postVoteThreadDayStart(guild, game, engine, dayNumber);
 
     await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
     await refreshStVoteTrackerForGame(guild, game, engine);

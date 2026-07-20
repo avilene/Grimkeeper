@@ -18,7 +18,7 @@ import { runSetPlayerVote } from "../set-vote.js";
 import { upsertStControlPanel } from "../st-control-panel.js";
 import { upsertStVoteTracker } from "../st-vote-tracker.js";
 import { parseUserMentionsFromString } from "../town-setup.js";
-import { closeTownNominations, advanceTownPhase } from "../town-day.js";
+import { closeTownNominations, advanceTownPhase, postVoteThreadDayStart } from "../town-day.js";
 import { respondDoAutocomplete, ST_DO_ACTIONS } from "./action-catalog.js";
 import { resolveOrCreatePlayerAlias } from "./alias.js";
 import {
@@ -717,6 +717,9 @@ export class StCommandsMinimal {
         "day",
         engine.getState().dayNumber || 1,
       );
+
+      const dayNumber = engine.getState().dayNumber || 1;
+      await postVoteThreadDayStart(guild, game, engine, dayNumber);
 
       await setInteractionProgress(interaction, "Pinning ST panel…");
       await upsertPinnedGameStatus(guild, game.channelId, engine);
