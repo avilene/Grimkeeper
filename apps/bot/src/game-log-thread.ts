@@ -230,3 +230,33 @@ export async function postGameLogRoleChange(
     `${actor} **${action}** ${roleLabel} for <@${userId}>`,
   );
 }
+
+/** Audit-log line for a player (or ST-set) ballot. */
+export function formatVoteCastLogMessage(options: {
+  voterDiscordId: string;
+  nomineeLabel: string;
+  choice: string;
+  ballot: "private" | "public";
+  /** When an ST sets another player's vote. */
+  setByDiscordId?: string;
+}): string {
+  const { voterDiscordId, nomineeLabel, choice, ballot, setByDiscordId } = options;
+  if (setByDiscordId && setByDiscordId !== voterDiscordId) {
+    return `<@${setByDiscordId}> set <@${voterDiscordId}> **${ballot}** vote on **${nomineeLabel}** to **${choice}**.`;
+  }
+  return `<@${voterDiscordId}> set a **${ballot}** vote on **${nomineeLabel}** to **${choice}**.`;
+}
+
+export async function postGameLogVoteCast(
+  guild: Guild,
+  game: Pick<GameThreadRecord, "id" | "channelId" | "logThreadId">,
+  options: {
+    voterDiscordId: string;
+    nomineeLabel: string;
+    choice: string;
+    ballot: "private" | "public";
+    setByDiscordId?: string;
+  },
+): Promise<void> {
+  await postGameLog(guild, game, formatVoteCastLogMessage(options));
+}

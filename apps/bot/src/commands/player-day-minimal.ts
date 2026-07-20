@@ -10,6 +10,7 @@ import { listActiveGamesForGuild } from "@grimkeeper/database";
 import { GameCommandKind } from "@grimkeeper/engine";
 
 import { castVoteFromSlash } from "../interactions/day-vote.js";
+import { postGameLogVoteCast } from "../game-log-thread.js";
 import {
   isPersonalPlayerThreadChannel,
   loadEngine,
@@ -243,12 +244,22 @@ export class PlayerDayCommandsMinimal {
     }
 
     try {
+      const fromPrivateThread =
+        Boolean(interaction.guild) &&
+        (await isPersonalPlayerThreadChannel(
+          interaction.guild!,
+          game,
+          engine,
+          interaction.channelId,
+        ));
+
       const { engine: updatedEngine, events } = await castVoteFromSlash(
         game.id,
         voter.id,
         nomination.id,
         choice,
         reason?.trim() ?? null,
+        { privateBallot: fromPrivateThread },
       );
       await persistEvents(updatedEngine, events);
       await syncGameProjection(game.id, updatedEngine);
@@ -256,14 +267,6 @@ export class PlayerDayCommandsMinimal {
       const day = updatedEngine.getState().day;
       const isSecret = day?.voteVisibility === "secret";
       const isSt = updatedEngine.isStoryteller(interaction.user.id);
-      const fromPrivateThread =
-        Boolean(interaction.guild) &&
-        (await isPersonalPlayerThreadChannel(
-          interaction.guild!,
-          game,
-          updatedEngine,
-          interaction.channelId,
-        ));
 
       if (interaction.guild) {
         await refreshNominationEverywhere(
@@ -273,6 +276,13 @@ export class PlayerDayCommandsMinimal {
           nomination.id,
           { revealSecret: false },
         );
+        const nominee = updatedEngine.getPlayerById(nomination.nomineeId);
+        await postGameLogVoteCast(interaction.guild, game, {
+          voterDiscordId: interaction.user.id,
+          nomineeLabel: nominee?.displayName ?? "nominee",
+          choice,
+          ballot: fromPrivateThread ? "private" : "public",
+        });
       }
 
       if (fromPrivateThread) {

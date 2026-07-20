@@ -85,6 +85,8 @@ export interface VoteCastEvent extends GameEventBase {
   choice: VoteChoice;
   reason: string | null;
   manualSet?: boolean;
+  /** True when cast from a personal ST thread (hidden from Town Voting). */
+  privateBallot?: boolean;
 }
 
 export interface NominationsPausedEvent extends GameEventBase {
@@ -145,6 +147,12 @@ export interface PlayerAliveChangedEvent extends GameEventBase {
   type: typeof GameEventType.PlayerAliveChanged;
   playerId: string;
   alive: boolean;
+}
+
+export interface PlayerDisplayNameChangedEvent extends GameEventBase {
+  type: typeof GameEventType.PlayerDisplayNameChanged;
+  playerId: string;
+  displayName: string;
 }
 
 export interface NominationVotesLockedEvent extends GameEventBase {
@@ -235,6 +243,7 @@ export type GameEvent =
   | GameEndedEvent
   | TownSetupEvent
   | PlayerAliveChangedEvent
+  | PlayerDisplayNameChangedEvent
   | NominationVotesLockedEvent
   | NominationVotesUnlockedEvent
   | NominationCountStartedEvent
@@ -269,8 +278,13 @@ export interface NominationRecord {
 export interface VoteRecord {
   nominationId: string;
   voterId: string;
+  /** Effective vote for resolution / count (last cast or ST count). */
   choice: VoteChoice;
   reason: string | null;
+  /** Ballot cast in Town Voting (or ST count). Null if none yet. */
+  publicChoice: VoteChoice | null;
+  /** Ballot cast in a personal ST thread. Null if none yet. */
+  privateChoice: VoteChoice | null;
 }
 
 export interface DayPhaseState {
@@ -396,6 +410,8 @@ export interface CastVoteCommand {
   nominationId: string;
   choice: VoteChoice;
   reason?: string | null;
+  /** True when cast from a personal ST thread. */
+  privateBallot?: boolean;
 }
 
 export interface SetPlayerVoteCommand {
@@ -501,6 +517,13 @@ export interface SetPlayerAliveCommand {
   alive: boolean;
 }
 
+export interface SetPlayerDisplayNameCommand {
+  kind: typeof GameCommandKind.SetPlayerDisplayName;
+  gameId: string;
+  playerId: string;
+  displayName: string;
+}
+
 export interface LockNominationVotesCommand {
   kind: typeof GameCommandKind.LockNominationVotes;
   gameId: string;
@@ -561,6 +584,7 @@ export type GameCommand =
   | PromoteStorytellerCommand
   | SetupTownCommand
   | SetPlayerAliveCommand
+  | SetPlayerDisplayNameCommand
   | LockNominationVotesCommand
   | UnlockNominationVotesCommand
   | StartNominationCountCommand
@@ -678,15 +702,82 @@ export function createEmptyDayState(dayNumber: number): DayPhaseState {
   };
 }
 
-export function getNominationTally(state: GameState, nominationId: string): VoteTally {
+export function getNominationTally(
+  state: GameState,
+  nominationId: string,
+  options?: { ballot?: "effective" | "public" },
+): VoteTally {
   const tally: VoteTally = { yes: 0, no: 0, conditional: 0 };
   if (!state.day) return tally;
+  const ballot = options?.ballot ?? "effective";
 
   for (const vote of state.day.votes) {
     if (vote.nominationId !== nominationId) continue;
-    tally[vote.choice]++;
+    const choice =
+      ballot === "public" ? publicBallotChoice(vote) : vote.choice;
+    if (!choice) continue;
+    tally[choice]++;
   }
   return tally;
+}
+
+/** Public Town Voting ballot; legacy votes (no split fields) count as public. */
+export function publicBallotChoice(vote: VoteRecord): VoteChoice | null {
+  if (vote.publicChoice != null) return vote.publicChoice;
+  if (vote.privateChoice != null) return null;
+  return vote.choice;
+}
+
+export function privateBallotChoice(vote: VoteRecord): VoteChoice | null {
+  return vote.privateChoice ?? null;
+}
+
+export function normalizeVoteRecord(vote: VoteRecord): VoteRecord {
+  const hasSplit =
+    Object.prototype.hasOwnProperty.call(vote, "publicChoice") ||
+    Object.prototype.hasOwnProperty.call(vote, "privateChoice");
+  if (!hasSplit) {
+    return {
+      ...vote,
+      publicChoice: vote.choice,
+      privateChoice: null,
+    };
+  }
+  return {
+    ...vote,
+    publicChoice: vote.publicChoice ?? null,
+    privateChoice: vote.privateChoice ?? null,
+  };
+}
+
+function formatStorytellerVoteStatus(
+  player: PlayerState,
+  vote: VoteRecord | undefined,
+): string {
+  if (!vote) {
+    if (!player.alive && player.ghostVoteUsed) {
+      return "_ghost used (no vote this nomination)_";
+    }
+    if (!player.alive) return "_ghost available — pending_";
+    return "_pending_";
+  }
+
+  const privateChoice = privateBallotChoice(vote);
+  const publicChoice = publicBallotChoice(vote);
+  const ghostTag = !player.alive ? " (ghost)" : "";
+  const publicLabel = publicChoice ?? "—";
+
+  if (privateChoice) {
+    return `**${privateChoice}**${ghostTag} (public: ${publicLabel})`;
+  }
+  if (publicChoice) {
+    return `**${publicChoice}**${ghostTag}`;
+  }
+  if (!player.alive && player.ghostVoteUsed) {
+    return "_ghost used (no vote this nomination)_";
+  }
+  if (!player.alive) return "_ghost available — pending_";
+  return "_pending_";
 }
 
 export function getEffectiveYesVotes(state: GameState, nominationId: string): number {
@@ -760,8 +851,11 @@ export class GameEngine {
       .sort((a, b) => a.order - b.order)[0];
   }
 
-  getNominationTally(nominationId: string): VoteTally {
-    return getNominationTally(this.state, nominationId);
+  getNominationTally(
+    nominationId: string,
+    options?: { ballot?: "effective" | "public" },
+  ): VoteTally {
+    return getNominationTally(this.state, nominationId, options);
   }
 
   getEffectiveYesVotes(nominationId: string): number {
@@ -1070,6 +1164,20 @@ export class GameEngine {
           throw new GameEngineError("Player is not in this game.");
         }
         break;
+      case GameCommandKind.SetPlayerDisplayName:
+        if (this.state.phase === "ended") {
+          throw new GameEngineError("Game has already ended.");
+        }
+        if (!this.getPlayerById(command.playerId)) {
+          throw new GameEngineError("Player is not in this game.");
+        }
+        if (!command.displayName.trim()) {
+          throw new GameEngineError("Display name cannot be empty.");
+        }
+        if (command.displayName.trim().length > 100) {
+          throw new GameEngineError("Display name must be 100 characters or fewer.");
+        }
+        break;
       case GameCommandKind.LockNominationVotes: {
         this.assertPhase("day", "Votes can only be locked during the day.");
         this.assertDayState();
@@ -1356,6 +1464,7 @@ export class GameEngine {
             voterId: command.voterId,
             choice: command.choice,
             reason: command.reason?.trim() ?? null,
+            privateBallot: command.privateBallot === true,
             timestamp: new Date().toISOString(),
           },
         ];
@@ -1369,6 +1478,7 @@ export class GameEngine {
             choice: command.choice,
             reason: command.reason?.trim() ?? null,
             manualSet: true,
+            privateBallot: false,
             timestamp: new Date().toISOString(),
           },
         ];
@@ -1502,6 +1612,22 @@ export class GameEngine {
           },
         ];
       }
+      case GameCommandKind.SetPlayerDisplayName: {
+        const player = this.getPlayerById(command.playerId)!;
+        const displayName = command.displayName.trim();
+        if (player.displayName === displayName) {
+          return [];
+        }
+        return [
+          {
+            type: GameEventType.PlayerDisplayNameChanged,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            displayName,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
       case GameCommandKind.LockNominationVotes:
         return [
           {
@@ -1522,29 +1648,47 @@ export class GameEngine {
         ];
       case GameCommandKind.StartNominationCount: {
         const nomination = this.getNominationById(command.nominationId)!;
-        const handPlayer = this.getCountEligiblePlayers(nomination.nomineeId)[0]!;
+        const order = this.getVoteLockInOrder(nomination.nomineeId);
+        const handIndex = order.findIndex(
+          (player) => player.alive || !player.ghostVoteUsed,
+        );
+        if (handIndex < 0) {
+          throw new GameEngineError("No eligible voters to count.");
+        }
+        const handPlayer = order[handIndex]!;
         return [
           {
             type: GameEventType.NominationCountStarted,
             gameId: command.gameId,
             nominationId: command.nominationId,
             handPlayerId: handPlayer.id,
-            handIndex: 0,
+            handIndex,
             timestamp: new Date().toISOString(),
           },
         ];
       }
       case GameCommandKind.CountHandVote: {
         const nomination = this.getNominationById(command.nominationId)!;
-        const eligible = this.getCountEligiblePlayers(nomination.nomineeId);
+        const order = this.getVoteLockInOrder(nomination.nomineeId);
         const handIndex = nomination.countHandIndex ?? 0;
-        const voter = eligible[handIndex];
-        if (!voter) {
+        const voter = order[handIndex];
+        if (!voter || (!voter.alive && voter.ghostVoteUsed)) {
           throw new GameEngineError("No voter under the hand.");
         }
-        const nextIndex = handIndex + 1;
-        const finished = nextIndex >= eligible.length;
-        const nextPlayer = finished ? null : eligible[nextIndex]!;
+
+        // Index into the full seat circle so a ghost voting yes (ghostVoteUsed)
+        // does not shrink the list and skip the next player.
+        let nextIndex: number | null = null;
+        let nextPlayer: PlayerState | null = null;
+        for (let index = handIndex + 1; index < order.length; index++) {
+          const candidate = order[index]!;
+          if (candidate.alive || !candidate.ghostVoteUsed) {
+            nextIndex = index;
+            nextPlayer = candidate;
+            break;
+          }
+        }
+        const finished = nextIndex == null;
         return [
           {
             type: GameEventType.NominationCountHandAdvanced,
@@ -1553,7 +1697,7 @@ export class GameEngine {
             voterId: voter.id,
             choice: command.choice,
             handPlayerId: nextPlayer?.id ?? null,
-            handIndex: finished ? null : nextIndex,
+            handIndex: nextIndex,
             finished,
             timestamp: new Date().toISOString(),
           },
@@ -1691,11 +1835,18 @@ export class GameEngine {
           (vote) =>
             vote.nominationId === event.nominationId && vote.voterId === event.voterId,
         );
+        const previous =
+          existingIndex >= 0
+            ? normalizeVoteRecord(this.state.day.votes[existingIndex]!)
+            : null;
+        const privateBallot = event.privateBallot === true;
         const voteRecord: VoteRecord = {
           nominationId: event.nominationId,
           voterId: event.voterId,
           choice: event.choice,
           reason: event.reason,
+          publicChoice: privateBallot ? (previous?.publicChoice ?? null) : event.choice,
+          privateChoice: privateBallot ? event.choice : (previous?.privateChoice ?? null),
         };
         if (existingIndex >= 0) {
           this.state.day.votes[existingIndex] = voteRecord;
@@ -1703,7 +1854,7 @@ export class GameEngine {
           this.state.day.votes.push(voteRecord);
         }
         const voter = this.getPlayerById(event.voterId);
-        if (voter && !voter.alive && !event.manualSet) {
+        if (voter && !voter.alive && !event.manualSet && event.choice === "yes") {
           voter.ghostVoteUsed = true;
         }
         break;
@@ -1793,6 +1944,13 @@ export class GameEngine {
         }
         break;
       }
+      case GameEventType.PlayerDisplayNameChanged: {
+        const player = this.state.players.find((candidate) => candidate.id === event.playerId);
+        if (player) {
+          player.displayName = event.displayName;
+        }
+        break;
+      }
       case GameEventType.NominationVotesLocked: {
         const nomination = this.getNominationById(event.nominationId);
         if (nomination) {
@@ -1822,11 +1980,17 @@ export class GameEngine {
           (vote) =>
             vote.nominationId === event.nominationId && vote.voterId === event.voterId,
         );
+        const previous =
+          existingIndex >= 0
+            ? normalizeVoteRecord(this.state.day.votes[existingIndex]!)
+            : null;
         const voteRecord: VoteRecord = {
           nominationId: event.nominationId,
           voterId: event.voterId,
           choice: event.choice,
           reason: null,
+          publicChoice: event.choice,
+          privateChoice: previous?.privateChoice ?? null,
         };
         if (existingIndex >= 0) {
           this.state.day.votes[existingIndex] = voteRecord;
@@ -1900,8 +2064,13 @@ export class GameEngine {
     return base;
   }
 
-  formatNominationTally(nominationId: string, options?: { revealSecret?: boolean }): string {
-    const tally = this.getNominationTally(nominationId);
+  formatNominationTally(
+    nominationId: string,
+    options?: { revealSecret?: boolean; ballot?: "effective" | "public" },
+  ): string {
+    const tally = this.getNominationTally(nominationId, {
+      ballot: options?.ballot ?? "effective",
+    });
     const day = this.state.day;
     if (day?.voteVisibility === "secret" && !options?.revealSecret) {
       return "Votes recorded (secret mode)";
@@ -1909,11 +2078,19 @@ export class GameEngine {
     return `Yes: ${tally.yes} | No: ${tally.no} | Conditional: ${tally.conditional}`;
   }
 
-  /** Storyteller vote roll — seat order starting after the nominee, ending with the nominee. */
-  formatNominationVoteRoll(nominationId: string): string {
+  /**
+   * Seat-circle vote roll.
+   * - `public`: Town Voting — only public ballots
+   * - `storyteller`: kib tracker — private ballot, then (public: …)
+   */
+  formatNominationVoteRoll(
+    nominationId: string,
+    options?: { audience?: "public" | "storyteller" },
+  ): string {
     const day = this.state.day;
     const nomination = this.getNominationById(nominationId);
     if (!day || !nomination) return "—";
+    const audience = options?.audience ?? "public";
 
     const ordered = this.getVoteLockInOrder(nomination.nomineeId);
     if (ordered.length === 0) return "_No seated players._";
@@ -1921,12 +2098,12 @@ export class GameEngine {
     const votesByVoter = new Map(
       day.votes
         .filter((vote) => vote.nominationId === nominationId)
-        .map((vote) => [vote.voterId, vote] as const),
+        .map((vote) => [vote.voterId, normalizeVoteRecord(vote)] as const),
     );
 
     const handPlayerId =
       nomination.countHandIndex != null
-        ? this.getCountEligiblePlayers(nomination.nomineeId)[nomination.countHandIndex]?.id
+        ? this.getCountHandPlayer(nominationId)?.id
         : null;
 
     const lines = ordered.map((player, index) => {
@@ -1935,10 +2112,20 @@ export class GameEngine {
       const deadTag = player.alive ? "" : " [dead]";
       const underHand = player.id === handPlayerId;
       let status: string;
-      if (vote) {
-        const reason = vote.reason ? ` — ${vote.reason}` : "";
-        const ghostTag = !player.alive ? " (ghost)" : "";
-        status = `**${vote.choice}**${ghostTag}${reason}`;
+      if (audience === "storyteller") {
+        status = formatStorytellerVoteStatus(player, vote);
+      } else if (vote) {
+        const publicChoice = publicBallotChoice(vote);
+        if (publicChoice) {
+          const ghostTag = !player.alive ? " (ghost)" : "";
+          status = `**${publicChoice}**${ghostTag}`;
+        } else if (!player.alive && player.ghostVoteUsed) {
+          status = "_ghost used (no vote this nomination)_";
+        } else if (!player.alive) {
+          status = "_ghost available — pending_";
+        } else {
+          status = "_pending_";
+        }
       } else if (!player.alive && player.ghostVoteUsed) {
         status = "_ghost used (no vote this nomination)_";
       } else if (!player.alive) {
@@ -2001,7 +2188,8 @@ export class GameEngine {
   getCountHandPlayer(nominationId: string): PlayerState | null {
     const nomination = this.getNominationById(nominationId);
     if (!nomination || nomination.countHandIndex == null) return null;
-    return this.getCountEligiblePlayers(nomination.nomineeId)[nomination.countHandIndex] ?? null;
+    const order = this.getVoteLockInOrder(nomination.nomineeId);
+    return order[nomination.countHandIndex] ?? null;
   }
 
   getPlayersMissingVotes(nominationId: string): PlayerState[] {

@@ -25,6 +25,7 @@ import {
   resolveVotingChannel,
   syncGameProjection,
 } from "../commands/command-context.js";
+import { postGameLogVoteCast } from "../game-log-thread.js";
 import { log } from "../logger.js";
 import {
   INTERACTION_PENDING_CONTENT,
@@ -215,6 +216,12 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
 
   const reason = interaction.fields.getTextInputValue(VOTE_REASON_FIELD).trim() || null;
 
+  const dayBefore = engine.getState().day;
+  const fromPrivateThread =
+    interaction.channel?.isThread() &&
+    interaction.channelId !== dayBefore?.discordThreadId &&
+    interaction.channelId !== game.channelId;
+
   try {
     const events = engine.handle({
       kind: GameCommandKind.CastVote,
@@ -223,6 +230,7 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
       nominationId: parsed.nominationId,
       choice,
       reason,
+      privateBallot: Boolean(fromPrivateThread),
     });
     await persistEvents(engine, events);
     await syncGameProjection(game.id, engine);
@@ -231,14 +239,18 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
     const isSecret = day?.voteVisibility === "secret";
     const isSt = engine.isStoryteller(interaction.user.id);
     const nomination = engine.getNominationById(parsed.nominationId);
-    const fromPrivateThread =
-      interaction.channel?.isThread() &&
-      interaction.channelId !== day?.discordThreadId &&
-      interaction.channelId !== game.channelId;
 
     if (interaction.guild) {
       await refreshNominationEverywhere(interaction.guild, game, engine, parsed.nominationId, {
         revealSecret: false,
+      });
+
+      const nominee = nomination ? engine.getPlayerById(nomination.nomineeId) : null;
+      await postGameLogVoteCast(interaction.guild, game, {
+        voterDiscordId: interaction.user.id,
+        nomineeLabel: nominee?.displayName ?? "nominee",
+        choice,
+        ballot: fromPrivateThread ? "private" : "public",
       });
 
       // Public result announcement only for public votes cast in the shared vote venue.
@@ -248,9 +260,11 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
           engine.getState().day?.nominations.filter((candidate) => candidate.status === "open")
             .length ?? 0;
         const tally = nomination
-          ? engine.formatNominationTally(nomination.id, { revealSecret: true })
+          ? engine.formatNominationTally(nomination.id, {
+              revealSecret: true,
+              ballot: "public",
+            })
           : "";
-        const nominee = nomination ? engine.getPlayerById(nomination.nomineeId) : null;
         await voting
           ?.send({
             content: `<@${interaction.user.id}> voted **${choice}** on **${nominee?.displayName ?? "nominee"}**. ${tally}${openCount > 1 ? `\n_${openCount} nominations still open._` : ""}`,
@@ -266,7 +280,10 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
     }
 
     const tally = nomination
-      ? engine.formatNominationTally(nomination.id, { revealSecret: true })
+      ? engine.formatNominationTally(nomination.id, {
+          revealSecret: true,
+          ballot: fromPrivateThread ? "effective" : "public",
+        })
       : "";
     await interaction.editReply({
       content: fromPrivateThread
@@ -286,6 +303,7 @@ export async function castVoteFromSlash(
   nominationId: string,
   choice: VoteChoice,
   reason: string | null,
+  options?: { privateBallot?: boolean },
 ): Promise<{ engine: Awaited<ReturnType<typeof loadEngine>>; events: ReturnType<
   Awaited<ReturnType<typeof loadEngine>>["handle"]
 > }> {
@@ -297,6 +315,7 @@ export async function castVoteFromSlash(
     nominationId,
     choice,
     reason,
+    privateBallot: options?.privateBallot === true,
   });
   return { engine, events };
 }

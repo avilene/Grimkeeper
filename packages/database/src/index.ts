@@ -31,6 +31,11 @@ export {
   type UpdateReminderInput,
   type CancelRemindersFilter,
 } from "./reminders.js";
+export {
+  getPlayerAlias,
+  upsertPlayerAlias,
+  resolvePlayerAlias,
+} from "./player-alias.js";
 
 export type StoredGameEvent = GameEvent;
 

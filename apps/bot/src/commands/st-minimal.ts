@@ -20,6 +20,7 @@ import { upsertStVoteTracker } from "../st-vote-tracker.js";
 import { parseUserMentionsFromString } from "../town-setup.js";
 import { closeTownNominations, advanceTownPhase } from "../town-day.js";
 import { respondDoAutocomplete, ST_DO_ACTIONS } from "./action-catalog.js";
+import { resolveOrCreatePlayerAlias } from "./alias.js";
 import {
   addRoleToUser,
   broadcastToPlayerThreads,
@@ -634,10 +635,17 @@ export class StCommandsMinimal {
     const players = await Promise.all(
       mentionIds.map(async (discordUserId) => {
         const member = await guild.members.fetch(discordUserId).catch(() => null);
+        const discordName =
+          member?.displayName ?? member?.user.username ?? discordUserId;
+        const displayName = await resolveOrCreatePlayerAlias(
+          interaction.guildId!,
+          discordUserId,
+          discordName,
+        );
         return {
           playerId: randomUUID(),
           discordUserId,
-          displayName: member?.displayName ?? member?.user.username ?? discordUserId,
+          displayName,
         };
       }),
     );

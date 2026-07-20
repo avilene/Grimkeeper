@@ -1310,6 +1310,60 @@ describe("GameEngine", () => {
     expect(engine.formatNominationTally(nomination.id, { revealSecret: true })).toContain("Yes: 2");
   });
 
+  it("does not skip the next player after a ghost votes yes during the count", () => {
+    const engine = setupTownEngine(4);
+    const players = engine.getState().players;
+    // Kill seat-order player who sits between first and third in count order.
+    engine.apply({
+      type: GameEventType.PlayerDied,
+      gameId,
+      playerId: players[2]!.id,
+      cause: "night",
+      timestamp: new Date().toISOString(),
+    });
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Ghost in the circle.",
+    })) {
+      engine.apply(event);
+    }
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    // Count order after nominee (seat 2): seat3 ghost, seat4, seat1, seat2 nominee.
+    expect(engine.getCountEligiblePlayers(players[1]!.id).map((player) => player.id)).toEqual([
+      players[2]!.id,
+      players[3]!.id,
+      players[0]!.id,
+      players[1]!.id,
+    ]);
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.StartNominationCount,
+      gameId,
+      nominationId: nomination.id,
+    })) {
+      engine.apply(event);
+    }
+    expect(engine.getCountHandPlayer(nomination.id)?.id).toBe(players[2]!.id);
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CountHandVote,
+      gameId,
+      nominationId: nomination.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
+
+    expect(engine.getPlayerById(players[2]!.id)?.ghostVoteUsed).toBe(true);
+    // Previously handIndex+1 into a shrunk eligible list skipped seat 4.
+    expect(engine.getCountHandPlayer(nomination.id)?.id).toBe(players[3]!.id);
+  });
+
   it("cancels an in-progress count without locking", () => {
     const engine = setupTownEngine(3);
     const players = engine.getState().players;
@@ -1407,5 +1461,55 @@ describe("GameEngine", () => {
         [first.id, second.id].sort(),
       );
     }
+  });
+
+  it("keeps ST-thread private ballots off the public roll and shows both on storyteller roll", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Private ballot test.",
+    })) {
+      engine.apply(event);
+    }
+    const nomination = engine.getState().day!.nominations[0]!;
+    const voter = players[2]!;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: voter.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: voter.id,
+      choice: "no",
+      privateBallot: true,
+    })) {
+      engine.apply(event);
+    }
+
+    expect(engine.formatNominationTally(nomination.id, { ballot: "public" })).toContain("Yes: 1");
+    expect(engine.formatNominationTally(nomination.id, { ballot: "public" })).toContain("No: 0");
+    expect(engine.formatNominationVoteRoll(nomination.id, { audience: "public" })).toContain(
+      "**yes**",
+    );
+    expect(engine.formatNominationVoteRoll(nomination.id, { audience: "public" })).not.toContain(
+      "**no**",
+    );
+
+    const stRoll = engine.formatNominationVoteRoll(nomination.id, { audience: "storyteller" });
+    expect(stRoll).toContain(`**no**`);
+    expect(stRoll).toContain("(public: yes)");
   });
 });

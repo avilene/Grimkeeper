@@ -60,10 +60,11 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
       .setDescription(
         [
           "Day play uses top-level slash commands — not `/game …`.",
-          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/roster`**",
+          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/roster`** · **`/alias`**",
           "Nominations and votes happen in the **Town Voting** thread after `/st do setup-town`.",
           "Each living player may nominate **once per day**; each player (alive or dead) may be nominated **once per day**. Ghosts cannot nominate.",
           "Private ballot: `/vote` in your personal ST thread (ST sees it on the kib tracker).",
+          "Set how your name appears with **`/alias`** (defaults to a short form of your Discord name at setup).",
           "",
           "Lobby setup (roles/channels): `/game setup` — see Lobby below. Storytellers: **`/st help`**.",
           "Also available as **`/game help`** / **`/game commands`**.",
@@ -71,6 +72,13 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
       )
       .addFields(
         ...doActionFields(PLAYER_DAY_ACTIONS, "", "Day"),
+        {
+          name: "Name",
+          value: cmd(
+            "/alias",
+            "Set your display name for this server (used in every game). ST/admin can set `user:`.",
+          ),
+        },
         ...doActionFields(GAME_LOBBY_ACTIONS, "/game", "Lobby (`/game …`)"),
         {
           name: "Voting venues",

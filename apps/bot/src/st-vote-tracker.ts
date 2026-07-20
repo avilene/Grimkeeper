@@ -124,7 +124,7 @@ function nominationTrackerBlock(engine: GameEngine, nomination: NominationRecord
   const nominator = engine.getPlayerById(nomination.nominatorId);
   const nominee = engine.getPlayerById(nomination.nomineeId);
   const tally = engine.formatNominationTally(nomination.id, { revealSecret: true });
-  const roll = engine.formatNominationVoteRoll(nomination.id);
+  const roll = engine.formatNominationVoteRoll(nomination.id, { audience: "storyteller" });
   const hand = engine.getCountHandPlayer(nomination.id);
   let lockLabel: string;
   if (nomination.votesLocked) {

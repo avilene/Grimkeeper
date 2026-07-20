@@ -194,7 +194,10 @@ export function buildNominationEmbed(
 ): EmbedBuilder {
   const nominator = engine.getPlayerById(nomination.nominatorId);
   const nominee = engine.getPlayerById(nomination.nomineeId);
-  const tallyText = engine.formatNominationTally(nomination.id, options);
+  const tallyText = engine.formatNominationTally(nomination.id, {
+    ...options,
+    ballot: "public",
+  });
   const living = engine.countLivingPlayers();
   const needed = engine.votesNeededOnTheBlock();
   const secret =
@@ -217,7 +220,9 @@ export function buildNominationEmbed(
   if (!secret) {
     fields.push({
       name: "Vote order",
-      value: engine.formatNominationVoteRoll(nomination.id).slice(0, 1024),
+      value: engine
+        .formatNominationVoteRoll(nomination.id, { audience: "public" })
+        .slice(0, 1024),
     });
   }
 

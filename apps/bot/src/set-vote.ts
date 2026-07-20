@@ -93,11 +93,17 @@ export async function runSetPlayerVote(options: {
         engine,
         nomination.id,
       );
-      const { postGameLog } = await import("./game-log-thread.js");
-      await postGameLog(
+      const { postGameLogVoteCast } = await import("./game-log-thread.js");
+      await postGameLogVoteCast(
         guild,
         { id: gameId, channelId: engine.getState().channelId },
-        `<@${interaction.user.id}> set <@${voter.discordUserId}> vote on <@${nominee.discordUserId}> to **${choice}**.`,
+        {
+          voterDiscordId: voter.discordUserId,
+          nomineeLabel: nominee.displayName,
+          choice,
+          ballot: "public",
+          setByDiscordId: interaction.user.id,
+        },
       );
     }
 

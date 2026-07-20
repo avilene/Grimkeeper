@@ -29,6 +29,7 @@ export async function syncGameProjectionFromEngine(
         roleId: player.roleId,
         alive: player.alive,
         ghostVoteUsed: player.ghostVoteUsed,
+        displayName: player.displayName,
       },
     });
   }

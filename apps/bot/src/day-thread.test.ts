@@ -79,6 +79,75 @@ describe("buildNominationEmbed", () => {
     expect(voteOrder).toContain("_pending_");
   });
 
+  it("keeps private ST-thread ballots off the Town Voting roll", () => {
+    const engine = GameEngine.fromEvents(gameId, baseEvents());
+    engine.apply({
+      type: GameEventType.TownSetup,
+      gameId,
+      channelId: "channel-1",
+      players: [
+        {
+          playerId: "p1",
+          discordUserId: "u1",
+          displayName: "Alice",
+          seat: 1,
+        },
+        {
+          playerId: "p2",
+          discordUserId: "u2",
+          displayName: "Bob",
+          seat: 2,
+        },
+        {
+          playerId: "p3",
+          discordUserId: "u3",
+          displayName: "Carol",
+          seat: 3,
+        },
+      ],
+      timestamp: new Date().toISOString(),
+    });
+
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: "p1",
+      nomineeId: "p2",
+      accusation: "Looks evil.",
+    });
+    for (const event of nominationEvents) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: "p3",
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: "p3",
+      choice: "no",
+      privateBallot: true,
+    })) {
+      engine.apply(event);
+    }
+
+    const embed = buildNominationEmbed(engine, nomination);
+    const votes = embed.data.fields?.find((field) => field.name === "Votes")?.value;
+    const voteOrder = embed.data.fields?.find((field) => field.name === "Vote order")?.value;
+    expect(votes).toContain("Yes: 1");
+    expect(votes).toContain("No: 0");
+    expect(voteOrder).toContain("Carol");
+    expect(voteOrder).toContain("**yes**");
+    expect(voteOrder).not.toContain("**no**");
+  });
+
   it("includes a vote deadline field when voteDeadlineAt is set", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));

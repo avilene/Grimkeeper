@@ -27,6 +27,7 @@ export const GameCommandKind = {
   PromoteStoryteller: "PromoteStoryteller",
   SetupTown: "SetupTown",
   SetPlayerAlive: "SetPlayerAlive",
+  SetPlayerDisplayName: "SetPlayerDisplayName",
   LockNominationVotes: "LockNominationVotes",
   UnlockNominationVotes: "UnlockNominationVotes",
   StartNominationCount: "StartNominationCount",

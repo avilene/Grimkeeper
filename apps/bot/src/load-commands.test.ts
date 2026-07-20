@@ -21,6 +21,7 @@ describe("loadCommandModules", () => {
     expect(source).toContain('./commands/st-minimal.js');
     expect(source).toContain('./commands/player-day-minimal.js');
     expect(source).toContain('./commands/game-minimal.js');
+    expect(source).toContain('./commands/alias.js');
     expect(source).toContain('./commands/command-help.js');
     expect(source).not.toContain('./commands/game.js');
     expect(source).not.toContain('./commands/st.js');

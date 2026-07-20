@@ -111,6 +111,18 @@ model GameReminder {
   @@index([guildId, channelId])
 }
 
+/** Guild-scoped display alias for a Discord user (shared across games). */
+model PlayerAlias {
+  guildId       String
+  discordUserId String
+  alias         String
+  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now())
+
+  @@id([guildId, discordUserId])
+  @@index([guildId])
+}
+
 model GameEvent {
   id        String   @id @default(cuid())
   gameId    String

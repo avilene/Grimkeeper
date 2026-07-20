@@ -59,7 +59,13 @@ function eventFields(event: GameEvent): Record<string, unknown> {
     case GameEventType.DefenseAdded:
       return { nominationId: event.nominationId, playerId: event.playerId };
     case GameEventType.VoteCast:
-      return { nominationId: event.nominationId, voterId: event.voterId, choice: event.choice, manualSet: event.manualSet };
+      return {
+        nominationId: event.nominationId,
+        voterId: event.voterId,
+        choice: event.choice,
+        manualSet: event.manualSet,
+        privateBallot: event.privateBallot === true,
+      };
     case GameEventType.NominationsPaused:
       return { pausedUntil: event.pausedUntil };
     case GameEventType.NominationsResumed:
@@ -85,6 +91,8 @@ function eventFields(event: GameEvent): Record<string, unknown> {
       return { playerCount: event.players.length, channelId: event.channelId };
     case GameEventType.PlayerAliveChanged:
       return { playerId: event.playerId, alive: event.alive };
+    case GameEventType.PlayerDisplayNameChanged:
+      return { playerId: event.playerId, displayName: event.displayName };
     case GameEventType.NominationVotesLocked:
       return { nominationId: event.nominationId };
     case GameEventType.NominationVotesUnlocked:

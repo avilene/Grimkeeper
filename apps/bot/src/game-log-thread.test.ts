@@ -4,6 +4,7 @@ import {
   formatGameLogLine,
   formatLogRoleRef,
   formatLogUserRef,
+  formatVoteCastLogMessage,
   logThreadName,
   sanitizeGameLogMentions,
 } from "./game-log-thread.js";
@@ -71,5 +72,38 @@ describe("sanitizeGameLogMentions", () => {
     );
     expect(result).not.toMatch(/<@!?/);
     expect(result).not.toMatch(/<@&/);
+  });
+});
+
+describe("formatVoteCastLogMessage", () => {
+  it("labels player ballots as private or public", () => {
+    expect(
+      formatVoteCastLogMessage({
+        voterDiscordId: "111",
+        nomineeLabel: "Bob",
+        choice: "yes",
+        ballot: "public",
+      }),
+    ).toBe("<@111> set a **public** vote on **Bob** to **yes**.");
+    expect(
+      formatVoteCastLogMessage({
+        voterDiscordId: "111",
+        nomineeLabel: "Bob",
+        choice: "no",
+        ballot: "private",
+      }),
+    ).toBe("<@111> set a **private** vote on **Bob** to **no**.");
+  });
+
+  it("labels ST set-vote as setting another player's public ballot", () => {
+    expect(
+      formatVoteCastLogMessage({
+        voterDiscordId: "222",
+        nomineeLabel: "Carol",
+        choice: "conditional",
+        ballot: "public",
+        setByDiscordId: "111",
+      }),
+    ).toBe("<@111> set <@222> **public** vote on **Carol** to **conditional**.");
   });
 });
