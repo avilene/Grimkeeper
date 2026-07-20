@@ -39,6 +39,7 @@ Usage: scripts/docker.sh <command>
 Commands:
   redeploy   Pull pre-built image (if GRIMKEEPER_IMAGE in .env) or build locally
   restart    Restart containers without rebuilding (.env changes)
+  cleanup    Prune unused Docker images/containers (see DOCKER_* in .env)
   logs       Follow container logs (optional service name)
   fresh      Force local rebuild including pnpm install (slow on droplet)
 
@@ -63,12 +64,19 @@ Auto-deploy after GitHub Actions build (shared webhook — Grimkeeper + Koi):
   7. Koi GitHub secrets:        DEPLOY_WEBHOOK_SECRET (same), DEPLOY_WEBHOOK_URL=http://DROPLET:9000/hooks/redeploy-koi
   8. Open port 9000 (or put nginx in front with TLS)
 
+Docker disk cleanup (runs automatically after each redeploy):
+  - DOCKER_CLEANUP=1          # set 0 to disable (default: on)
+  - DOCKER_PRUNE_UNTIL=72h    # drop unused images older than this
+  - DOCKER_PRUNE_VOLUMES=0    # set 1 to also prune unused volumes (off by default)
+  - Manual: pnpm docker:cleanup
+
 Legacy poll-based deploy (if you cannot expose a webhook port):
   - pnpm docker:watch
   - AUTO_REDEPLOY=true pnpm docker:watch
 
 Examples:
   pnpm docker:redeploy
+  pnpm docker:cleanup
   pnpm docker:restart
   pnpm docker:logs
   pnpm docker:fresh
@@ -97,6 +105,9 @@ case "$cmd" in
   restart)
     DEPLOY_TRIGGER=restart docker compose up -d --no-build bot
     docker compose ps
+    ;;
+  cleanup)
+    sh scripts/docker-cleanup.sh
     ;;
   logs)
     docker compose logs -f "${2:-bot}"

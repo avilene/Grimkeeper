@@ -42,4 +42,9 @@ if ! DEPLOY_TRIGGER="$trigger" docker compose up -d --no-build --force-recreate 
 fi
 
 docker compose ps bot
+
+if [ -f ./scripts/docker-cleanup.sh ]; then
+  sh ./scripts/docker-cleanup.sh || true
+fi
+
 printf '[%s] [redeploy] Complete\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
