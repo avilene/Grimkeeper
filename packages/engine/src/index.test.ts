@@ -1,5 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import { GameEngine, GameCommandKind, GameEventType, type GameEvent, DEV_MIN_PLAYERS, resolveStandardScript, StandardEdition } from "./index.js";
+import {
+  GameEngine,
+  GameCommandKind,
+  GameEventType,
+  type GameEvent,
+  DEV_MIN_PLAYERS,
+  resolveStandardScript,
+  StandardEdition,
+  passesExecutionVote,
+  votesNeededOnTheBlock,
+} from "./index.js";
 
 const gameId = "game-1";
 const script = resolveStandardScript(StandardEdition.TB);
@@ -484,21 +494,31 @@ describe("GameEngine", () => {
       timestamp: new Date().toISOString(),
     });
 
-    const nominationEvents = engine.handle({
+    const firstNominationEvents = engine.handle({
       kind: GameCommandKind.MakeNomination,
       gameId,
       nominatorId: players[0]!.id,
       nomineeId: players[1]!.id,
-      accusation: "Accusation.",
+      accusation: "First accusation.",
     });
-    for (const event of nominationEvents) engine.apply(event);
-    const nomination = engine.getState().day!.nominations[0]!;
+    for (const event of firstNominationEvents) engine.apply(event);
+    const firstNomination = engine.getState().day!.nominations[0]!;
+
+    const secondNominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[1]!.id,
+      nomineeId: players[0]!.id,
+      accusation: "Second accusation.",
+    });
+    for (const event of secondNominationEvents) engine.apply(event);
+    const secondNomination = engine.getState().day!.nominations[1]!;
 
     const firstVote = engine.handle({
       kind: GameCommandKind.CastVote,
       gameId,
       voterId: players[2]!.id,
-      nominationId: nomination.id,
+      nominationId: firstNomination.id,
       choice: "yes",
     });
     for (const event of firstVote) engine.apply(event);
@@ -508,7 +528,7 @@ describe("GameEngine", () => {
         kind: GameCommandKind.CastVote,
         gameId,
         voterId: players[2]!.id,
-        nominationId: nomination.id,
+        nominationId: secondNomination.id,
         choice: "yes",
       }),
     ).toThrow("ghost vote");
@@ -1290,7 +1310,7 @@ describe("GameEngine", () => {
       }),
     ).toThrow("vote count is in progress");
 
-    const eligible = engine.getCountEligiblePlayers(players[1]!.id);
+    const eligible = engine.getCountEligiblePlayers(nomination.id);
     for (const [index, player] of eligible.entries()) {
       const events = engine.handle({
         kind: GameCommandKind.CountHandVote,
@@ -1334,7 +1354,7 @@ describe("GameEngine", () => {
     const nomination = engine.getState().day!.nominations[0]!;
 
     // Count order after nominee (seat 2): seat3 ghost, seat4, seat1, seat2 nominee.
-    expect(engine.getCountEligiblePlayers(players[1]!.id).map((player) => player.id)).toEqual([
+    expect(engine.getCountEligiblePlayers(nomination.id).map((player) => player.id)).toEqual([
       players[2]!.id,
       players[3]!.id,
       players[0]!.id,
@@ -1362,6 +1382,50 @@ describe("GameEngine", () => {
     expect(engine.getPlayerById(players[2]!.id)?.ghostVoteUsed).toBe(true);
     // Previously handIndex+1 into a shrunk eligible list skipped seat 4.
     expect(engine.getCountHandPlayer(nomination.id)?.id).toBe(players[3]!.id);
+  });
+
+  it("includes a ghost who pre-voted yes when starting the count", () => {
+    const engine = setupTownEngine(4);
+    const players = engine.getState().players;
+    engine.apply({
+      type: GameEventType.PlayerDied,
+      gameId,
+      playerId: players[2]!.id,
+      cause: "night",
+      timestamp: new Date().toISOString(),
+    });
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Ghost pre-vote.",
+    })) {
+      engine.apply(event);
+    }
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: players[2]!.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
+    expect(engine.getPlayerById(players[2]!.id)?.ghostVoteUsed).toBe(false);
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.StartNominationCount,
+      gameId,
+      nominationId: nomination.id,
+    })) {
+      engine.apply(event);
+    }
+
+    expect(engine.getCountHandPlayer(nomination.id)?.id).toBe(players[2]!.id);
   });
 
   it("cancels an in-progress count without locking", () => {
@@ -1511,5 +1575,17 @@ describe("GameEngine", () => {
     const stRoll = engine.formatNominationVoteRoll(nomination.id, { audience: "storyteller" });
     expect(stRoll).toContain(`**no**`);
     expect(stRoll).toContain("(public: yes)");
+  });
+});
+
+describe("vote thresholds", () => {
+  it("needs half the living players rounded up to reach the block", () => {
+    expect(votesNeededOnTheBlock(4)).toBe(2);
+    expect(passesExecutionVote(2, 4)).toBe(true);
+    expect(passesExecutionVote(1, 4)).toBe(false);
+
+    expect(votesNeededOnTheBlock(5)).toBe(3);
+    expect(passesExecutionVote(3, 5)).toBe(true);
+    expect(passesExecutionVote(2, 5)).toBe(false);
   });
 });

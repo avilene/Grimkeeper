@@ -61,7 +61,7 @@ describe("buildAliveDeadLines", () => {
     expect(dead).toContain("ghost **available**");
   });
 
-  it("marks ghost used on dead players after a ghost vote", () => {
+  it("keeps ghost available after a pre-vote yes until the count", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(3));
     engine.apply({
       type: GameEventType.DayStarted,
@@ -97,8 +97,8 @@ describe("buildAliveDeadLines", () => {
     });
 
     const { dead, daySummary } = buildAliveDeadLines(engine);
-    expect(dead).toContain("ghost **used**");
-    expect(daySummary).toContain("Ghost votes left: **0**");
+    expect(dead).toContain("ghost **available**");
+    expect(daySummary).toContain("Ghost votes left: **1**");
   });
 
   it("includes day nomination summary during day phase", () => {

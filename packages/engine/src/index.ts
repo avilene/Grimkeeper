@@ -626,12 +626,12 @@ export function countLivingPlayers(state: GameState): number {
 }
 
 export function passesExecutionVote(yesVotes: number, livingCount: number): boolean {
-  return yesVotes > Math.floor(livingCount / 2);
+  return yesVotes >= Math.ceil(livingCount / 2);
 }
 
-/** Yes votes required to put a nominee on the block (majority of living players). */
+/** Yes votes required to put a nominee on the block (half the living players, rounded up). */
 export function votesNeededOnTheBlock(livingCount: number): number {
-  return Math.floor(livingCount / 2) + 1;
+  return Math.ceil(livingCount / 2);
 }
 
 export interface NominationVoteStanding {
@@ -789,6 +789,32 @@ export function getEffectiveYesVotes(state: GameState, nominationId: string): nu
     yes++;
   }
   return yes;
+}
+
+/** Ghost already spent their daily yes on a different nomination. */
+export function hasGhostYesOnOtherNomination(
+  state: GameState,
+  voterId: string,
+  nominationId: string,
+): boolean {
+  if (!state.day) return false;
+  return state.day.votes.some(
+    (vote) =>
+      vote.voterId === voterId &&
+      vote.nominationId !== nominationId &&
+      vote.choice === "yes",
+  );
+}
+
+/** Alive players always count; ghosts count while their vote is still available. */
+export function isCountEligibleVoter(
+  state: GameState,
+  player: PlayerState,
+  nominationId: string,
+): boolean {
+  if (player.alive) return true;
+  if (player.ghostVoteUsed) return false;
+  return !hasGhostYesOnOtherNomination(state, player.id, nominationId);
 }
 
 export function isNominationsPaused(day: DayPhaseState, now = new Date()): boolean {
@@ -1057,11 +1083,20 @@ export class GameEngine {
           throw new GameEngineError("A vote count is in progress. Wait for the storyteller.");
         }
         if (!voter.alive) {
+          if (command.choice !== "yes") {
+            throw new GameEngineError("Ghost votes must be yes.");
+          }
           if (voter.ghostVoteUsed) {
             throw new GameEngineError("You have already used your ghost vote.");
           }
-          if (command.choice !== "yes") {
-            throw new GameEngineError("Ghost votes must be yes.");
+          if (
+            hasGhostYesOnOtherNomination(
+              this.state,
+              command.voterId,
+              command.nominationId,
+            )
+          ) {
+            throw new GameEngineError("You have already used your ghost vote.");
           }
         }
         break;
@@ -1215,7 +1250,7 @@ export class GameEngine {
         if (nomination.countHandIndex != null) {
           throw new GameEngineError("A vote count is already in progress.");
         }
-        if (this.getCountEligiblePlayers(nomination.nomineeId).length === 0) {
+        if (this.getCountEligiblePlayers(nomination.id).length === 0) {
           throw new GameEngineError("No eligible voters to count.");
         }
         break;
@@ -1649,8 +1684,8 @@ export class GameEngine {
       case GameCommandKind.StartNominationCount: {
         const nomination = this.getNominationById(command.nominationId)!;
         const order = this.getVoteLockInOrder(nomination.nomineeId);
-        const handIndex = order.findIndex(
-          (player) => player.alive || !player.ghostVoteUsed,
+        const handIndex = order.findIndex((player) =>
+          isCountEligibleVoter(this.state, player, command.nominationId),
         );
         if (handIndex < 0) {
           throw new GameEngineError("No eligible voters to count.");
@@ -1672,7 +1707,7 @@ export class GameEngine {
         const order = this.getVoteLockInOrder(nomination.nomineeId);
         const handIndex = nomination.countHandIndex ?? 0;
         const voter = order[handIndex];
-        if (!voter || (!voter.alive && voter.ghostVoteUsed)) {
+        if (!voter || !isCountEligibleVoter(this.state, voter, command.nominationId)) {
           throw new GameEngineError("No voter under the hand.");
         }
 
@@ -1682,7 +1717,7 @@ export class GameEngine {
         let nextPlayer: PlayerState | null = null;
         for (let index = handIndex + 1; index < order.length; index++) {
           const candidate = order[index]!;
-          if (candidate.alive || !candidate.ghostVoteUsed) {
+          if (isCountEligibleVoter(this.state, candidate, command.nominationId)) {
             nextIndex = index;
             nextPlayer = candidate;
             break;
@@ -1852,10 +1887,6 @@ export class GameEngine {
           this.state.day.votes[existingIndex] = voteRecord;
         } else {
           this.state.day.votes.push(voteRecord);
-        }
-        const voter = this.getPlayerById(event.voterId);
-        if (voter && !voter.alive && !event.manualSet && event.choice === "yes") {
-          voter.ghostVoteUsed = true;
         }
         break;
       }
@@ -2179,9 +2210,11 @@ export class GameEngine {
   }
 
   /** Players who can participate in a counted vote (alive, or dead with ghost remaining). */
-  getCountEligiblePlayers(nomineeId: string): PlayerState[] {
-    return this.getVoteLockInOrder(nomineeId).filter(
-      (player) => player.alive || !player.ghostVoteUsed,
+  getCountEligiblePlayers(nominationId: string): PlayerState[] {
+    const nomination = this.getNominationById(nominationId);
+    if (!nomination) return [];
+    return this.getVoteLockInOrder(nomination.nomineeId).filter((player) =>
+      isCountEligibleVoter(this.state, player, nominationId),
     );
   }
 
@@ -2199,7 +2232,7 @@ export class GameEngine {
     const voted = new Set(
       day.votes.filter((vote) => vote.nominationId === nominationId).map((vote) => vote.voterId),
     );
-    return this.getCountEligiblePlayers(nomination.nomineeId).filter(
+    return this.getCountEligiblePlayers(nominationId).filter(
       (player) => !voted.has(player.id),
     );
   }

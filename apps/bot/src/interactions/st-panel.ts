@@ -13,6 +13,7 @@ import {
   loadEngine,
   persistEvents,
   refreshNominationEverywhere,
+  refreshAllNominationEverywhere,
   replyEngineError,
   resolveVotingChannel,
   syncGameProjection,
@@ -183,7 +184,7 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       const passed = resolved?.status === "resolved_pass";
       const tally = engine.formatNominationTally(next.id, { revealSecret: true });
 
-      await refreshNominationEverywhere(guild, game, engine, next.id, { revealSecret: true });
+      await refreshAllNominationEverywhere(guild, game, engine, { revealSecret: true });
       await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
 
       const channel = await resolveVotingChannel(guild, game, engine);

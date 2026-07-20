@@ -32,6 +32,7 @@ import {
   persistEvents,
   postNominationEverywhere,
   refreshNominationEverywhere,
+  refreshAllNominationEverywhere,
   removeRoleFromUser,
   replyEngineError,
   replyOrEditInteraction,
@@ -835,7 +836,7 @@ export class StCommandsMinimal {
         ? await resolveVotingChannel(interaction.guild, game, engine)
         : null;
       if (interaction.guild) {
-        await refreshNominationEverywhere(interaction.guild, game, engine, next.id, {
+        await refreshAllNominationEverywhere(interaction.guild, game, engine, {
           revealSecret: true,
         });
         await upsertStControlPanel(interaction.guild, game.channelId, engine, game.kibThreadId);

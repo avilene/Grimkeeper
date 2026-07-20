@@ -6,11 +6,13 @@ import {
   loadEngine,
   persistEvents,
   refreshNominationEverywhere,
+  refreshAllNominationEverywhere,
   replyEngineError,
   resolveVotingChannel,
   getStorytellerThread,
 } from "../commands/command-context.js";
 import {
+  formatBlockContestSummary,
   formatNominationPhrase,
   formatNominationRef,
   resolveNominationMessageUrl,
@@ -115,21 +117,7 @@ function formatNomineeNames(engine: GameEngine, nomineeIds: string[]): string {
 }
 
 function describeBlockContest(engine: GameEngine): string {
-  const contest = engine.getBlockContest();
-  const needed = engine.votesNeededOnTheBlock();
-  const living = engine.countLivingPlayers();
-  if (contest.kind === "empty") {
-    return `Block empty (need ${needed} of ${living} alive).`;
-  }
-  if (contest.kind === "sole") {
-    const name = engine.getPlayerById(contest.leader.nomineeId)?.displayName ?? "?";
-    return `**${name}** on the block with **${contest.leader.yesVotes}** yes (need ${needed} of ${living}).`;
-  }
-  const names = formatNomineeNames(
-    engine,
-    contest.leaders.map((leader) => leader.nomineeId),
-  );
-  return `**Tie** on the block between ${names} at **${contest.yesVotes}** yes (need ${needed} of ${living}) — nobody uniquely on the block.`;
+  return formatBlockContestSummary(engine);
 }
 
 function describeAnnounceResult(
@@ -399,7 +387,7 @@ async function announceBlockResult(
   const resolved = engine.getNominationById(nominationId);
   const passed = resolved?.status === "resolved_pass";
 
-  await refreshNominationEverywhere(guild, game, engine, nominationId, { revealSecret: true });
+  await refreshAllNominationEverywhere(guild, game, engine, { revealSecret: true });
   await upsertStVoteTracker(guild, game.channelId, engine, game.kibThreadId);
   const { upsertStControlPanel } = await import("../st-control-panel.js");
   await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);

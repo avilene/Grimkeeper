@@ -10,6 +10,8 @@ import {
 
 import {
   buildNominationEmbed,
+  formatBlockContestSummary,
+  formatNominationBlockField,
   formatNominationRef,
   sanitizeMarkdownLinkLabel,
   townPhaseBaseChannelName,
@@ -71,7 +73,7 @@ describe("buildNominationEmbed", () => {
     const embed = buildNominationEmbed(engine, nomination);
     expect(embed.data.title).toBe("Nomination of Alice on Bob");
     expect(embed.data.fields?.find((field) => field.name === "On the block")?.value).toBe(
-      "**2** yes needed (2 alive)",
+      "**1** yes needed to pass (2 alive)",
     );
     const voteOrder = embed.data.fields?.find((field) => field.name === "Vote order")?.value;
     expect(voteOrder).toContain("1. Alice");
@@ -239,6 +241,83 @@ describe("buildNominationEmbed", () => {
       "Votes recorded (secret mode)",
     );
     expect(embed.data.fields?.find((field) => field.name === "Vote order")).toBeUndefined();
+  });
+});
+
+describe("block contest display", () => {
+  function townEngine(playerCount: number): GameEngine {
+    const engine = GameEngine.fromEvents(gameId, baseEvents());
+    const players = Array.from({ length: playerCount }, (_, index) => ({
+      playerId: `p${index + 1}`,
+      discordUserId: `u${index + 1}`,
+      displayName: `Player ${index + 1}`,
+      seat: index + 1,
+    }));
+    engine.apply({
+      type: GameEventType.TownSetup,
+      gameId,
+      channelId: "channel-1",
+      players,
+      timestamp: new Date().toISOString(),
+    });
+    return engine;
+  }
+
+  it("shows block leader on remaining open nominations after a resolve", () => {
+    const engine = townEngine(4);
+    const players = engine.getState().players;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "First.",
+    })) {
+      engine.apply(event);
+    }
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[2]!.id,
+      nomineeId: players[3]!.id,
+      accusation: "Second.",
+    })) {
+      engine.apply(event);
+    }
+
+    const first = engine.getState().day!.nominations[0]!;
+    const second = engine.getState().day!.nominations[1]!;
+
+    for (const voter of [players[0]!, players[2]!, players[3]!]) {
+      for (const event of engine.handle({
+        kind: GameCommandKind.CastVote,
+        gameId,
+        nominationId: first.id,
+        voterId: voter.id,
+        choice: "yes",
+      })) {
+        engine.apply(event);
+      }
+    }
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.ResolveNomination,
+      gameId,
+      nominationId: first.id,
+    })) {
+      engine.apply(event);
+    }
+
+    const resolvedField = formatNominationBlockField(engine, engine.getNominationById(first.id)!);
+    expect(resolvedField).toContain("On the block for execution");
+    expect(resolvedField).toContain("**3** yes");
+
+    const openField = formatNominationBlockField(engine, second);
+    expect(openField).toContain("**2** yes needed to pass");
+    expect(openField).toContain("Player 2");
+    expect(openField).toContain("on the block");
+    expect(formatBlockContestSummary(engine)).toContain("Player 2");
   });
 });
 

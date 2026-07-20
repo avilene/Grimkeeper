@@ -11,6 +11,7 @@ import { prisma } from "@grimkeeper/database";
 import type { GameEngine, NominationRecord } from "@grimkeeper/engine";
 
 import { ensureStorytellerThread, getStorytellerThread } from "./commands/command-context.js";
+import { formatBlockContestSummary } from "./day-thread.js";
 import { reportError } from "./error-reporter.js";
 import { encodeIdPair, parseIdPair } from "./interaction-ids.js";
 import { log } from "./logger.js";
@@ -169,6 +170,11 @@ export function buildStVoteTrackerEmbed(engine: GameEngine): EmbedBuilder {
     if (open.length > 0) {
       embed.addFields({
         name: "On the block",
+        value: formatBlockContestSummary(engine),
+        inline: false,
+      });
+      embed.addFields({
+        name: "Pass threshold",
         value: `**${needed}** yes needed (${living} alive)`,
         inline: true,
       });

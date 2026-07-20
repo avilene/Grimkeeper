@@ -1410,6 +1410,30 @@ export async function refreshNominationEverywhere(
   await refreshStVoteTrackerForGame(guild, game, engine);
 }
 
+/** Refresh every nomination embed (e.g. after resolve updates block contest for all open noms). */
+export async function refreshAllNominationEverywhere(
+  guild: Guild,
+  game: { id: string; channelId: string },
+  engine: GameEngine,
+  options?: { revealSecret?: boolean },
+): Promise<void> {
+  const nominationIds = engine.getState().day?.nominations.map((nomination) => nomination.id) ?? [];
+  const channels = await collectNominationUpdateChannels(guild, game, engine);
+  for (const nominationId of nominationIds) {
+    await updateNominationMessagesInChannels(engine, game.id, channels, nominationId, options);
+  }
+
+  if (engine.getState().townMode) {
+    for (const thread of await listPersonalPlayerThreads(guild, game, engine)) {
+      for (const nominationId of nominationIds) {
+        await clearNominationMessageInChannel(thread, nominationId);
+      }
+    }
+  }
+
+  await refreshStVoteTrackerForGame(guild, game, engine);
+}
+
 export async function refreshStVoteTrackerForGame(
   guild: Guild,
   game: { channelId: string; kibThreadId?: string | null },

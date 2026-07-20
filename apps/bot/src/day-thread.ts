@@ -130,6 +130,89 @@ export function formatNominationPhrase(
   return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
+function nomineeDisplayName(engine: GameEngine, nomineeId: string): string {
+  return engine.getPlayerById(nomineeId)?.displayName ?? "?";
+}
+
+/** Shared block summary for ST tracker, audit logs, and nomination embeds. */
+export function formatBlockContestSummary(engine: GameEngine): string {
+  const contest = engine.getBlockContest();
+  const needed = engine.votesNeededOnTheBlock();
+  const living = engine.countLivingPlayers();
+
+  if (contest.kind === "empty") {
+    return `No one on the block yet (**${needed}** yes needed, ${living} alive).`;
+  }
+  if (contest.kind === "sole") {
+    const name = nomineeDisplayName(engine, contest.leader.nomineeId);
+    return `**${name}** on the block (**${contest.leader.yesVotes}** yes) — ready to execute.`;
+  }
+  const names = contest.leaders.map((leader) => nomineeDisplayName(engine, leader.nomineeId)).join(", ");
+  return `**Tie** between ${names} at **${contest.yesVotes}** yes — no execution until the tie breaks.`;
+}
+
+/** Per-nomination block / pass threshold for Town Voting embeds. */
+export function formatNominationBlockField(
+  engine: GameEngine,
+  nomination: NominationRecord,
+): string {
+  const living = engine.countLivingPlayers();
+  const needed = engine.votesNeededOnTheBlock();
+  const yesVotes = engine.getEffectiveYesVotes(nomination.id);
+  const contest = engine.getBlockContest();
+
+  if (nomination.status === "executed") {
+    return `Executed — had **${yesVotes}** yes when resolved.`;
+  }
+
+  if (nomination.status === "resolved_fail") {
+    return `Did not pass — **${yesVotes}** yes (needed **${needed}**).`;
+  }
+
+  if (nomination.status === "open" && !nomination.votesLocked) {
+    const lines = [`**${needed}** yes needed to pass (${living} alive)`];
+    if (contest.kind === "sole" && contest.leader.nominationId !== nomination.id) {
+      const leaderName = nomineeDisplayName(engine, contest.leader.nomineeId);
+      const leaderYes = contest.leader.yesVotes;
+      lines.push(
+        `**${leaderName}** on the block (${leaderYes} yes). Need **${leaderYes + 1}** yes here to take it, or **${leaderYes}** to tie.`,
+      );
+    } else if (
+      contest.kind === "tie" &&
+      !contest.leaders.some((leader) => leader.nominationId === nomination.id)
+    ) {
+      const names = contest.leaders.map((leader) => nomineeDisplayName(engine, leader.nomineeId)).join(", ");
+      lines.push(
+        `Block tied: ${names} at **${contest.yesVotes}** yes. Need **${contest.yesVotes + 1}** yes here to take it.`,
+      );
+    }
+    return lines.join("\n");
+  }
+
+  if (contest.kind === "sole" && contest.leader.nominationId === nomination.id) {
+    return `**On the block for execution** — **${yesVotes}** yes (${needed} needed, ${living} alive).`;
+  }
+  if (contest.kind === "tie" && contest.leaders.some((leader) => leader.nominationId === nomination.id)) {
+    const others = contest.leaders
+      .filter((leader) => leader.nominationId !== nomination.id)
+      .map((leader) => nomineeDisplayName(engine, leader.nomineeId));
+    if (others.length > 0) {
+      return `**Tied on the block** with ${others.join(", ")} at **${yesVotes}** yes — no execution until the tie breaks.`;
+    }
+    return `**Tied on the block** at **${yesVotes}** yes.`;
+  }
+  if (yesVotes >= needed) {
+    const leaderNote =
+      contest.kind === "sole"
+        ? ` **${nomineeDisplayName(engine, contest.leader.nomineeId)}** on the block at **${contest.leader.yesVotes}** yes.`
+        : contest.kind === "tie"
+          ? ` Block tied at **${contest.yesVotes}** yes.`
+          : "";
+    return `Passed with **${yesVotes}** yes but **not** on the block.${leaderNote}`;
+  }
+  return `**${yesVotes}** yes (needed **${needed}** to pass).`;
+}
+
 /**
  * Make text safe as a Discord `[label](url)` label.
  * Strips `[bracket]` nickname tags and remaining `[]()` so names like `sharii [craboots!]` do not break the link.
@@ -198,8 +281,7 @@ export function buildNominationEmbed(
     ...options,
     ballot: "public",
   });
-  const living = engine.countLivingPlayers();
-  const needed = engine.votesNeededOnTheBlock();
+  const blockText = formatNominationBlockField(engine, nomination);
   const secret =
     engine.getState().day?.voteVisibility === "secret" && !options?.revealSecret;
   const fields: APIEmbedField[] = [
@@ -229,7 +311,7 @@ export function buildNominationEmbed(
   fields.push(
     {
       name: "On the block",
-      value: `**${needed}** yes needed (${living} alive)`,
+      value: blockText,
       inline: true,
     },
     {
