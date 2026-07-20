@@ -130,6 +130,20 @@ export function formatNominationPhrase(
   return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
+/**
+ * Make text safe as a Discord `[label](url)` label.
+ * Strips `[bracket]` nickname tags and remaining `[]()` so names like `sharii [craboots!]` do not break the link.
+ */
+export function sanitizeMarkdownLinkLabel(text: string): string {
+  const cleaned = text
+    .replace(/\s*\[[^\]]*\]/g, "")
+    .replace(/\s*\([^)]*\)/g, "")
+    .replace(/[\[\]()]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || "nomination";
+}
+
 /** Wrap a nomination phrase in a Discord markdown jump link when a message URL is known. */
 export function formatNominationRef(
   engine: GameEngine,
@@ -139,7 +153,7 @@ export function formatNominationRef(
 ): string {
   const phrase = formatNominationPhrase(engine, nominationId, options);
   if (!messageUrl) return phrase;
-  return `[${phrase}](${messageUrl})`;
+  return `[${sanitizeMarkdownLinkLabel(phrase)}](${messageUrl})`;
 }
 
 export function buildDayIntroEmbed(engine: GameEngine): EmbedBuilder {

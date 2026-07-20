@@ -10,6 +10,8 @@ import {
 
 import {
   buildNominationEmbed,
+  formatNominationRef,
+  sanitizeMarkdownLinkLabel,
   townPhaseBaseChannelName,
   townPhaseParentChannelName,
   townVoteThreadName,
@@ -168,6 +170,59 @@ describe("buildNominationEmbed", () => {
       "Votes recorded (secret mode)",
     );
     expect(embed.data.fields?.find((field) => field.name === "Vote order")).toBeUndefined();
+  });
+});
+
+describe("sanitizeMarkdownLinkLabel", () => {
+  it("strips bracket nickname tags that would break Discord links", () => {
+    expect(sanitizeMarkdownLinkLabel("nomination of arlie on sharii🦀 [craboots!]")).toBe(
+      "nomination of arlie on sharii🦀",
+    );
+    expect(sanitizeMarkdownLinkLabel("Alice [ST] (night)")).toBe("Alice");
+  });
+});
+
+describe("formatNominationRef", () => {
+  it("uses a sanitized label when wrapping a jump link", () => {
+    const engine = GameEngine.fromEvents(gameId, baseEvents());
+    engine.apply({
+      type: GameEventType.TownSetup,
+      gameId,
+      channelId: "channel-1",
+      players: [
+        {
+          playerId: "p1",
+          discordUserId: "u1",
+          displayName: "arlie",
+          seat: 1,
+        },
+        {
+          playerId: "p2",
+          discordUserId: "u2",
+          displayName: "sharii🦀 [craboots!]",
+          seat: 2,
+        },
+      ],
+      timestamp: new Date().toISOString(),
+    });
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: "p1",
+      nomineeId: "p2",
+      accusation: "test",
+    })) {
+      engine.apply(event);
+    }
+
+    const nominationId = engine.getState().day!.nominations[0]!.id;
+    const url = "https://discord.com/channels/1/2/3";
+    expect(formatNominationRef(engine, nominationId, url)).toBe(
+      `[nomination of arlie on sharii🦀](${url})`,
+    );
+    expect(formatNominationRef(engine, nominationId, null)).toBe(
+      "nomination of arlie on sharii🦀 [craboots!]",
+    );
   });
 });
 
