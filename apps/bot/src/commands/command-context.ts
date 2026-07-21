@@ -1569,8 +1569,25 @@ export async function requireTownVotingChannel(
   const voteHint = voteThreadId
     ? `the voting thread <#${voteThreadId}>`
     : `the town channel <#${game.channelId}>`;
+
+  let stHint = "your private ST thread";
+  if (interaction.guild) {
+    const player = engine.getPlayerByDiscordId(interaction.user.id);
+    if (player) {
+      const stThread = await findPersonalPlayerThread(
+        interaction.guild,
+        game.channelId,
+        game.id,
+        player.displayName,
+      );
+      if (stThread) {
+        stHint = `your private ST thread <#${stThread.id}>`;
+      }
+    }
+  }
+
   await replyOrEditInteraction(interaction, {
-    content: `Use this command in ${voteHint}, or your private ST thread.`,
+    content: `Use this command in ${voteHint}, or ${stHint}.`,
     flags: MessageFlags.Ephemeral,
   });
   return false;
