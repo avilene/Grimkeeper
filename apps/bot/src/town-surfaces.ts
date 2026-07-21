@@ -169,8 +169,6 @@ export async function ensureTownSurfaceThread(
     } catch {
       return null;
     }
-  } else if (thread.name !== threadName) {
-    await thread.setName(threadName, `Restore ${meta.label} thread name`).catch(() => undefined);
   }
 
   if (thread.archived) {
