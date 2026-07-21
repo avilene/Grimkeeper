@@ -124,9 +124,23 @@ export class WhisperCommands {
         (isNeighbor ? " (NW)" : ""),
     ).catch(() => undefined);
 
-    await replyOrEditInteraction(interaction, {
-      content: `Whisper opened: <#${thread.id}>`,
-      flags: MessageFlags.Ephemeral,
-    });
+    const declaration = `Whisper created between ${creator.displayName} and ${target.displayName}`;
+    const channel = interaction.channel;
+    if (channel && "send" in channel) {
+      await channel.send({ content: declaration, allowedMentions: { parse: [] } }).catch(() => undefined);
+    }
+
+    // Early defer is ephemeral — dismiss it so only the public declaration remains.
+    if (interaction.replied || interaction.deferred) {
+      await interaction.deleteReply().catch(async () => {
+        await replyOrEditInteraction(interaction, {
+          content: declaration,
+          flags: MessageFlags.Ephemeral,
+        });
+      });
+      return;
+    }
+
+    await interaction.reply({ content: declaration });
   }
 }
