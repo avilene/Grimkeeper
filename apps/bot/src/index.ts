@@ -109,23 +109,32 @@ client.on("interactionCreate", (interaction) => {
     }
     await client.executeInteraction(interaction);
   })().catch((error: unknown) => {
-    if (
+    const recoverable =
       error &&
       typeof error === "object" &&
       "code" in error &&
-      (error.code === 10062 || isRecoverableInteractionResponseError(error))
-    ) {
-      return;
-    }
-    void reportError("interaction.failed", error, {
+      (error.code === 10062 || isRecoverableInteractionResponseError(error));
+
+    const context = {
       command: interaction.isChatInputCommand() ? interaction.commandName : interaction.type,
+      subcommandGroup: interaction.isChatInputCommand()
+        ? interaction.options.getSubcommandGroup(false) ?? undefined
+        : undefined,
       subcommand: interaction.isChatInputCommand()
         ? interaction.options.getSubcommand(false) ?? undefined
         : undefined,
       guildId: interaction.guildId,
       channelId: interaction.channelId,
       userId: interaction.user.id,
-    });
+    };
+
+    if (recoverable) {
+      // Still surface to the error channel — these often explain "hanging" commands
+      // (expired token, duplicate bot ack, etc.).
+      void reportError("interaction.recoverable", error, context);
+      return;
+    }
+    void reportError("interaction.failed", error, context);
   });
 });
 

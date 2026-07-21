@@ -40,7 +40,11 @@ describe("shouldDeferSlashCommand", () => {
   });
 
   it("does not defer /st guide checklists", () => {
-    expect(shouldDeferSlashCommand(chatCommand("st", "guide") as never)).toBe(false);
+    expect(shouldDeferSlashCommand(chatCommand("st", "setup", "guide") as never)).toBe(false);
+    expect(shouldDeferSlashCommand(chatCommand("st", "day", "guide") as never)).toBe(false);
+    expect(shouldDeferSlashCommand(chatCommand("st", "night", "guide") as never)).toBe(false);
+    // Nested guide without group metadata still must not ephemeral-ack.
+    expect(shouldDeferSlashCommand(chatCommand("st", "setup") as never)).toBe(false);
   });
 
   it("defers top-level day commands", () => {

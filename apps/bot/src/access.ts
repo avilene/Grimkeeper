@@ -1,4 +1,4 @@
-import type { CommandInteraction } from "discord.js";
+import type { CommandInteraction, GuildMember } from "discord.js";
 
 export function parseList(value: string | undefined): Set<string> {
   if (!value) return new Set();
@@ -32,10 +32,24 @@ export async function canUseBot(interaction: CommandInteraction): Promise<boolea
     return false;
   }
 
-  const member = await interaction.guild?.members.fetch(userId).catch(() => null);
+  const member = await fetchMemberWithTimeout(interaction, userId);
   if (!member) return false;
 
   return member.roles.cache.some((role) => allowedRoleIds.has(role.id));
+}
+
+async function fetchMemberWithTimeout(
+  interaction: CommandInteraction,
+  userId: string,
+): Promise<GuildMember | null> {
+  const guild = interaction.guild;
+  if (!guild) return null;
+  return Promise.race([
+    guild.members.fetch(userId).catch(() => null),
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), 2_000);
+    }),
+  ]);
 }
 
 export async function isInExplicitAllowlist(interaction: CommandInteraction): Promise<boolean> {

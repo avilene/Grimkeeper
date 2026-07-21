@@ -1,7 +1,13 @@
-import { ApplicationCommandOptionType, CommandInteraction, EmbedBuilder } from "discord.js";
-import { Discord, Slash, SlashChoice, SlashGroup, SlashOption } from "discordx";
+import {
+  ApplicationCommandOptionType,
+  CommandInteraction,
+  EmbedBuilder,
+  MessageFlags,
+} from "discord.js";
+import { Discord, Slash, SlashGroup, SlashOption } from "discordx";
 
-import { requireCommandAccess } from "./command-context.js";
+import { canUseBot } from "../access.js";
+import { reportError } from "../error-reporter.js";
 import {
   buildDevHelpEmbeds,
   buildGameHelpEmbeds,
@@ -12,18 +18,56 @@ import {
   type StGuideTopic,
 } from "./help-content.js";
 
-async function replyWithHelp(
+const ACCESS_DENIED =
+  "You are not allowed to use this bot. Ask an admin to add your user ID " +
+  "to `ALLOWED_USER_IDS` or one of your role IDs to `ALLOWED_ROLE_IDS`.";
+
+/**
+ * Ack immediately (public) so Discord never spins on help/guide, then edit with embeds.
+ * Avoids the early-defer ephemeral "Working…" path that can leave guides stuck.
+ */
+async function replyHelpEmbeds(
   interaction: CommandInteraction,
   embeds: EmbedBuilder[],
 ): Promise<void> {
-  // Help/guide are fast — reply once with the embeds (avoid "Working…" then edit).
-  if (interaction.deferred || interaction.replied) {
-    await interaction.editReply({ content: null, embeds }).catch(async () => {
-      await interaction.followUp({ embeds }).catch(() => undefined);
+  try {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply();
+    }
+
+    const allowed = await canUseBot(interaction);
+    if (!allowed) {
+      await interaction.editReply({ content: ACCESS_DENIED, embeds: [] });
+      return;
+    }
+
+    await interaction.editReply({ content: null, embeds });
+  } catch (error) {
+    void reportError("help.reply.failed", error, {
+      command: interaction.commandName,
+      subcommandGroup: interaction.isChatInputCommand()
+        ? interaction.options.getSubcommandGroup(false) ?? undefined
+        : undefined,
+      subcommand: interaction.isChatInputCommand()
+        ? interaction.options.getSubcommand(false) ?? undefined
+        : undefined,
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+      userId: interaction.user.id,
+      deferred: interaction.deferred,
+      replied: interaction.replied,
     });
-    return;
+
+    if (interaction.deferred || interaction.replied) {
+      await interaction
+        .editReply({ content: "Could not show that guide. Try again.", embeds: [] })
+        .catch(() => undefined);
+      return;
+    }
+    await interaction
+      .reply({ content: "Could not show that guide. Try again.", flags: MessageFlags.Ephemeral })
+      .catch(() => undefined);
   }
-  await interaction.reply({ embeds });
 }
 
 async function replyScopedHelp(
@@ -32,12 +76,18 @@ async function replyScopedHelp(
   search: string | undefined,
   full: () => EmbedBuilder[],
 ): Promise<void> {
-  if (!(await requireCommandAccess(interaction))) return;
   const query = search?.trim();
-  await replyWithHelp(
+  await replyHelpEmbeds(
     interaction,
     query ? buildHelpSearchEmbeds(scope, query) : full(),
   );
+}
+
+async function replyStGuide(
+  interaction: CommandInteraction,
+  topic: StGuideTopic,
+): Promise<void> {
+  await replyHelpEmbeds(interaction, [buildStGuideEmbed(topic)]);
 }
 
 @Discord()
@@ -76,52 +126,34 @@ export class StHelpCommands {
   ): Promise<void> {
     await replyScopedHelp(interaction, "st", search, buildStHelpEmbeds);
   }
-
-  @Slash({
-    name: "guide",
-    description: "Phase checklist: setup, day, or night",
-  })
-  async guide(
-    @SlashChoice({ name: "Setup", value: "setup" })
-    @SlashChoice({ name: "Day", value: "day" })
-    @SlashChoice({ name: "Night", value: "night" })
-    @SlashOption({
-      name: "phase",
-      description: "Which checklist to show",
-      type: ApplicationCommandOptionType.String,
-      required: true,
-    })
-    phase: string,
-    interaction: CommandInteraction,
-  ): Promise<void> {
-    const topic = parseGuidePhase(phase);
-    if (!topic) {
-      if (!(await requireCommandAccess(interaction))) return;
-      await replyWithHelp(interaction, [
-        new EmbedBuilder()
-          .setTitle("Unknown guide phase")
-          .setDescription("Pick **setup**, **day**, or **night**."),
-      ]);
-      return;
-    }
-    await replyStGuide(interaction, topic);
-  }
 }
 
-function parseGuidePhase(value: string): StGuideTopic | null {
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "setup" || normalized === "day" || normalized === "night") {
-    return normalized;
+/**
+ * Nested `/st guide setup|day|night`.
+ * Note: `guide` must be a subcommand group only — Discord cannot also have `/st guide` as a plain subcommand.
+ */
+@Discord()
+@SlashGroup({
+  name: "guide",
+  description: "Phase checklists for storytellers",
+  root: "st",
+})
+@SlashGroup("guide", "st")
+export class StGuideCommands {
+  @Slash({ name: "setup", description: "Checklist: lobby → town setup" })
+  async setup(interaction: CommandInteraction): Promise<void> {
+    await replyStGuide(interaction, "setup");
   }
-  return null;
-}
 
-async function replyStGuide(
-  interaction: CommandInteraction,
-  topic: StGuideTopic,
-): Promise<void> {
-  if (!(await requireCommandAccess(interaction))) return;
-  await replyWithHelp(interaction, [buildStGuideEmbed(topic)]);
+  @Slash({ name: "day", description: "Checklist: running a day" })
+  async day(interaction: CommandInteraction): Promise<void> {
+    await replyStGuide(interaction, "day");
+  }
+
+  @Slash({ name: "night", description: "Checklist: running a night" })
+  async night(interaction: CommandInteraction): Promise<void> {
+    await replyStGuide(interaction, "night");
+  }
 }
 
 @Discord()

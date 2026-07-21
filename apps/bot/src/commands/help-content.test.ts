@@ -66,8 +66,8 @@ describe("help content", () => {
     expect(stText.toLowerCase()).toContain("close-nominations");
     expect(stText.toLowerCase()).toContain("next-phase");
     expect(stText.toLowerCase()).toContain("add-st");
-    expect(st.data.description).toContain("/st guide");
-    expect(stText).toContain("/st guide");
+    expect(st.data.description).toContain("/st guide setup");
+    expect(stText).toContain("/st guide setup|day|night");
   });
 
   it("builds phase checklists", () => {

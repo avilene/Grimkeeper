@@ -8,6 +8,9 @@ import {
 import { log } from "../logger.js";
 
 const FAST_SUBCOMMANDS = new Set(["help", "guide"]);
+/** Nested `/st guide setup|day|night` — handler acks itself; don't steal the interaction. */
+const FAST_SUBCOMMAND_GROUPS = new Set(["guide"]);
+const GUIDE_NESTED_SUBCOMMANDS = new Set(["setup", "day", "night"]);
 
 /** Top-level player day commands. */
 const PLAYER_DAY_COMMANDS = new Set([
@@ -24,8 +27,22 @@ const INTERACTION_DEFER_BUDGET_MS = 2_800;
 export function shouldDeferSlashCommand(interaction: Interaction): boolean {
   if (!interaction.isChatInputCommand()) return false;
 
+  const subcommandGroup = interaction.options.getSubcommandGroup(false);
+  if (subcommandGroup !== null && FAST_SUBCOMMAND_GROUPS.has(subcommandGroup)) {
+    return false;
+  }
+
   const subcommand = interaction.options.getSubcommand(false);
   if (subcommand !== null && FAST_SUBCOMMANDS.has(subcommand)) return false;
+
+  // Safety: if Discord still delivers nested guide without a group name, don't ephemeral-ack.
+  if (
+    interaction.commandName === "st" &&
+    subcommand !== null &&
+    GUIDE_NESTED_SUBCOMMANDS.has(subcommand)
+  ) {
+    return false;
+  }
 
   if (PLAYER_DAY_COMMANDS.has(interaction.commandName)) {
     return true;

@@ -7,6 +7,7 @@ export function logCommandInvoked(interaction: Interaction): void {
 
   log("info", "command.invoked", {
     command: interaction.commandName,
+    subcommandGroup: interaction.options.getSubcommandGroup(false) ?? undefined,
     subcommand: interaction.options.getSubcommand(false) ?? undefined,
     guildId: interaction.guildId ?? undefined,
     channelId: interaction.channelId ?? undefined,
