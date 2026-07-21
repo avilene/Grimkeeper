@@ -107,3 +107,56 @@ describe("formatVoteCastLogMessage", () => {
     ).toBe("<@111> set <@222> **public** vote on **Carol** to **conditional**.");
   });
 });
+
+describe("resolveLogParentChannelId", () => {
+  it("uses kib channel as log parent when kib is a guild text channel", async () => {
+    const { resolveLogParentChannelId } = await import("./game-log-thread.js");
+    const { ChannelType } = await import("discord.js");
+
+    const guild = {
+      channels: {
+        fetch: vi.fn(async (id: string) => {
+          if (id === "kib-channel") {
+            return { id, type: ChannelType.GuildText, isThread: () => false };
+          }
+          return null;
+        }),
+      },
+    };
+
+    await expect(
+      resolveLogParentChannelId(guild as never, {
+        channelId: "town-channel",
+        kibThreadId: "kib-channel",
+      }),
+    ).resolves.toBe("kib-channel");
+  });
+
+  it("uses town as log parent when kib is a thread", async () => {
+    const { resolveLogParentChannelId } = await import("./game-log-thread.js");
+    const { ChannelType } = await import("discord.js");
+
+    const guild = {
+      channels: {
+        fetch: vi.fn(async (id: string) => {
+          if (id === "kib-thread") {
+            return {
+              id,
+              type: ChannelType.PrivateThread,
+              isThread: () => true,
+              parentId: "town-channel",
+            };
+          }
+          return null;
+        }),
+      },
+    };
+
+    await expect(
+      resolveLogParentChannelId(guild as never, {
+        channelId: "town-channel",
+        kibThreadId: "kib-thread",
+      }),
+    ).resolves.toBe("town-channel");
+  });
+});

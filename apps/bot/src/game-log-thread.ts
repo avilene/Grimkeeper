@@ -12,6 +12,7 @@ import {
   ensureThreadAutoArchive,
   GameRoleIds,
   isGameTextChannel,
+  isKibChannelVenue,
   shortGameId,
 } from "./commands/command-context.js";
 import { discordTimestamp } from "./reminder-message.js";
@@ -87,13 +88,31 @@ export type GameThreadRecord = GameRoleIds & {
   logThreadId?: string | null;
 };
 
+/**
+ * Parent for the ST audit log thread:
+ * - kib channel venue → nest log under that channel
+ * - kib thread (or no kib) → nest log under town
+ */
+export async function resolveLogParentChannelId(
+  guild: Guild,
+  game: Pick<GameThreadRecord, "channelId" | "kibThreadId">,
+): Promise<string> {
+  if (game.kibThreadId) {
+    const kib = await guild.channels.fetch(game.kibThreadId).catch(() => null);
+    if (kib && isKibChannelVenue(kib)) return kib.id;
+  }
+  return game.channelId;
+}
+
 export async function getLogThreadForGame(
   guild: Guild,
-  game: Pick<GameThreadRecord, "id" | "channelId" | "logThreadId">,
+  game: Pick<GameThreadRecord, "id" | "channelId" | "kibThreadId" | "logThreadId">,
 ): Promise<AnyThreadChannel | null> {
+  const logParentId = await resolveLogParentChannelId(guild, game);
+
   if (game.logThreadId) {
     const byId = await guild.channels.fetch(game.logThreadId).catch(() => null);
-    if (byId?.isThread() && byId.parentId === game.channelId) {
+    if (byId?.isThread() && byId.parentId === logParentId) {
       // Reject IDs that clearly belong to another game (game-scoped name mismatch).
       const short = shortGameId(game.id);
       if (!byId.name.includes(" · ") || byId.name.includes(short)) {
@@ -102,7 +121,7 @@ export async function getLogThreadForGame(
     }
   }
 
-  const parent = await guild.channels.fetch(game.channelId).catch(() => null);
+  const parent = await guild.channels.fetch(logParentId).catch(() => null);
   const parentName = parent && "name" in parent ? parent.name : "game";
   // Game-scoped name only — never reuse another game's `log-{channel}` thread.
   const expectedName = logThreadName(parentName, game.id);
@@ -110,7 +129,7 @@ export async function getLogThreadForGame(
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
   const activeThread = active?.threads.find(
     (candidate) =>
-      candidate.parentId === game.channelId && candidate.name === expectedName,
+      candidate.parentId === logParentId && candidate.name === expectedName,
   );
   if (activeThread) return activeThread;
 
@@ -144,12 +163,13 @@ export async function ensureLogThread(
   options?: { existingThreadId?: string; invokerId?: string },
 ): Promise<{ thread: AnyThreadChannel | null; created: boolean; threadId: string | null }> {
   const storytellerIds = engine?.getStorytellerDiscordIds() ?? [];
+  const logParentId = await resolveLogParentChannelId(guild, game);
   let thread: AnyThreadChannel | null = null;
   let created = false;
 
   if (options?.existingThreadId) {
     const existing = await guild.channels.fetch(options.existingThreadId).catch(() => null);
-    if (existing?.isThread() && existing.parentId === game.channelId) {
+    if (existing?.isThread() && existing.parentId === logParentId) {
       thread = existing;
     }
   }
@@ -159,7 +179,7 @@ export async function ensureLogThread(
   }
 
   if (!thread) {
-    const parent = await guild.channels.fetch(game.channelId).catch(() => null);
+    const parent = await guild.channels.fetch(logParentId).catch(() => null);
     if (!isGameTextChannel(parent)) {
       return { thread: null, created: false, threadId: null };
     }
@@ -200,7 +220,7 @@ export async function ensureLogThread(
 
 export async function postGameLog(
   guild: Guild,
-  game: Pick<GameThreadRecord, "id" | "channelId" | "logThreadId">,
+  game: Pick<GameThreadRecord, "id" | "channelId" | "kibThreadId" | "logThreadId">,
   message: string,
 ): Promise<boolean> {
   const thread = await getLogThreadForGame(guild, game);
@@ -217,7 +237,7 @@ export async function postGameLog(
 
 export async function postGameLogRoleChange(
   guild: Guild,
-  game: Pick<GameThreadRecord, "id" | "channelId" | "logThreadId">,
+  game: Pick<GameThreadRecord, "id" | "channelId" | "kibThreadId" | "logThreadId">,
   action: "added" | "removed",
   userId: string,
   roleLabel: string,
@@ -249,7 +269,7 @@ export function formatVoteCastLogMessage(options: {
 
 export async function postGameLogVoteCast(
   guild: Guild,
-  game: Pick<GameThreadRecord, "id" | "channelId" | "logThreadId">,
+  game: Pick<GameThreadRecord, "id" | "channelId" | "kibThreadId" | "logThreadId">,
   options: {
     voterDiscordId: string;
     nomineeLabel: string;

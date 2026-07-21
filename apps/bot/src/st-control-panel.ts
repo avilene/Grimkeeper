@@ -3,13 +3,12 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  type AnyThreadChannel,
   type Guild,
   type Message,
 } from "discord.js";
 import type { GameEngine } from "@grimkeeper/engine";
 
-import { getStorytellerThread } from "./commands/command-context.js";
+import { getStorytellerThread, type KibVenue } from "./commands/command-context.js";
 
 export const ST_PANEL_FOOTER_PREFIX = "grimkeeper:st-panel:";
 export const ST_PANEL_BUTTON_PREFIX = "gk:st-panel:";
@@ -165,7 +164,7 @@ export function buildStControlPanelComponents(
 }
 
 async function findStControlPanelMessage(
-  channel: AnyThreadChannel,
+  channel: KibVenue,
   gameId: string,
 ): Promise<Message | null> {
   const pinned = await channel.messages.fetchPinned().catch(() => null);

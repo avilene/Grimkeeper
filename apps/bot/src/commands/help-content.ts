@@ -290,7 +290,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
       .setDescription(
         [
           "**Quick start**",
-          "1. `/game setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles (optional `kib_thread:` / `log_thread:`)",
+          "1. `/game setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles (optional `kib_thread:` channel/thread + `log_thread:`)",
           "2. `/st do setup-town` with `players:` @mentions in **seat order** (any player count)",
           "3. `/st do say` from kib to broadcast to all player threads",
           "4. `/st remind` / `/st set-reminders` for scheduled pings (ST role or allowlist)",
@@ -395,8 +395,8 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
         {
           name: "1. Lobby",
           value: checklist([
-            "`/game setup` — pick existing `st:`, `player_role:`, `kib:` (optional `kib_thread:` / `log_thread:`)",
-            "Confirm kib + ST log threads look right",
+            "`/game setup` — pick existing `st:`, `player_role:`, `kib:` (optional `kib_thread:` channel or thread + `log_thread:`)",
+            "Confirm kib + ST log look right (log nests under a kib channel when kib is a channel)",
           ]),
         },
         {

@@ -138,8 +138,8 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       });
       await interaction.editReply({
         content: message
-          ? `Vote tracker updated in ${thread ? `<#${thread.id}>` : "your kib thread"}.`
-          : "Could not post the vote tracker (kib thread missing or send failed — check the error channel).",
+          ? `Vote tracker updated in ${thread ? `<#${thread.id}>` : "kib"}.`
+          : "Could not post the vote tracker (kib missing or send failed — check the error channel).",
       });
       return true;
     }

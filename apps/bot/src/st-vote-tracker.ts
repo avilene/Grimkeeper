@@ -3,14 +3,17 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  type AnyThreadChannel,
   type Guild,
   type Message,
 } from "discord.js";
 import { prisma } from "@grimkeeper/database";
 import type { GameEngine, NominationRecord } from "@grimkeeper/engine";
 
-import { ensureStorytellerThread, getStorytellerThread } from "./commands/command-context.js";
+import {
+  ensureStorytellerThread,
+  getStorytellerThread,
+  type KibVenue,
+} from "./commands/command-context.js";
 import { formatBlockContestSummary } from "./day-thread.js";
 import { reportError } from "./error-reporter.js";
 import { encodeIdPair, parseIdPair } from "./interaction-ids.js";
@@ -283,7 +286,7 @@ export function buildStVoteTrackerComponents(
 }
 
 async function findVoteTrackerMessage(
-  channel: AnyThreadChannel,
+  channel: KibVenue,
   gameId: string,
 ): Promise<Message | null> {
   const pinned = await channel.messages.fetchPinned().catch(() => null);
@@ -309,27 +312,27 @@ async function resolveKibThreadForTracker(
   parentChannelId: string,
   gameId: string,
   kibThreadId?: string | null,
-): Promise<AnyThreadChannel | null> {
-  let thread = await getStorytellerThread(guild, parentChannelId, { kibThreadId, gameId });
-  if (!thread) {
-    thread = await ensureStorytellerThread(guild, parentChannelId, gameId);
+): Promise<KibVenue | null> {
+  let venue = await getStorytellerThread(guild, parentChannelId, { kibThreadId, gameId });
+  if (!venue) {
+    venue = await ensureStorytellerThread(guild, parentChannelId, gameId, kibThreadId);
   }
-  if (!thread) return null;
+  if (!venue) return null;
 
-  if (thread.archived) {
-    await thread.setArchived(false, "Posting ST vote tracker.").catch(() => undefined);
+  if (venue.isThread() && venue.archived) {
+    await venue.setArchived(false, "Posting ST vote tracker.").catch(() => undefined);
   }
 
-  if (thread.id !== kibThreadId) {
+  if (venue.id !== kibThreadId) {
     await prisma.game
       .update({
         where: { id: gameId },
-        data: { kibThreadId: thread.id },
+        data: { kibThreadId: venue.id },
       })
       .catch(() => undefined);
   }
 
-  return thread;
+  return venue;
 }
 
 export async function upsertStVoteTracker(

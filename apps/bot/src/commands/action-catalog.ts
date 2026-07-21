@@ -38,7 +38,7 @@ export const ST_DO_ACTIONS: DoAction[] = [
 
 /** Lobby / setup under `/game …`. */
 export const GAME_LOBBY_ACTIONS: DoAction[] = [
-  { name: "setup", description: "Create a game with existing ST/player/kib roles", needs: ["st", "player_role", "kib", "kib_thread?", "log_thread?"] },
+  { name: "setup", description: "Create a game with existing ST/player/kib roles", needs: ["st", "player_role", "kib", "kib_thread? (channel or thread)", "log_thread?"] },
   { name: "create", description: "Create a game lobby (legacy — prefer setup)" },
   { name: "join", description: "Join the lobby" },
   { name: "leave", description: "Leave the lobby" },

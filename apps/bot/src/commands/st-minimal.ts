@@ -377,7 +377,7 @@ export class StCommandsMinimal {
 
   @Slash({
     name: "panel",
-    description: "Post or refresh the ST control panel (buttons) in the kib thread",
+    description: "Post or refresh the ST control panel (buttons) in kib",
   })
   async panel(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
@@ -391,8 +391,8 @@ export class StCommandsMinimal {
       const thread = await getKibThreadForGame(interaction.guild, game);
       await replyOrEditInteraction(interaction, {
         content: message
-          ? `ST control panel updated in ${thread ? `<#${thread.id}>` : "your kib thread"}.`
-          : "Could not post the control panel (is the kib thread available?).",
+          ? `ST control panel updated in ${thread ? `<#${thread.id}>` : "kib"}.`
+          : "Could not post the control panel (is kib available?).",
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -454,7 +454,7 @@ export class StCommandsMinimal {
 
       await replyOrEditInteraction(interaction, {
         content:
-          `Game ended — **${winner}** wins. Game roles removed from players, reminders cancelled, and kib thread opened for post-game chat.`,
+          `Game ended — **${winner}** wins. Game roles removed from players, reminders cancelled, and kib opened for post-game chat.`,
       });
     } catch (error) {
       await replyEngineError(interaction, error);
@@ -629,7 +629,7 @@ export class StCommandsMinimal {
     await addRoleToUser(guild, user.id, gameRoles.spectatorRole.id);
 
     const thread = await getKibThreadForGame(guild, game);
-    if (thread) {
+    if (thread?.isThread()) {
       await thread.members.add(user.id).catch(() => undefined);
     }
 
@@ -642,7 +642,9 @@ export class StCommandsMinimal {
       interaction.user.id,
     );
 
-    const threadHint = thread ? ` Added to <#${thread.id}>.` : " Could not add to kib thread.";
+    const threadHint = thread
+      ? ` Added to <#${thread.id}>.`
+      : " Could not add to kib (channel/thread missing).";
     await replyOrEditInteraction(interaction, {
       content: `Assigned spectator role to <@${user.id}>.${threadHint}`,
       flags: MessageFlags.Ephemeral,
@@ -717,7 +719,7 @@ export class StCommandsMinimal {
       }
 
       const kib = await getKibThreadForGame(guild, game);
-      if (kib) {
+      if (kib?.isThread()) {
         await kib.members.add(user.id).catch(() => undefined);
       }
 
@@ -909,7 +911,7 @@ export class StCommandsMinimal {
           surfaces.rules
             ? `Rules: <#${surfaces.rules.id}> (ST write-only)`
             : null,
-          "ST control panel + vote tracker are pinned in your kib thread.",
+          "ST control panel + vote tracker are pinned in kib.",
         ]
           .filter(Boolean)
           .join("\n"),
@@ -1157,8 +1159,8 @@ export class StCommandsMinimal {
       const thread = await getKibThreadForGame(interaction.guild, game);
       await replyOrEditInteraction(interaction, {
         content: message
-          ? `Vote tracker updated in ${thread ? `<#${thread.id}>` : "your kib thread"}.`
-          : "Could not post the vote tracker (is the kib thread available?).",
+          ? `Vote tracker updated in ${thread ? `<#${thread.id}>` : "kib"}.`
+          : "Could not post the vote tracker (is kib available?).",
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

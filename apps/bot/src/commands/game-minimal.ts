@@ -6,7 +6,7 @@ import {
   EmbedBuilder,
   MessageFlags,
   Role,
-  type AnyThreadChannel,
+  type GuildBasedChannel,
 } from "discord.js";
 import { Discord, Slash, SlashGroup, SlashOption } from "discordx";
 import { getActiveGameForChannel, listActiveGamesForGuild, prisma } from "@grimkeeper/database";
@@ -19,6 +19,8 @@ import {
   applyGameChannelPermissions,
   createKibThread,
   deferInteractionReply,
+  isGameTextChannel,
+  isKibChannelVenue,
   loadEngine,
   multipleActiveGamesHint,
   persistEvents,
@@ -30,6 +32,18 @@ import {
   resolveGameRoles,
   setInteractionProgress,
 } from "./command-context.js";
+
+function isAttachableKibVenue(channel: GuildBasedChannel | null | undefined): boolean {
+  if (!channel) return false;
+  if (channel.isThread()) {
+    return (
+      channel.type === ChannelType.PrivateThread ||
+      channel.type === ChannelType.PublicThread ||
+      channel.type === ChannelType.AnnouncementThread
+    );
+  }
+  return isGameTextChannel(channel);
+}
 
 @Discord()
 @SlashGroup({ name: "game", description: "Player commands for Blood on the Clocktower games" })
@@ -60,20 +74,27 @@ export class GameCommandsMinimal {
     kibRole: Role,
     @SlashOption({
       name: "kib_thread",
-      description: "Use an existing kib thread (optional)",
+      description: "Existing kib channel or thread (optional; auto-creates a kib thread if omitted)",
       type: ApplicationCommandOptionType.Channel,
       required: false,
-      channelTypes: [ChannelType.PrivateThread, ChannelType.PublicThread],
+      channelTypes: [
+        ChannelType.GuildText,
+        ChannelType.GuildAnnouncement,
+        ChannelType.PrivateThread,
+        ChannelType.PublicThread,
+        ChannelType.AnnouncementThread,
+      ],
     })
-    kibThread: AnyThreadChannel | undefined,
+    kibVenue: GuildBasedChannel | undefined,
     @SlashOption({
       name: "log_thread",
-      description: "Use an existing ST log thread (optional; auto-created if omitted)",
+      description:
+        "Existing ST log thread (optional; auto-created under kib channel or town)",
       type: ApplicationCommandOptionType.Channel,
       required: false,
       channelTypes: [ChannelType.PrivateThread, ChannelType.PublicThread],
     })
-    logThread: AnyThreadChannel | undefined,
+    logThread: GuildBasedChannel | undefined,
     interaction: CommandInteraction,
   ): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
@@ -86,20 +107,51 @@ export class GameCommandsMinimal {
       return;
     }
 
-    if (kibThread && kibThread.parentId !== interaction.channelId) {
+    if (kibVenue && !isAttachableKibVenue(kibVenue)) {
       await replyOrEditInteraction(interaction, {
-        content: "`kib_thread` must be a thread under this channel.",
+        content: "`kib_thread` must be a text/announcement channel or a thread.",
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    if (logThread && logThread.parentId !== interaction.channelId) {
+    if (kibVenue?.isThread() && kibVenue.parentId !== interaction.channelId) {
       await replyOrEditInteraction(interaction, {
-        content: "`log_thread` must be a thread under this channel.",
+        content: "A kib **thread** must be under this town channel.",
         flags: MessageFlags.Ephemeral,
       });
       return;
+    }
+
+    if (kibVenue && isKibChannelVenue(kibVenue) && kibVenue.id === interaction.channelId) {
+      await replyOrEditInteraction(interaction, {
+        content: "Kib channel must be different from the town channel.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const expectedLogParentId =
+      kibVenue && isKibChannelVenue(kibVenue) ? kibVenue.id : interaction.channelId;
+
+    if (logThread) {
+      if (!logThread.isThread()) {
+        await replyOrEditInteraction(interaction, {
+          content: "`log_thread` must be a thread.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (logThread.parentId !== expectedLogParentId) {
+        await replyOrEditInteraction(interaction, {
+          content:
+            kibVenue && isKibChannelVenue(kibVenue)
+              ? "`log_thread` must be a thread under the kib channel."
+              : "`log_thread` must be a thread under this town channel.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
     }
 
     const existing = await getActiveGameForChannel(interaction.guildId, interaction.channelId);
@@ -115,6 +167,7 @@ export class GameCommandsMinimal {
 
     const gameId = randomUUID();
     const gameRoles = { stRole, playersRole: playerRole, spectatorRole: kibRole };
+    const kibIsChannel = Boolean(kibVenue && isKibChannelVenue(kibVenue));
 
     await setInteractionProgress(interaction, "Assigning roles…");
     await addRoleToUser(interaction.guild, interaction.user.id, stRole.id);
@@ -149,10 +202,17 @@ export class GameCommandsMinimal {
 
     await persistEvents(engine, events);
 
-    await setInteractionProgress(interaction, kibThread ? "Attaching kib thread…" : "Creating kib thread…");
+    await setInteractionProgress(
+      interaction,
+      kibVenue
+        ? kibIsChannel
+          ? "Attaching kib channel…"
+          : "Attaching kib thread…"
+        : "Creating kib thread…",
+    );
     const kibResult = await createKibThread(interaction, gameId, gameRoles, {
       kibRoleId: kibRole.id,
-      existingThreadId: kibThread?.id,
+      existingThreadId: kibVenue?.id,
     });
 
     await setInteractionProgress(interaction, logThread ? "Attaching log thread…" : "Creating log thread…");
@@ -206,11 +266,12 @@ export class GameCommandsMinimal {
         (logResult.thread ? ` Log: <#${logResult.thread.id}>.` : ""),
     );
 
+    const kibLabel = kibIsChannel ? "kib channel" : "kib thread";
     const devHint = isDevMode() ? " Dev mode: use `/dev fill` to add fake players." : "";
     const threadHint = kibResult.mention
-      ? ` Kib thread: ${kibResult.mention}.`
-      : kibThread
-        ? " Could not attach the chosen kib thread."
+      ? ` ${kibLabel.charAt(0).toUpperCase()}${kibLabel.slice(1)}: ${kibResult.mention}.`
+      : kibVenue
+        ? ` Could not attach the chosen ${kibLabel}.`
         : " I could not create a kib thread (missing permissions or unsupported channel type).";
     const logHint = logResult.thread
       ? ` ST log thread: <#${logResult.thread.id}>.`
