@@ -305,7 +305,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           "5. `/st do end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
           "",
           "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/st do log` to recreate it mid-game.",
-          "Prefer typing less? **`/st do`** filters actions as you type. Mid-game buttons: **`/st panel`**.",
+          "Prefer typing less? **`/st do`** filters actions as you type. Mid-game buttons: **`/st panel`**. Kib access: **`/st add-kib`** / **`/st remove-kib`**.",
           "Phase checklists: **`/st guide setup`**, **`/st guide day`**, **`/st guide night`**.",
         ].join("\n"),
       )
@@ -328,6 +328,10 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             cmd(
               "/st panel",
               "Pin/refresh kib buttons: resolve, execute, votes, close nominations, next phase, …",
+            ),
+            cmd(
+              "/st add-kib / remove-kib",
+              "Assign or remove kib role (same as `/st do add-spectator` / `remove-spectator`).",
             ),
             cmd("/st help", "This guide (optional `search:`)."),
           ].join("\n\n"),

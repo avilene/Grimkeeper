@@ -8,7 +8,7 @@ import {
 import { log } from "../logger.js";
 
 const FAST_SUBCOMMANDS = new Set(["help", "guide"]);
-/** Nested `/st guide setup|day|night` — handler acks itself; don't steal the interaction. */
+/** Nested `/st guide setup|day|night` — ack with public defer, not ephemeral "Working…". */
 const FAST_SUBCOMMAND_GROUPS = new Set(["guide"]);
 const GUIDE_NESTED_SUBCOMMANDS = new Set(["setup", "day", "night"]);
 
@@ -24,25 +24,37 @@ const PLAYER_DAY_COMMANDS = new Set([
 
 const INTERACTION_DEFER_BUDGET_MS = 2_800;
 
-export function shouldDeferSlashCommand(interaction: Interaction): boolean {
+/**
+ * Help + phase guides: handler builds embeds then editReply.
+ * Must not use the ephemeral "Working…" ack (that left guides spinning).
+ */
+export function isHelpOrGuideCommand(interaction: Interaction): boolean {
   if (!interaction.isChatInputCommand()) return false;
 
   const subcommandGroup = interaction.options.getSubcommandGroup(false);
   if (subcommandGroup !== null && FAST_SUBCOMMAND_GROUPS.has(subcommandGroup)) {
-    return false;
+    return true;
   }
 
   const subcommand = interaction.options.getSubcommand(false);
-  if (subcommand !== null && FAST_SUBCOMMANDS.has(subcommand)) return false;
+  if (subcommand !== null && FAST_SUBCOMMANDS.has(subcommand)) return true;
 
-  // Safety: if Discord still delivers nested guide without a group name, don't ephemeral-ack.
+  // Safety: nested guide without group metadata.
   if (
     interaction.commandName === "st" &&
     subcommand !== null &&
     GUIDE_NESTED_SUBCOMMANDS.has(subcommand)
   ) {
-    return false;
+    return true;
   }
+
+  return false;
+}
+
+/** Ephemeral "Working…" early ack for slower slash handlers (not help/guide). */
+export function shouldDeferSlashCommand(interaction: Interaction): boolean {
+  if (!interaction.isChatInputCommand()) return false;
+  if (isHelpOrGuideCommand(interaction)) return false;
 
   if (PLAYER_DAY_COMMANDS.has(interaction.commandName)) {
     return true;
@@ -67,63 +79,78 @@ export function shouldDeferStReminderCommand(interaction: Interaction): boolean 
   return shouldDeferSlashCommand(interaction);
 }
 
-/** Acknowledge immediately with custom pending text (Discord's deferReply text is not customizable). */
+function interactionAckContext(command: ChatInputCommandInteraction, ageMs: number) {
+  return {
+    ageMs,
+    command: command.commandName,
+    subcommandGroup: command.options.getSubcommandGroup(false) ?? undefined,
+    subcommand: command.options.getSubcommand(false) ?? undefined,
+    guildId: command.guildId,
+    channelId: command.channelId,
+    userId: command.user.id,
+  };
+}
+
+function warnIfAckLate(command: ChatInputCommandInteraction, ageMs: number): void {
+  if (ageMs <= INTERACTION_DEFER_BUDGET_MS) return;
+  const context = interactionAckContext(command, ageMs);
+  log("warn", "interaction.defer.late", context);
+  void reportError(
+    "interaction.defer.late",
+    new Error(`Interaction ack started ${ageMs}ms after create`),
+    context,
+  );
+}
+
+function handleAckFailure(
+  command: ChatInputCommandInteraction,
+  ageMs: number,
+  error: unknown,
+): void {
+  const context = interactionAckContext(command, ageMs);
+  if (isBenignInteractionAckError(error)) {
+    log("warn", "interaction.defer.skipped", {
+      ...context,
+      code: error && typeof error === "object" && "code" in error ? error.code : undefined,
+    });
+    return;
+  }
+  log("warn", "interaction.defer.failed", {
+    ...context,
+    error: error instanceof Error ? error.message : String(error),
+  });
+  void reportError("interaction.defer.failed", error, context);
+}
+
+/**
+ * Acknowledge immediately on interactionCreate.
+ * - Help/guide: public deferReply (handler editReply with embeds)
+ * - Other deferred commands: ephemeral "Working…"
+ */
 export function startEarlyDefer(interaction: Interaction): Promise<void> {
-  if (!shouldDeferSlashCommand(interaction)) return Promise.resolve();
+  if (!interaction.isChatInputCommand()) return Promise.resolve();
 
   const command = interaction as ChatInputCommandInteraction;
   if (command.deferred || command.replied) return Promise.resolve();
 
   const ageMs = Date.now() - command.createdTimestamp;
-  if (ageMs > INTERACTION_DEFER_BUDGET_MS) {
-    const context = {
-      ageMs,
-      command: command.commandName,
-      subcommand: command.options.getSubcommand(false) ?? undefined,
-      guildId: command.guildId,
-      channelId: command.channelId,
-      userId: command.user.id,
-    };
-    log("warn", "interaction.defer.late", context);
-    void reportError(
-      "interaction.defer.late",
-      new Error(`Interaction ack started ${ageMs}ms after create`),
-      context,
-    );
+  const helpOrGuide = isHelpOrGuideCommand(command);
+  if (!helpOrGuide && !shouldDeferSlashCommand(command)) {
+    return Promise.resolve();
   }
 
-  return command
-    .reply({ content: INTERACTION_PENDING_CONTENT, flags: MessageFlags.Ephemeral })
-    .then(
-      () => undefined,
-      (error: unknown) => {
-        if (isBenignInteractionAckError(error)) {
-          log("warn", "interaction.defer.skipped", {
-            command: command.commandName,
-            subcommand: command.options.getSubcommand(false) ?? undefined,
-            guildId: command.guildId,
-            channelId: command.channelId,
-            userId: command.user.id,
-            ageMs,
-            code: error && typeof error === "object" && "code" in error ? error.code : undefined,
-          });
-          return undefined;
-        }
-        const context = {
-          command: command.commandName,
-          subcommand: command.options.getSubcommand(false) ?? undefined,
-          guildId: command.guildId,
-          channelId: command.channelId,
-          userId: command.user.id,
-          ageMs,
-        };
-        log("warn", "interaction.defer.failed", {
-          ...context,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        void reportError("interaction.defer.failed", error, context);
-      },
-    );
+  warnIfAckLate(command, ageMs);
+
+  const ack = helpOrGuide
+    ? command.deferReply()
+    : command.reply({ content: INTERACTION_PENDING_CONTENT, flags: MessageFlags.Ephemeral });
+
+  return ack.then(
+    () => undefined,
+    (error: unknown) => {
+      handleAckFailure(command, ageMs, error);
+    },
+  );
 }
 
 export async function deferStReminderCommand(interaction: Interaction): Promise<void> {

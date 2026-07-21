@@ -8,6 +8,7 @@ import { Discord, Slash, SlashGroup, SlashOption } from "discordx";
 
 import { canUseBot } from "../access.js";
 import { reportError } from "../error-reporter.js";
+import { isUnknownInteractionError } from "../interactions/interaction-response.js";
 import {
   buildDevHelpEmbeds,
   buildGameHelpEmbeds,
@@ -23,8 +24,8 @@ const ACCESS_DENIED =
   "to `ALLOWED_USER_IDS` or one of your role IDs to `ALLOWED_ROLE_IDS`.";
 
 /**
- * Ack immediately (public) so Discord never spins on help/guide, then edit with embeds.
- * Avoids the early-defer ephemeral "Working…" path that can leave guides stuck.
+ * Prefers early public defer (see startEarlyDefer for help/guide), then editReply with embeds.
+ * Avoids the ephemeral "Working…" path that can leave guides stuck.
  */
 async function replyHelpEmbeds(
   interaction: CommandInteraction,
@@ -43,6 +44,26 @@ async function replyHelpEmbeds(
 
     await interaction.editReply({ content: null, embeds });
   } catch (error) {
+    // Token already dead — early ack missed Discord's window or another replica handled it.
+    if (isUnknownInteractionError(error)) {
+      void reportError("help.reply.expired", error, {
+        command: interaction.commandName,
+        subcommandGroup: interaction.isChatInputCommand()
+          ? interaction.options.getSubcommandGroup(false) ?? undefined
+          : undefined,
+        subcommand: interaction.isChatInputCommand()
+          ? interaction.options.getSubcommand(false) ?? undefined
+          : undefined,
+        guildId: interaction.guildId,
+        channelId: interaction.channelId,
+        userId: interaction.user.id,
+        deferred: interaction.deferred,
+        replied: interaction.replied,
+        ageMs: Date.now() - interaction.createdTimestamp,
+      });
+      return;
+    }
+
     void reportError("help.reply.failed", error, {
       command: interaction.commandName,
       subcommandGroup: interaction.isChatInputCommand()

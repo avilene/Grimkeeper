@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldDeferSlashCommand, shouldDeferStReminderCommand } from "./early-defer.js";
+import {
+  isHelpOrGuideCommand,
+  shouldDeferSlashCommand,
+  shouldDeferStReminderCommand,
+} from "./early-defer.js";
 
 function chatCommand(
   commandName: string,
@@ -25,6 +29,24 @@ function chatCommand(
   };
 }
 
+describe("isHelpOrGuideCommand", () => {
+  it("matches help and guide checklists", () => {
+    expect(isHelpOrGuideCommand(chatCommand("st", "help") as never)).toBe(true);
+    expect(isHelpOrGuideCommand(chatCommand("game", "help") as never)).toBe(true);
+    expect(isHelpOrGuideCommand(chatCommand("dev", "help") as never)).toBe(true);
+    expect(isHelpOrGuideCommand(chatCommand("st", "setup", "guide") as never)).toBe(true);
+    expect(isHelpOrGuideCommand(chatCommand("st", "day", "guide") as never)).toBe(true);
+    expect(isHelpOrGuideCommand(chatCommand("st", "night", "guide") as never)).toBe(true);
+    expect(isHelpOrGuideCommand(chatCommand("st", "setup") as never)).toBe(true);
+  });
+
+  it("does not match other st commands", () => {
+    expect(isHelpOrGuideCommand(chatCommand("st", "panel") as never)).toBe(false);
+    expect(isHelpOrGuideCommand(chatCommand("st", "remind") as never)).toBe(false);
+    expect(isHelpOrGuideCommand(chatCommand("nominate", null) as never)).toBe(false);
+  });
+});
+
 describe("shouldDeferSlashCommand", () => {
   it("defers reminder and other /st commands except help", () => {
     expect(shouldDeferSlashCommand(chatCommand("st", "reminders") as never)).toBe(true);
@@ -39,7 +61,7 @@ describe("shouldDeferSlashCommand", () => {
     expect(shouldDeferSlashCommand(chatCommand("game", "help") as never)).toBe(false);
   });
 
-  it("does not defer /st guide checklists", () => {
+  it("does not ephemeral-defer /st guide checklists", () => {
     expect(shouldDeferSlashCommand(chatCommand("st", "setup", "guide") as never)).toBe(false);
     expect(shouldDeferSlashCommand(chatCommand("st", "day", "guide") as never)).toBe(false);
     expect(shouldDeferSlashCommand(chatCommand("st", "night", "guide") as never)).toBe(false);
