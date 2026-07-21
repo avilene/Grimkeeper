@@ -653,10 +653,13 @@ export async function finalizeMinimalGameEnd(
   await stripGameRolesFromMembers(guild, game, engine);
   await clearGameChannelPermissions(guild, game.channelId, game);
   await openStorytellerThread(guild, game.channelId, game.kibThreadId, game.id);
+  const winner = engine.getState().winner;
   await postGameLog(
     guild,
     game,
-    `Game ended — roles stripped, reminders cancelled, kib opened.` +
+    `Game ended` +
+      (winner ? ` — **${winner}** wins` : "") +
+      ` — roles stripped, reminders cancelled, kib opened.` +
       (engine.getStorytellerDiscordIds()[0]
         ? ` Ended by <@${engine.getStorytellerDiscordIds()[0]}>.`
         : ""),
@@ -1473,7 +1476,7 @@ export async function createTownVoteThread(
             "**Town Voting** — nominations and votes happen here.",
             "You can vote on **any open nomination** with the **Vote** button.",
             "Prefer a private ballot? Use `/vote` in your personal ST thread (ST sees it on the kib vote tracker).",
-            "Players: `/nominate` / `/defend` / `/vote` / `/roster`.",
+            "Players: `/nominate` / `/defend` / `/vote` / `/roster` / `/whisper`.",
             "Storyteller: kib **control panel**, or `/st do` (`resolve-next`, `close-nominations`, `next-phase`, `execute`, `nominate`, `vote-visibility`, …).",
           ].join("\n"),
         })

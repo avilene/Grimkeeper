@@ -15,6 +15,7 @@ import {
 } from "./day-thread.js";
 import { postGameLog } from "./game-log-thread.js";
 import { upsertStControlPanel } from "./st-control-panel.js";
+import { postDayMarkersToWhispers } from "./whisper-thread.js";
 
 type TownGame = {
   id: string;
@@ -226,6 +227,7 @@ export async function advanceTownPhase(
 
     await postKibPhaseHeader(guild, game, "day", dayNumber);
     await postVoteThreadDayStart(guild, game, engine, dayNumber);
+    await postDayMarkersToWhispers(guild, game.id, dayNumber);
 
     await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
     await refreshStVoteTrackerForGame(guild, game, engine);

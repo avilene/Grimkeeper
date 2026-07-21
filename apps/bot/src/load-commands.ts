@@ -5,6 +5,7 @@ export async function loadCommandModules(): Promise<void> {
 
   await import("./commands/game-minimal.js");
   await import("./commands/player-day-minimal.js");
+  await import("./commands/whisper.js");
   await import("./commands/alias.js");
   await import("./commands/st-minimal.js");
   await import("./commands/st-reminders.js");
@@ -13,6 +14,6 @@ export async function loadCommandModules(): Promise<void> {
 
   log("info", "commands.load.done", {
     botMode: "minimal",
-    groups: ["game", "nominate", "defend", "vote", "roster", "alias", "st", "dev"],
+    groups: ["game", "nominate", "defend", "vote", "roster", "whisper", "alias", "st", "dev"],
   });
 }

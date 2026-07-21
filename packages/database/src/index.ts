@@ -36,6 +36,11 @@ export {
   upsertPlayerAlias,
   resolvePlayerAlias,
 } from "./player-alias.js";
+export {
+  createGameWhisper,
+  listGameWhispers,
+  type CreateGameWhisperInput,
+} from "./whispers.js";
 
 export type StoredGameEvent = GameEvent;
 

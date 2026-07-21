@@ -155,6 +155,15 @@ export class StCommandsMinimal {
       required: false,
     })
     message: string | undefined,
+    @SlashChoice({ name: "Good wins", value: "good" })
+    @SlashChoice({ name: "Evil wins", value: "evil" })
+    @SlashOption({
+      name: "winner",
+      description: "For end: which team won",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    winner: "good" | "evil" | undefined,
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
@@ -175,7 +184,11 @@ export class StCommandsMinimal {
         await this.start(interaction);
         return;
       case "end":
-        await this.end(interaction);
+        if (!winner) {
+          await missingOption(interaction, "winner", "end");
+          return;
+        }
+        await this.end(winner, interaction);
         return;
       case "add-spectator":
         if (!user) {
@@ -340,7 +353,7 @@ export class StCommandsMinimal {
     }
   }
 
-  async end(interaction: CommandInteraction): Promise<void> {
+  async end(winner: "good" | "evil", interaction: CommandInteraction): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
     const guild = interaction.guild;
@@ -351,7 +364,7 @@ export class StCommandsMinimal {
       const events = engine.handle({
         kind: GameCommandKind.EndGame,
         gameId: game.id,
-        winner: "good",
+        winner,
         reason: "Game ended by storyteller",
       });
       await persistEvents(engine, events);
@@ -361,7 +374,7 @@ export class StCommandsMinimal {
 
       await replyOrEditInteraction(interaction, {
         content:
-          "Game ended. Game roles removed from players, reminders cancelled, and kib thread opened for post-game chat.",
+          `Game ended — **${winner}** wins. Game roles removed from players, reminders cancelled, and kib thread opened for post-game chat.`,
       });
     } catch (error) {
       await replyEngineError(interaction, error);

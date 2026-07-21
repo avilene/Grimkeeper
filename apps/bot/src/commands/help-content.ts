@@ -60,10 +60,11 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
       .setDescription(
         [
           "Day play uses top-level slash commands — not `/game …`.",
-          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/roster`** · **`/alias`**",
+          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/roster`** · **`/whisper`** · **`/alias`**",
           "Nominations and votes happen in the **Town Voting** thread after `/st do setup-town`.",
           "Each living player may nominate **once per day**; each player (alive or dead) may be nominated **once per day**. Ghosts cannot nominate.",
           "Private ballot: `/vote` in your personal ST thread (ST sees it on the kib tracker).",
+          "Whispers: `/whisper` opens a private thread with another player (ST can see it) — @mention someone to invite them in.",
           "Set how your name appears with **`/alias`** (defaults to a short form of your Discord name at setup).",
           "",
           "Lobby setup (roles/channels): `/game setup` — see Lobby below. Storytellers: **`/st help`**.",
@@ -85,6 +86,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
           value: [
             "**Town Voting** thread — nominations ping the player role; Vote buttons + public results when visibility is public.",
             "**Personal ST thread** — `/vote` for a private ballot; ST sees the vote on the kib **vote tracker**.",
+            "**Whisper threads** — `/whisper` with another player (ST is added); `neighbor:` appends NW to the name. @mention to invite others.",
             "You can vote on **any** open nomination.",
             "ST sets public vs secret tallies with `/st do vote-visibility` or the kib control panel.",
           ].join("\n"),
@@ -105,7 +107,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           "2. `/st do setup-town` with `players:` @mentions in **seat order** (any player count)",
           "3. `/st do say` from kib to broadcast to all player threads",
           "4. `/st remind` / `/st set-reminders` for scheduled pings (ST role or allowlist)",
-          "5. `/st do end` — strips game roles, cancels reminders, opens kib for post-game chat",
+          "5. `/st do end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
           "",
           "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/st do log` to recreate it mid-game.",
           "Prefer typing less? **`/st do`** filters actions as you type. Mid-game buttons: **`/st panel`**.",
@@ -153,6 +155,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             "`close-nominations` then `next-phase` for Night 2; `next-phase` again for Day 2. Renames the town channel to `base-dayN` / `base-nightN` (voting thread stays Town Voting).",
             "Use `/st do add-st` to promote a co-storyteller (ST role; no new player thread).",
             "Personal player threads stay private after `/st do end`.",
+            "Player whispers (`/whisper`) include the storyteller; they get a day marker on open and `## Day N` when each new day begins.",
           ].join("\n"),
         },
       ),

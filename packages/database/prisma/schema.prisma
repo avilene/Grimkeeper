@@ -24,8 +24,24 @@ model Game {
   players     Player[]
   gameDays    GameDay[]
   reminders   GameReminder[]
+  whispers    GameWhisper[]
 
   @@index([guildId])
+}
+
+/** Private player-to-player whisper thread for a town game. */
+model GameWhisper {
+  id              String   @id @default(cuid())
+  gameId          String
+  threadId        String   @unique
+  name            String
+  neighbor        Boolean  @default(false)
+  creatorDiscordId String
+  targetDiscordId  String
+  createdAt       DateTime @default(now())
+  game            Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId])
 }
 
 model Player {

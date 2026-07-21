@@ -11,7 +11,7 @@ export const ST_DO_ACTIONS: DoAction[] = [
   { name: "setup-town", description: "Set roster + seats from ordered @mentions", needs: ["players"] },
   { name: "say", description: "Broadcast to all player threads from kib", needs: ["message"] },
   { name: "log", description: "Create or reopen the ST-only audit log thread" },
-  { name: "end", description: "End the game (strip roles, open kib)" },
+  { name: "end", description: "End the game (strip roles, open kib)", needs: ["winner"] },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
   { name: "close-nominations", description: "Close nominations for the day (no new noms until next day)" },
   { name: "next-phase", description: "Advance day ↔ night (Day 1 → Night 2 → Day 2 …); renames town channel to base-dayN / base-nightN" },
@@ -41,12 +41,17 @@ export const GAME_LOBBY_ACTIONS: DoAction[] = [
   { name: "list", description: "List active games in this server" },
 ];
 
-/** Top-level day commands: `/nominate`, `/defend`, `/vote`, `/roster`. */
+/** Top-level day commands: `/nominate`, `/defend`, `/vote`, `/roster`, `/whisper`. */
 export const PLAYER_DAY_ACTIONS: DoAction[] = [
   { name: "nominate", description: "Nominate a player (autocomplete from game roster)", needs: ["player", "accusation"] },
   { name: "defend", description: "Add defense to an open nomination against you", needs: ["text"] },
   { name: "vote", description: "Vote on an open nomination (autocomplete open nominees)", needs: ["nominee", "choice", "reason?"] },
   { name: "roster", description: "Show seat order and alive/dead" },
+  {
+    name: "whisper",
+    description: "Open a private whisper thread with another player",
+    needs: ["player", "name?", "neighbor?"],
+  },
 ];
 
 export async function respondDoAutocomplete(
