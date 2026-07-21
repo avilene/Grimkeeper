@@ -11,6 +11,10 @@ export const ST_DO_ACTIONS: DoAction[] = [
   { name: "setup-town", description: "Set roster + seats from ordered @mentions", needs: ["players"] },
   { name: "say", description: "Broadcast to all player threads from kib", needs: ["message"] },
   { name: "log", description: "Create or reopen the ST-only audit log thread" },
+  {
+    name: "recreate-threads",
+    description: "Recreate Whisper Declaration, Public Claims, and Rules threads",
+  },
   { name: "end", description: "End the game (strip roles, open kib)", needs: ["winner"] },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
   { name: "close-nominations", description: "Close nominations for the day (no new noms until next day)" },
@@ -41,11 +45,10 @@ export const GAME_LOBBY_ACTIONS: DoAction[] = [
   { name: "list", description: "List active games in this server" },
 ];
 
-/** Top-level day commands: `/nominate`, `/defend`, `/vote`, `/roster`, `/whisper …`. */
+/** Top-level day commands: `/nominate`, `/defend`, `/roster`, `/whisper …`. */
 export const PLAYER_DAY_ACTIONS: DoAction[] = [
   { name: "nominate", description: "Nominate a player (autocomplete from game roster)", needs: ["player", "accusation"] },
   { name: "defend", description: "Add defense to an open nomination against you", needs: ["text"] },
-  { name: "vote", description: "Vote on an open nomination (autocomplete open nominees)", needs: ["nominee", "choice", "reason?"] },
   { name: "roster", description: "Show seat order and alive/dead" },
   {
     name: "whisper neighbor",
@@ -58,6 +61,15 @@ export const PLAYER_DAY_ACTIONS: DoAction[] = [
   },
 ];
 
+/** Top-level voting commands. */
+export const PLAYER_VOTE_ACTIONS: DoAction[] = [
+  { name: "vote", description: "Cast a public vote on an open nomination", needs: ["nominee", "choice", "reason?"] },
+  {
+    name: "privatevote",
+    description: "Cast a private vote (ST sees it on the kib tracker)",
+    needs: ["nominee", "choice", "reason?"],
+  },
+];
 export async function respondDoAutocomplete(
   interaction: AutocompleteInteraction,
   actions: DoAction[],

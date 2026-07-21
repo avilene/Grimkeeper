@@ -12,7 +12,6 @@ import { GameCommandKind } from "@grimkeeper/engine";
 import { castVoteFromSlash } from "../interactions/day-vote.js";
 import { postGameLogVoteCast } from "../game-log-thread.js";
 import {
-  isPersonalPlayerThreadChannel,
   loadEngine,
   multipleActiveGamesHint,
   persistEvents,
@@ -44,7 +43,106 @@ async function respondVoteNomineeAutocomplete(
   });
 }
 
-/** Top-level player day commands — `/nominate`, `/defend`, `/vote`, `/roster`. */
+async function castPlayerVote(
+  interaction: CommandInteraction,
+  nomineeDiscordId: string,
+  choice: "yes" | "no" | "conditional",
+  reason: string | undefined,
+  privateBallot: boolean,
+): Promise<void> {
+  if (!(await requireCommandAccess(interaction))) return;
+
+  const context = await requireActivePlayerGame(interaction);
+  if (!context) return;
+
+  const { game, engine, player: voter } = context;
+  if (!(await requireTownVotingChannel(interaction, game, engine))) return;
+
+  const target = engine.getPlayerByDiscordId(nomineeDiscordId);
+  if (!target) {
+    await replyOrEditInteraction(interaction, {
+      content: "Pick a nominee from the autocomplete list (open nominations only).",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const nomination = engine
+    .getState()
+    .day?.nominations.find(
+      (candidate) => candidate.nomineeId === target.id && candidate.status === "open",
+    );
+  if (!nomination) {
+    await replyOrEditInteraction(interaction, {
+      content: "That player does not have an open nomination.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  try {
+    const { engine: updatedEngine, events } = await castVoteFromSlash(
+      game.id,
+      voter.id,
+      nomination.id,
+      choice,
+      reason?.trim() ?? null,
+      { privateBallot },
+    );
+    await persistEvents(updatedEngine, events);
+    await syncGameProjection(game.id, updatedEngine);
+
+    const day = updatedEngine.getState().day;
+    const isSecret = day?.voteVisibility === "secret";
+    const isSt = updatedEngine.isStoryteller(interaction.user.id);
+
+    if (interaction.guild) {
+      await refreshNominationEverywhere(
+        interaction.guild,
+        game,
+        updatedEngine,
+        nomination.id,
+        { revealSecret: false },
+      );
+      const nominee = updatedEngine.getPlayerById(nomination.nomineeId);
+      await postGameLogVoteCast(interaction.guild, game, {
+        voterDiscordId: interaction.user.id,
+        nomineeLabel: nominee?.displayName ?? "nominee",
+        choice,
+        ballot: privateBallot ? "private" : "public",
+      });
+    }
+
+    if (privateBallot) {
+      await replyOrEditInteraction(interaction, {
+        content:
+          isSecret && !isSt
+            ? "Private vote recorded. The storyteller sees it on the kib vote tracker."
+            : `Private vote recorded (${choice}). The storyteller sees it on the kib vote tracker.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (isSecret && !isSt) {
+      await replyOrEditInteraction(interaction, {
+        content: "Vote recorded privately.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const tally = updatedEngine.formatNominationTally(nomination.id, { revealSecret: true });
+    await replyOrEditInteraction(interaction, {
+      content: `Vote recorded (${choice}). ${tally}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    await replyEngineError(interaction, error);
+  }
+}
+
+/** Top-level player day commands — `/nominate`, `/defend`, `/vote`, `/privatevote`, `/roster`. */
 @Discord()
 export class PlayerDayCommandsMinimal {
   @Slash({ name: "nominate", description: "Nominate a player (Town Voting)" })
@@ -165,8 +263,8 @@ export class PlayerDayCommandsMinimal {
       const events = engine.handle({
         kind: GameCommandKind.AddDefense,
         gameId: game.id,
-        playerId: player.id,
         nominationId: nomination.id,
+        playerId: player.id,
         defense: text,
       });
       await persistEvents(engine, events);
@@ -184,7 +282,7 @@ export class PlayerDayCommandsMinimal {
     }
   }
 
-  @Slash({ name: "vote", description: "Vote on an open nomination" })
+  @Slash({ name: "vote", description: "Cast a public vote on an open nomination" })
   async vote(
     @SlashOption({
       name: "nominee",
@@ -213,105 +311,42 @@ export class PlayerDayCommandsMinimal {
     reason: string | undefined,
     interaction: CommandInteraction,
   ): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
+    await castPlayerVote(interaction, nomineeDiscordId, choice, reason, false);
+  }
 
-    const context = await requireActivePlayerGame(interaction);
-    if (!context) return;
-
-    const { game, engine, player: voter } = context;
-    if (!(await requireTownVotingChannel(interaction, game, engine))) return;
-
-    const target = engine.getPlayerByDiscordId(nomineeDiscordId);
-    if (!target) {
-      await replyOrEditInteraction(interaction, {
-        content: "Pick a nominee from the autocomplete list (open nominations only).",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    const nomination = engine
-      .getState()
-      .day?.nominations.find(
-        (candidate) => candidate.nomineeId === target.id && candidate.status === "open",
-      );
-    if (!nomination) {
-      await replyOrEditInteraction(interaction, {
-        content: "That player does not have an open nomination.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    try {
-      const fromPrivateThread =
-        Boolean(interaction.guild) &&
-        (await isPersonalPlayerThreadChannel(
-          interaction.guild!,
-          game,
-          engine,
-          interaction.channelId,
-        ));
-
-      const { engine: updatedEngine, events } = await castVoteFromSlash(
-        game.id,
-        voter.id,
-        nomination.id,
-        choice,
-        reason?.trim() ?? null,
-        { privateBallot: fromPrivateThread },
-      );
-      await persistEvents(updatedEngine, events);
-      await syncGameProjection(game.id, updatedEngine);
-
-      const day = updatedEngine.getState().day;
-      const isSecret = day?.voteVisibility === "secret";
-      const isSt = updatedEngine.isStoryteller(interaction.user.id);
-
-      if (interaction.guild) {
-        await refreshNominationEverywhere(
-          interaction.guild,
-          game,
-          updatedEngine,
-          nomination.id,
-          { revealSecret: false },
-        );
-        const nominee = updatedEngine.getPlayerById(nomination.nomineeId);
-        await postGameLogVoteCast(interaction.guild, game, {
-          voterDiscordId: interaction.user.id,
-          nomineeLabel: nominee?.displayName ?? "nominee",
-          choice,
-          ballot: fromPrivateThread ? "private" : "public",
-        });
-      }
-
-      if (fromPrivateThread) {
-        await replyOrEditInteraction(interaction, {
-          content:
-            isSecret && !isSt
-              ? "Private vote recorded. The storyteller sees it on the kib vote tracker."
-              : `Private vote recorded (${choice}). The storyteller sees it on the kib vote tracker.`,
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
-      if (isSecret && !isSt) {
-        await replyOrEditInteraction(interaction, {
-          content: "Vote recorded privately.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
-      const tally = updatedEngine.formatNominationTally(nomination.id, { revealSecret: true });
-      await replyOrEditInteraction(interaction, {
-        content: `Vote recorded (${choice}). ${tally}`,
-        flags: MessageFlags.Ephemeral,
-      });
-    } catch (error) {
-      await replyEngineError(interaction, error);
-    }
+  @Slash({
+    name: "privatevote",
+    description: "Cast a private vote (ST sees it on the kib tracker)",
+  })
+  async privatevote(
+    @SlashOption({
+      name: "nominee",
+      description: "Open nominee to vote on (type to search)",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+      autocomplete: respondVoteNomineeAutocomplete,
+    })
+    nomineeDiscordId: string,
+    @SlashChoice({ name: "Yes", value: "yes" })
+    @SlashChoice({ name: "No", value: "no" })
+    @SlashChoice({ name: "Conditional", value: "conditional" })
+    @SlashOption({
+      name: "choice",
+      description: "Your vote",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    choice: "yes" | "no" | "conditional",
+    @SlashOption({
+      name: "reason",
+      description: "Required for conditional votes",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    reason: string | undefined,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    await castPlayerVote(interaction, nomineeDiscordId, choice, reason, true);
   }
 
   @Slash({ name: "roster", description: "Show seat order and alive/dead status" })

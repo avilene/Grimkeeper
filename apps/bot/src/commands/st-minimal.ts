@@ -19,6 +19,13 @@ import { upsertStControlPanel } from "../st-control-panel.js";
 import { upsertStVoteTracker } from "../st-vote-tracker.js";
 import { parseUserMentionsFromString } from "../town-setup.js";
 import { closeTownNominations, advanceTownPhase, postVoteThreadDayStart, postKibPhaseHeader } from "../town-day.js";
+import {
+  ensureTownSurfaceThreads,
+  markTownSurfaceThread,
+  parseTownSurfaceKind,
+  postDayMarkersToTownSurfaces,
+  reloadTownSurfaceGame,
+} from "../town-surfaces.js";
 import { respondDoAutocomplete, ST_DO_ACTIONS } from "./action-catalog.js";
 import { resolveOrCreatePlayerAlias } from "./alias.js";
 import {
@@ -228,6 +235,9 @@ export class StCommandsMinimal {
       case "log":
         await this.log(interaction);
         return;
+      case "recreate-threads":
+        await this.recreateThreads(interaction);
+        return;
       case "resolve-next":
         await this.resolveNext(interaction);
         return;
@@ -292,6 +302,76 @@ export class StCommandsMinimal {
           content: `Action \`${normalized}\` is not implemented.`,
           flags: MessageFlags.Ephemeral,
         });
+    }
+  }
+
+  @Slash({
+    name: "mark",
+    description: "Mark this thread as Rules, Public Claims, or Whisper Declaration",
+  })
+  async mark(
+    @SlashChoice({ name: "Rules", value: "rules" })
+    @SlashChoice({ name: "Public Claims", value: "claims" })
+    @SlashChoice({ name: "Whisper Declaration", value: "whisper" })
+    @SlashOption({
+      name: "surface",
+      description: "Which town thread this should be",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    surface: string,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    const kind = parseTownSurfaceKind(surface);
+    if (!kind) {
+      await replyOrEditInteraction(interaction, {
+        content: "Pick `rules`, `claims`, or `whisper`.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const channel = interaction.channel;
+    if (!channel?.isThread()) {
+      await replyOrEditInteraction(interaction, {
+        content: "Run `/st mark` inside the thread you want to assign.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      const engine = await loadEngine(game.id);
+      if (!engine.getState().townMode) {
+        await replyOrEditInteraction(interaction, {
+          content: "Mark town threads after `/st do setup-town`.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const { label } = await markTownSurfaceThread(guild, game, engine, kind, channel);
+      await postGameLog(
+        guild,
+        game,
+        `<@${interaction.user.id}> marked <#${channel.id}> as **${label}**.`,
+      );
+      await replyOrEditInteraction(interaction, {
+        content: `Marked <#${channel.id}> as **${label}**.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not mark that thread.";
+      await replyOrEditInteraction(interaction, {
+        content: message,
+        flags: MessageFlags.Ephemeral,
+      });
     }
   }
 
@@ -466,6 +546,53 @@ export class StCommandsMinimal {
 
       await replyOrEditInteraction(interaction, {
         content: `ST log thread ready: <#${result.thread.id}>${result.created ? " (newly created)" : ""}.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async recreateThreads(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      if (!engine.getState().townMode) {
+        await replyOrEditInteraction(interaction, {
+          content: "Town surfaces are only for town-mode games. Run `/st do setup-town` first.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await setInteractionProgress(interaction, "Recreating town threads…");
+      const surfaces = await ensureTownSurfaceThreads(guild, game, engine);
+      const refreshed = (await reloadTownSurfaceGame(game.id)) ?? game;
+      const dayNumber = engine.getState().dayNumber || 1;
+      await postDayMarkersToTownSurfaces(guild, refreshed, dayNumber);
+
+      const links = [
+        surfaces.whisperDecl ? `Whisper Declaration: <#${surfaces.whisperDecl.id}>` : null,
+        surfaces.claims ? `Public Claims: <#${surfaces.claims.id}>` : null,
+        surfaces.rules ? `Rules: <#${surfaces.rules.id}>` : null,
+      ].filter(Boolean);
+
+      await postGameLog(
+        guild,
+        game,
+        `<@${interaction.user.id}> recreated town threads` +
+          (links.length > 0 ? ` — ${links.join(", ")}` : "."),
+      );
+
+      await replyOrEditInteraction(interaction, {
+        content:
+          links.length > 0
+            ? `Town threads ready:\n${links.join("\n")}`
+            : "Could not create town threads. Check bot permissions (`Manage Threads`).",
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -722,6 +849,10 @@ export class StCommandsMinimal {
         await persistEvents(engine, openEvents);
       }
 
+      await setInteractionProgress(interaction, "Opening town threads…");
+      const surfaces = await ensureTownSurfaceThreads(guild, game, engine);
+      const refreshedSurfaces = (await reloadTownSurfaceGame(game.id)) ?? game;
+
       const { renameTownPhaseSurfaces } = await import("../town-day.js");
       await renameTownPhaseSurfaces(
         guild,
@@ -734,6 +865,7 @@ export class StCommandsMinimal {
       const dayNumber = engine.getState().dayNumber || 1;
       await postKibPhaseHeader(guild, game, "day", dayNumber);
       await postVoteThreadDayStart(guild, game, engine, dayNumber);
+      await postDayMarkersToTownSurfaces(guild, refreshedSurfaces, dayNumber);
 
       await setInteractionProgress(interaction, "Pinning ST panel…");
       await upsertPinnedGameStatus(guild, game.channelId, engine);
@@ -744,12 +876,20 @@ export class StCommandsMinimal {
         .getState()
         .players.map((player) => player.displayName)
         .join(", ");
+      const surfaceLinks = [
+        surfaces.whisperDecl ? `<#${surfaces.whisperDecl.id}>` : null,
+        surfaces.claims ? `<#${surfaces.claims.id}>` : null,
+        surfaces.rules ? `<#${surfaces.rules.id}>` : null,
+      ].filter(Boolean);
       await postGameLog(
         guild,
         game,
         `<@${interaction.user.id}> setup-town — **${players.length}** players (${playerNames}).` +
           ` Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.` +
-          (voteThread ? ` Voting: <#${voteThread.id}>.` : ""),
+          (voteThread ? ` Voting: <#${voteThread.id}>.` : "") +
+          (surfaceLinks.length > 0
+            ? ` Town threads: ${surfaceLinks.join(", ")}.`
+            : ""),
       );
 
       await replyOrEditInteraction(interaction, {
@@ -760,8 +900,15 @@ export class StCommandsMinimal {
             ? `Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.`
             : "",
           voteThread
-            ? `Voting thread: <#${voteThread.id}> — nominate and vote there, or cast a private ballot with \`/vote\` in your ST thread.`
+            ? `Voting thread: <#${voteThread.id}> — nominate and vote there (\`/vote\` public, \`/privatevote\` private).`
             : "Players can `/nominate` in this channel.",
+          surfaces.whisperDecl
+            ? `Whisper Declaration: <#${surfaces.whisperDecl.id}>`
+            : null,
+          surfaces.claims ? `Public Claims: <#${surfaces.claims.id}>` : null,
+          surfaces.rules
+            ? `Rules: <#${surfaces.rules.id}> (ST write-only)`
+            : null,
           "ST control panel + vote tracker are pinned in your kib thread.",
         ]
           .filter(Boolean)

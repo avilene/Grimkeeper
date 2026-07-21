@@ -8,23 +8,26 @@ datasource db {
 }
 
 model Game {
-  id            String         @id @default(cuid())
-  guildId       String
-  channelId     String
-  phase         String         @default("lobby")
-  dayNumber     Int            @default(0)
-  nightNumber   Int            @default(0)
-  stRoleId      String?
-  playerRoleId  String?
-  kibRoleId     String?
-  kibThreadId   String?
-  logThreadId   String?
-  createdAt     DateTime       @default(now())
-  events      GameEvent[]
-  players     Player[]
-  gameDays    GameDay[]
-  reminders   GameReminder[]
-  whispers    GameWhisper[]
+  id                   String         @id @default(cuid())
+  guildId              String
+  channelId            String
+  phase                String         @default("lobby")
+  dayNumber            Int            @default(0)
+  nightNumber          Int            @default(0)
+  stRoleId             String?
+  playerRoleId         String?
+  kibRoleId            String?
+  kibThreadId          String?
+  logThreadId          String?
+  whisperDeclThreadId  String?
+  claimsThreadId       String?
+  rulesThreadId        String?
+  createdAt            DateTime       @default(now())
+  events             GameEvent[]
+  players            Player[]
+  gameDays           GameDay[]
+  reminders          GameReminder[]
+  whispers           GameWhisper[]
 
   @@index([guildId])
 }

@@ -13,6 +13,7 @@ import {
   openOrReuseWhisperThread,
 } from "../whisper-thread.js";
 import { postGameLog } from "../game-log-thread.js";
+import { getTownSurfaceThread } from "../town-surfaces.js";
 import { parseUserMentionsFromString } from "../town-setup.js";
 import {
   replyOrEditInteraction,
@@ -21,7 +22,15 @@ import {
 } from "./command-context.js";
 
 type ActiveWhisperContext = {
-  game: { id: string; channelId: string; kibThreadId?: string | null; logThreadId?: string | null };
+  game: {
+    id: string;
+    channelId: string;
+    kibThreadId?: string | null;
+    logThreadId?: string | null;
+    whisperDeclThreadId?: string | null;
+    claimsThreadId?: string | null;
+    rulesThreadId?: string | null;
+  };
   engine: GameEngine;
   player: PlayerState;
   guild: Guild;
@@ -56,12 +65,21 @@ async function requireWhisperContext(
 
 async function postPublicDeclarations(
   interaction: CommandInteraction,
+  guild: Guild,
+  game: ActiveWhisperContext["game"],
   declarations: string[],
 ): Promise<void> {
-  const channel = interaction.channel;
-  if (channel && "send" in channel) {
+  const whisperDecl = await getTownSurfaceThread(guild, game, "whisper-decl");
+  const target =
+    whisperDecl && "send" in whisperDecl
+      ? whisperDecl
+      : interaction.channel && "send" in interaction.channel
+        ? interaction.channel
+        : null;
+
+  if (target) {
     for (const declaration of declarations) {
-      await channel
+      await target
         .send({ content: declaration, allowedMentions: { parse: [] } })
         .catch(() => undefined);
     }
@@ -143,7 +161,7 @@ export class WhisperCommands {
       return;
     }
 
-    await postPublicDeclarations(interaction, declarations);
+    await postPublicDeclarations(interaction, guild, game, declarations);
   }
 
   @Slash({
@@ -229,6 +247,8 @@ export class WhisperCommands {
       `<@${creator.discordUserId}> ${opened.reused ? "resumed" : "opened"} whisper (${displayNames.join(", ")}): <#${opened.thread.id}>`,
     ).catch(() => undefined);
 
-    await postPublicDeclarations(interaction, [formatWhisperDeclaration(displayNames)]);
+    await postPublicDeclarations(interaction, guild, game, [
+      formatWhisperDeclaration(displayNames),
+    ]);
   }
 }

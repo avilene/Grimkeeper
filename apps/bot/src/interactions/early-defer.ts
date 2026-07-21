@@ -10,7 +10,14 @@ import { log } from "../logger.js";
 const FAST_SUBCOMMANDS = new Set(["help", "commands"]);
 
 /** Top-level player day commands. */
-const PLAYER_DAY_COMMANDS = new Set(["nominate", "defend", "vote", "roster", "whisper"]);
+const PLAYER_DAY_COMMANDS = new Set([
+  "nominate",
+  "defend",
+  "vote",
+  "privatevote",
+  "roster",
+  "whisper",
+]);
 
 const INTERACTION_DEFER_BUDGET_MS = 2_800;
 

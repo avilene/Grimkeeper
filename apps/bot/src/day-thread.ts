@@ -246,7 +246,7 @@ export function buildDayIntroEmbed(engine: GameEngine): EmbedBuilder {
   const playerLines = [
     "Use `/nominate` to accuse a player.",
     "Nominees may `/defend`.",
-    "Vote with the **Vote** button on each nomination or `/vote`.",
+    "Vote with the **Vote** button, `/vote` (public), or `/privatevote`.",
   ];
   const stLines = [
     "Storyteller: kib **control panel**, or `/st do` (`resolve-next`, `close-nominations`, `next-phase`, `execute`, `vote-visibility`, `nominate`, …).",
@@ -492,7 +492,7 @@ export async function postNominationToChannel(
   const pingRoleId = options?.pingRoleId ?? null;
   const contentParts: string[] = [];
   if (pingRoleId) contentParts.push(`<@&${pingRoleId}>`);
-  if (!options?.privateBallot) contentParts.push("**New nomination** — vote below or with `/vote` in your ST thread.");
+  if (!options?.privateBallot) contentParts.push("**New nomination** — vote below, `/vote` (public), or `/privatevote`.");
 
   return channel
     .send({
@@ -511,14 +511,14 @@ export async function addDayThreadMembers(
   guild: Guild,
   threadId: string,
   engine: GameEngine,
+  options?: { includeDead?: boolean },
 ): Promise<void> {
+  const includeDead = options?.includeDead === true;
   const memberIds = new Set<string>();
   for (const player of engine.getState().players) {
-    if (player.alive && !player.isFake) {
-      memberIds.add(player.discordUserId);
-    } else if (player.alive && player.isFake && isDevMode()) {
-      memberIds.add(player.discordUserId);
-    }
+    if (!includeDead && !player.alive) continue;
+    if (player.isFake && !isDevMode()) continue;
+    memberIds.add(player.discordUserId);
   }
   for (const stId of engine.getStorytellerDiscordIds()) {
     memberIds.add(stId);

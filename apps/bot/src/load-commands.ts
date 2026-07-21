@@ -14,6 +14,17 @@ export async function loadCommandModules(): Promise<void> {
 
   log("info", "commands.load.done", {
     botMode: "minimal",
-    groups: ["game", "nominate", "defend", "vote", "roster", "whisper", "alias", "st", "dev"],
+    groups: [
+      "game",
+      "nominate",
+      "defend",
+      "vote",
+      "privatevote",
+      "roster",
+      "whisper",
+      "alias",
+      "st",
+      "dev",
+    ],
   });
 }

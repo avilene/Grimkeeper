@@ -1484,8 +1484,8 @@ export async function createTownVoteThread(
           content: [
             "**Town Voting** — nominations and votes happen here.",
             "You can vote on **any open nomination** with the **Vote** button.",
-            "Prefer a private ballot? Use `/vote` in your personal ST thread (ST sees it on the kib vote tracker).",
-            "Players: `/nominate` / `/defend` / `/vote` / `/roster` / `/whisper`.",
+            "Prefer a private ballot? Use `/privatevote` (ST sees it on the kib vote tracker).",
+            "Players: `/nominate` / `/defend` / `/vote` / `/privatevote` / `/roster` / `/whisper`.",
             "Storyteller: kib **control panel**, or `/st do` (`resolve-next`, `close-nominations`, `next-phase`, `execute`, `nominate`, `vote-visibility`, …).",
           ].join("\n"),
         })

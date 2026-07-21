@@ -1,6 +1,12 @@
 import { EmbedBuilder } from "discord.js";
 
-import { GAME_LOBBY_ACTIONS, PLAYER_DAY_ACTIONS, ST_DO_ACTIONS, type DoAction } from "./action-catalog.js";
+import {
+  GAME_LOBBY_ACTIONS,
+  PLAYER_DAY_ACTIONS,
+  PLAYER_VOTE_ACTIONS,
+  ST_DO_ACTIONS,
+  type DoAction,
+} from "./action-catalog.js";
 
 const GUIDE_COLOR = 0x5865f2;
 const FIELD_VALUE_LIMIT = 1024;
@@ -60,10 +66,10 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
       .setDescription(
         [
           "Day play uses top-level slash commands — not `/game …`.",
-          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/roster`** · **`/whisper`** · **`/alias`**",
+          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/roster`** · **`/whisper`** · **`/alias`**",
           "Nominations and votes happen in the **Town Voting** thread after `/st do setup-town`.",
           "Each living player may nominate **once per day**; each player (alive or dead) may be nominated **once per day**. Ghosts cannot nominate.",
-          "Private ballot: `/vote` in your personal ST thread (ST sees it on the kib tracker).",
+          "Public ballot: `/vote` (or the Vote button). Private ballot: `/privatevote` (ST sees it on the kib tracker).",
           "Whispers: `/whisper neighbor` opens NW threads with both seats; `/whisper with` takes `@mentions` (optional `name:`; groups default to `Group (names)`).",
           "Set how your name appears with **`/alias`** (defaults to a short form of your Discord name at setup).",
           "",
@@ -72,6 +78,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
         ].join("\n"),
       )
       .addFields(
+        ...doActionFields(PLAYER_VOTE_ACTIONS, "", "Voting"),
         ...doActionFields(PLAYER_DAY_ACTIONS, "", "Day"),
         {
           name: "Name",
@@ -84,9 +91,9 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
         {
           name: "Voting venues",
           value: [
-            "**Town Voting** thread — nominations ping the player role; Vote buttons + public results when visibility is public.",
-            "**Personal ST thread** — `/vote` for a private ballot; ST sees the vote on the kib **vote tracker**.",
-            "**Whisper threads** — `/whisper neighbor` or `/whisper with` (ST is added). Same participant set reuses the existing thread. @mention to invite others.",
+            "**Town Voting** — nominations and votes. **Whisper Declaration** / **Public Claims** / **Rules** (ST write-only) open on setup-town.",
+            "**`/vote`** — public ballot. **`/privatevote`** — private ballot (ST sees it on the kib **vote tracker**).",
+            "**Whisper threads** — `/whisper neighbor` or `/whisper with` (ST is added). Declarations post to Whisper Declaration when available.",
             "You can vote on **any** open nomination.",
             "ST sets public vs secret tallies with `/st do vote-visibility` or the kib control panel.",
           ].join("\n"),
@@ -122,6 +129,10 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
               "Pick an action via autocomplete, then fill only the options that action needs.",
             ),
             cmd(
+              "/st mark",
+              "In a town thread: assign it as Rules, Public Claims, or Whisper Declaration.",
+            ),
+            cmd(
               "/st panel",
               "Pin/refresh kib buttons: resolve, execute, votes, close nominations, next phase, …",
             ),
@@ -147,15 +158,15 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
         {
           name: "Notes",
           value: [
-            "Votes live in the **Town Voting** private thread (players are pinged there on each nomination).",
-            "Private ballots: `/vote` in a personal ST thread — ST sees them on the kib vote tracker.",
-            "`setup-town` also pins the **control panel** + **vote tracker** in kib.",
-            "Vote lock/count stay in Town Voting for hand pings; **Announce & resolve** posts pass/fail to Town Voting and the audit log.",
-            "Each living player may nominate once per day; each player (alive or dead) may be nominated once. Ghosts cannot nominate. Use `/st do nominate` + `override:` to bypass.",
-            "`close-nominations` then `next-phase` for Night 2; `next-phase` again for Day 2. Renames the town channel to `base-dayN` / `base-nightN` (voting thread stays Town Voting).",
-            "Use `/st do add-st` to promote a co-storyteller (ST role; no new player thread).",
-            "Personal player threads stay private after `/st do end`.",
-            "Player whispers (`/whisper neighbor` / `/whisper with`) include the storyteller; they get a day marker on open and `## Day N` when each new day begins.",
+            "`setup-town` opens Voting, Whisper Declaration, Public Claims, and Rules (ST write-only).",
+            "Public: `/vote` or Vote button. Private: `/privatevote` (kib vote tracker).",
+            "`/st mark` in a thread assigns it as Rules, Public Claims, or Whisper Declaration.",
+            "`/st do recreate-threads` recreates Whisper Declaration, Public Claims, and Rules.",
+            "Vote lock/count stay in Town Voting; **Announce & resolve** posts to Town Voting + audit log.",
+            "Each living player may nominate once per day; each player may be nominated once. Ghosts cannot nominate.",
+            "`close-nominations` then `next-phase` for Night/Day. Renames town to `base-dayN` / `base-nightN`.",
+            "`/st do add-st` promotes a co-storyteller. Personal ST threads stay private after `/st do end`.",
+            "Day stamps go to Voting, Whisper Declaration, Public Claims, kib, and whisper threads — not Rules.",
           ].join("\n"),
         },
       ),

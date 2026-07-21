@@ -82,7 +82,7 @@ export async function handleVoteButton(interaction: ButtonInteraction): Promise<
   if (!parsed) {
     await interaction
       .reply({
-        content: "That Vote button is invalid or too old. Use a nomination in **Town Voting**, or `/vote` in your ST thread.",
+        content: "That Vote button is invalid or too old. Use a nomination in **Town Voting**, or `/vote` / `/privatevote`.",
         flags: MessageFlags.Ephemeral,
       })
       .catch(() => undefined);
@@ -154,7 +154,7 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
     await interaction
       .editReply({
         content:
-          "That vote form is invalid or too old. Press **Vote** again in Town Voting, or use `/vote`.",
+          "That vote form is invalid or too old. Press **Vote** again in Town Voting, or use `/vote` / `/privatevote`.",
       })
       .catch(() => undefined);
     return true;
@@ -186,7 +186,7 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
     await interaction
       .editReply({
         content:
-          "Could not find the active game for this vote. Open **Town Voting** and press Vote on the nomination there, or use `/vote` in your ST thread.",
+          "Could not find the active game for this vote. Open **Town Voting** and press Vote on the nomination there, or use `/vote` / `/privatevote`.",
       })
       .catch(() => undefined);
     return true;
@@ -216,12 +216,6 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
 
   const reason = interaction.fields.getTextInputValue(VOTE_REASON_FIELD).trim() || null;
 
-  const dayBefore = engine.getState().day;
-  const fromPrivateThread =
-    interaction.channel?.isThread() &&
-    interaction.channelId !== dayBefore?.discordThreadId &&
-    interaction.channelId !== game.channelId;
-
   try {
     const events = engine.handle({
       kind: GameCommandKind.CastVote,
@@ -230,7 +224,7 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
       nominationId: parsed.nominationId,
       choice,
       reason,
-      privateBallot: Boolean(fromPrivateThread),
+      privateBallot: false,
     });
     await persistEvents(engine, events);
     await syncGameProjection(game.id, engine);
@@ -250,11 +244,11 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
         voterDiscordId: interaction.user.id,
         nomineeLabel: nominee?.displayName ?? "nominee",
         choice,
-        ballot: fromPrivateThread ? "private" : "public",
+        ballot: "public",
       });
 
       // Public result announcement only for public votes cast in the shared vote venue.
-      if (!isSecret && !fromPrivateThread) {
+      if (!isSecret) {
         const voting = await resolveVotingChannel(interaction.guild, game, engine);
         const openCount =
           engine.getState().day?.nominations.filter((candidate) => candidate.status === "open")
@@ -282,13 +276,11 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
     const tally = nomination
       ? engine.formatNominationTally(nomination.id, {
           revealSecret: true,
-          ballot: fromPrivateThread ? "effective" : "public",
+          ballot: "public",
         })
       : "";
     await interaction.editReply({
-      content: fromPrivateThread
-        ? `Private vote recorded (${choice}). ${tally}`
-        : `Vote recorded (${choice}). ${tally}`,
+      content: `Vote recorded (${choice}). ${tally}`,
     });
   } catch (error) {
     await replyEngineError(interaction, error);

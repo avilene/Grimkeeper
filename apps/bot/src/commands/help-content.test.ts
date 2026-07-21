@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { GAME_LOBBY_ACTIONS, PLAYER_DAY_ACTIONS, ST_DO_ACTIONS } from "./action-catalog.js";
+import {
+  GAME_LOBBY_ACTIONS,
+  PLAYER_DAY_ACTIONS,
+  PLAYER_VOTE_ACTIONS,
+  ST_DO_ACTIONS,
+} from "./action-catalog.js";
 import {
   buildDevHelpEmbeds,
   buildGameHelpEmbeds,
@@ -21,9 +26,16 @@ describe("help content", () => {
     expect(game.data.title).toBe("Player commands");
     expect(game.data.description).toContain("Town Voting");
     expect(game.data.description).toContain("/nominate");
+    expect(game.data.description).toContain("/vote");
+    expect(game.data.description).toContain("/privatevote");
     expect(game.data.description).toContain("/game help");
     expect(game.data.description).toContain("/game commands");
-    expect(game.data.fields?.[0]?.name).toBe("Day");
+    expect(game.data.fields?.[0]?.name).toBe("Voting");
+    expect(game.data.fields?.[1]?.name).toBe("Day");
+    for (const action of PLAYER_VOTE_ACTIONS) {
+      expect(gameText).toContain(`/${action.name}`);
+      expect(gameText).toContain(action.description);
+    }
     for (const action of PLAYER_DAY_ACTIONS) {
       expect(gameText).toContain(`/${action.name}`);
       expect(gameText).toContain(action.description);
