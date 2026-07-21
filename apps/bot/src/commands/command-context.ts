@@ -63,17 +63,26 @@ export function shortGameId(gameId: string): string {
   return gameId.slice(0, 6);
 }
 
-/** Keep game threads visible longer; Discord may reject this on unboosted servers. */
-export const DEFAULT_THREAD_AUTO_ARCHIVE = ThreadAutoArchiveDuration.ThreeDays;
+/** Prefer 1-week archive; Discord may reject longer durations on unboosted servers. */
+export const DEFAULT_THREAD_AUTO_ARCHIVE = ThreadAutoArchiveDuration.OneWeek;
 
-/** Prefer 3-day archive; fall back to 1 day if the guild does not allow it. */
+/** Prefer 1-week archive; fall back to 3 days, then 1 day if the guild does not allow it. */
 export async function ensureThreadAutoArchive(thread: AnyThreadChannel): Promise<void> {
   if (thread.autoArchiveDuration === DEFAULT_THREAD_AUTO_ARCHIVE) return;
-  try {
-    await thread.setAutoArchiveDuration(DEFAULT_THREAD_AUTO_ARCHIVE);
-  } catch {
-    if (thread.autoArchiveDuration !== ThreadAutoArchiveDuration.OneDay) {
-      await thread.setAutoArchiveDuration(ThreadAutoArchiveDuration.OneDay).catch(() => undefined);
+
+  const fallbacks = [
+    ThreadAutoArchiveDuration.OneWeek,
+    ThreadAutoArchiveDuration.ThreeDays,
+    ThreadAutoArchiveDuration.OneDay,
+  ] as const;
+
+  for (const duration of fallbacks) {
+    if (thread.autoArchiveDuration === duration) return;
+    try {
+      await thread.setAutoArchiveDuration(duration);
+      return;
+    } catch {
+      // Try a shorter duration Discord allows for this guild.
     }
   }
 }
