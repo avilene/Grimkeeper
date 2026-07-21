@@ -57,6 +57,7 @@ Player day play uses top-level slash commands. Storytellers use `/st …`. Guide
 | `/defend` | Add defense on an open nomination against you |
 | `/vote` | Vote on an open nomination |
 | `/roster` | Show seat order and alive/dead |
+| `/role` | Look up a BotC character (`name:` fuzzy search) |
 | `/st do setup-town` | Set roster + seats from ordered @mentions |
 | `/st do` | Autocomplete ST actions (resolve, execute, next-phase, …) |
 | `/st panel` | Pin/refresh kib control panel |

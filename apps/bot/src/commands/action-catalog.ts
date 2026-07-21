@@ -73,6 +73,11 @@ export const PLAYER_DAY_ACTIONS: DoAction[] = [
     description: "Open or resume a whisper with one or more players",
     needs: ["players", "name?"],
   },
+  {
+    name: "role",
+    description: "Look up a BotC character (fuzzy search; includes travelers)",
+    needs: ["name"],
+  },
 ];
 
 /** Top-level voting commands. */

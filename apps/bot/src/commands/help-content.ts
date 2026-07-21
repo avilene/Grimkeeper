@@ -244,11 +244,12 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
       .setDescription(
         [
           "Day play uses top-level slash commands — not `/game …`.",
-          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/roster`** · **`/whisper`** · **`/alias`**",
+          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/roster`** · **`/whisper`** · **`/role`** · **`/alias`**",
           "Nominations and votes happen in the **Town Voting** thread after `/st do setup-town`.",
           "Each living player may nominate **once per day**; each player (alive or dead) may be nominated **once per day**. Ghosts cannot nominate.",
           "Public ballot: `/vote` (or the Vote button). Private ballot: `/privatevote` (ST sees it on the kib tracker).",
           "Whispers: `/whisper neighbor` opens NW threads with both seats; `/whisper with` takes `@mentions` (optional `name:`; groups default to `Group (names)`).",
+          "Character lookup: **`/role name:`** — fuzzy search over official characters (incl. travelers).",
           "Set how your name appears with **`/alias`** (defaults to a short form of your Discord name at setup).",
           "",
           "Lobby: `/game setup` then **`/st do setup-town`** — see Lobby + Setup below. Full ST guide: **`/st help`**.",

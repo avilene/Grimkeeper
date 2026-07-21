@@ -52,6 +52,7 @@ describe("shouldDeferSlashCommand", () => {
     expect(shouldDeferSlashCommand(chatCommand("privatevote", null) as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("roster", null) as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("whisper", null) as never)).toBe(true);
+    expect(shouldDeferSlashCommand(chatCommand("role", null) as never)).toBe(true);
   });
 });
 
