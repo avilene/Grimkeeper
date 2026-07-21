@@ -400,6 +400,42 @@ export class StCommandsMinimal {
     }
   }
 
+  @Slash({
+    name: "add-kib",
+    description: "Assign kib role (+ thread access when kib is a thread)",
+  })
+  async addKib(
+    @SlashOption({
+      name: "user",
+      description: "User to add as kib/spectator",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    user: User,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.addSpectator(user, interaction);
+  }
+
+  @Slash({
+    name: "remove-kib",
+    description: "Remove kib role from a user",
+  })
+  async removeKib(
+    @SlashOption({
+      name: "user",
+      description: "User to remove from kib/spectator",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    user: User,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.removeSpectator(user, interaction);
+  }
+
   async start(interaction: CommandInteraction): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;

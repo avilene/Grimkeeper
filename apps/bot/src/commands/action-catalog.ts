@@ -30,8 +30,8 @@ export const ST_DO_ACTIONS: DoAction[] = [
     description: "Nominate on behalf of a player",
     needs: ["nominator", "nominee", "accusation", "override?"],
   },
-  { name: "add-spectator", description: "Assign kib role + thread access", needs: ["user"] },
-  { name: "remove-spectator", description: "Remove kib role", needs: ["user"] },
+  { name: "add-spectator", description: "Assign kib role + thread access (or use /st add-kib)", needs: ["user"] },
+  { name: "remove-spectator", description: "Remove kib role (or use /st remove-kib)", needs: ["user"] },
   { name: "add-st", description: "Promote a co-storyteller (ST role only; no new player thread)", needs: ["user"] },
   { name: "start", description: "Legacy start (prefer setup-town)" },
 ];

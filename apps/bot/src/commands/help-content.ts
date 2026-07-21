@@ -81,6 +81,14 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
     description: "Pin/refresh kib buttons: resolve, execute, votes, close nominations, next phase, …",
   },
   {
+    command: "/st add-kib",
+    description: "Assign kib role (+ thread access when kib is a thread). Same as `/st do add-spectator`.",
+  },
+  {
+    command: "/st remove-kib",
+    description: "Remove kib role. Same as `/st do remove-spectator`.",
+  },
+  {
     command: "/st remind",
     description: "Schedule a reminder (requires ST role, storyteller, or allowlist).",
   },
@@ -416,7 +424,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "Optional: `/st do vote-visibility` `mode: public|secret`",
             "Optional: `/st do say` — broadcast to all player ST threads",
             "Optional: `/st remind` / `/st set-reminders`",
-            "Optional: `/st do add-st` / `add-spectator`",
+            "Optional: `/st do add-st` / `/st add-kib`",
             "Optional: `/st do log` if the audit log is missing",
           ]),
         },

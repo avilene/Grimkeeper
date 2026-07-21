@@ -1005,7 +1005,7 @@ export async function createKibThread(
           ? ` Roles: <@&${gameRoles.stRole.id}> / <@&${gameRoles.playersRole.id}> / kib <@&${gameRoles.spectatorRole.id}>.`
           : "";
         await thread
-          .send(`Kib thread ready.${roleMention} Use \`/st do add-spectator\` to grant kib access.`)
+          .send(`Kib thread ready.${roleMention} Use \`/st add-kib\` to grant kib access.`)
           .catch(() => undefined);
       } catch {
         return { mention: null, threadId: null };
@@ -1030,7 +1030,7 @@ export async function createKibThread(
       : "";
     await venue
       .send({
-        content: `Kib channel attached.${roleMention} Use \`/st do add-spectator\` to grant kib access.`,
+        content: `Kib channel attached.${roleMention} Use \`/st add-kib\` to grant kib access.`,
         allowedMentions: { parse: [] },
       })
       .catch(() => undefined);
