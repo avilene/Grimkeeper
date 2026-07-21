@@ -7,8 +7,7 @@ import {
 } from "./interaction-response.js";
 import { log } from "../logger.js";
 
-const FAST_SUBCOMMANDS = new Set(["help"]);
-const FAST_SUBCOMMAND_GROUPS = new Set(["guide"]);
+const FAST_SUBCOMMANDS = new Set(["help", "guide"]);
 
 /** Top-level player day commands. */
 const PLAYER_DAY_COMMANDS = new Set([
@@ -24,11 +23,6 @@ const INTERACTION_DEFER_BUDGET_MS = 2_800;
 
 export function shouldDeferSlashCommand(interaction: Interaction): boolean {
   if (!interaction.isChatInputCommand()) return false;
-
-  const subcommandGroup = interaction.options.getSubcommandGroup(false);
-  if (subcommandGroup !== null && FAST_SUBCOMMAND_GROUPS.has(subcommandGroup)) {
-    return false;
-  }
 
   const subcommand = interaction.options.getSubcommand(false);
   if (subcommand !== null && FAST_SUBCOMMANDS.has(subcommand)) return false;

@@ -40,9 +40,7 @@ describe("shouldDeferSlashCommand", () => {
   });
 
   it("does not defer /st guide checklists", () => {
-    expect(shouldDeferSlashCommand(chatCommand("st", "setup", "guide") as never)).toBe(false);
-    expect(shouldDeferSlashCommand(chatCommand("st", "day", "guide") as never)).toBe(false);
-    expect(shouldDeferSlashCommand(chatCommand("st", "night", "guide") as never)).toBe(false);
+    expect(shouldDeferSlashCommand(chatCommand("st", "guide") as never)).toBe(false);
   });
 
   it("defers top-level day commands", () => {

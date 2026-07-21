@@ -1,7 +1,7 @@
 import { ApplicationCommandOptionType, CommandInteraction, EmbedBuilder } from "discord.js";
-import { Discord, Slash, SlashGroup, SlashOption } from "discordx";
+import { Discord, Slash, SlashChoice, SlashGroup, SlashOption } from "discordx";
 
-import { replyOrEditInteraction, requireCommandAccess } from "./command-context.js";
+import { requireCommandAccess } from "./command-context.js";
 import {
   buildDevHelpEmbeds,
   buildGameHelpEmbeds,
@@ -16,7 +16,14 @@ async function replyWithHelp(
   interaction: CommandInteraction,
   embeds: EmbedBuilder[],
 ): Promise<void> {
-  await replyOrEditInteraction(interaction, { embeds });
+  // Help/guide are fast — reply once with the embeds (avoid "Working…" then edit).
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply({ content: null, embeds }).catch(async () => {
+      await interaction.followUp({ embeds }).catch(() => undefined);
+    });
+    return;
+  }
+  await interaction.reply({ embeds });
 }
 
 async function replyScopedHelp(
@@ -69,30 +76,44 @@ export class StHelpCommands {
   ): Promise<void> {
     await replyScopedHelp(interaction, "st", search, buildStHelpEmbeds);
   }
+
+  @Slash({
+    name: "guide",
+    description: "Phase checklist: setup, day, or night",
+  })
+  async guide(
+    @SlashChoice({ name: "Setup", value: "setup" })
+    @SlashChoice({ name: "Day", value: "day" })
+    @SlashChoice({ name: "Night", value: "night" })
+    @SlashOption({
+      name: "phase",
+      description: "Which checklist to show",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    phase: string,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    const topic = parseGuidePhase(phase);
+    if (!topic) {
+      if (!(await requireCommandAccess(interaction))) return;
+      await replyWithHelp(interaction, [
+        new EmbedBuilder()
+          .setTitle("Unknown guide phase")
+          .setDescription("Pick **setup**, **day**, or **night**."),
+      ]);
+      return;
+    }
+    await replyStGuide(interaction, topic);
+  }
 }
 
-@Discord()
-@SlashGroup({
-  name: "guide",
-  description: "Phase checklists for storytellers",
-  root: "st",
-})
-@SlashGroup("guide", "st")
-export class StGuideCommands {
-  @Slash({ name: "setup", description: "Checklist: lobby → town setup" })
-  async setup(interaction: CommandInteraction): Promise<void> {
-    await replyStGuide(interaction, "setup");
+function parseGuidePhase(value: string): StGuideTopic | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "setup" || normalized === "day" || normalized === "night") {
+    return normalized;
   }
-
-  @Slash({ name: "day", description: "Checklist: running a day" })
-  async day(interaction: CommandInteraction): Promise<void> {
-    await replyStGuide(interaction, "day");
-  }
-
-  @Slash({ name: "night", description: "Checklist: running a night" })
-  async night(interaction: CommandInteraction): Promise<void> {
-    await replyStGuide(interaction, "night");
-  }
+  return null;
 }
 
 async function replyStGuide(

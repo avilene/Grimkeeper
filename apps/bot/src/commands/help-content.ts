@@ -61,16 +61,8 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
   },
   ...entriesFromActions(ST_DO_ACTIONS, "/st do"),
   {
-    command: "/st guide setup",
-    description: "Checklist: lobby → town setup.",
-  },
-  {
-    command: "/st guide day",
-    description: "Checklist: running a day (noms, votes, resolve, next-phase).",
-  },
-  {
-    command: "/st guide night",
-    description: "Checklist: running a night (say, mark-dead, next-phase).",
+    command: "/st guide",
+    description: "Phase checklist — pick `phase: setup`, `day`, or `night`.",
   },
   {
     command: "/st mark",
@@ -298,7 +290,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           "",
           "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/st do log` to recreate it mid-game.",
           "Prefer typing less? **`/st do`** filters actions as you type. Mid-game buttons: **`/st panel`**.",
-          "Phase checklists: **`/st guide setup`**, **`/st guide day`**, **`/st guide night`**.",
+          "Phase checklists: **`/st guide`** with `phase: setup` / `day` / `night`.",
         ].join("\n"),
       )
       .addFields(
@@ -310,8 +302,8 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
               "Pick an action via autocomplete, then fill only the options that action needs.",
             ),
             cmd(
-              "/st guide setup|day|night",
-              "Phase checklist (commands only where the bot is involved).",
+              "/st guide",
+              "Phase checklist — `phase: setup`, `day`, or `night`.",
             ),
             cmd(
               "/st mark",
@@ -424,7 +416,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           name: "Also",
           value: [
             "Full command list: `/st help`",
-            "Day loop: `/st guide day` · Night: `/st guide night`",
+            "Day loop: `/st guide` `phase: day` · Night: `/st guide` `phase: night`",
           ].join("\n"),
         },
       );
@@ -462,7 +454,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           value: [
             "Whispers are player-side (`/whisper …`); declarations go to Whisper Declaration.",
             "Game over: `/st do end` with `winner: good` or `evil`.",
-            "Setup: `/st guide setup` · Night: `/st guide night` · All commands: `/st help`",
+            "Setup: `/st guide` `phase: setup` · Night: `/st guide` `phase: night` · All commands: `/st help`",
           ].join("\n"),
         },
       );
@@ -495,7 +487,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
         name: "Also",
         value: [
           "Game over: `/st do end` with `winner: good` or `evil`.",
-          "Setup: `/st guide setup` · Day: `/st guide day` · All commands: `/st help`",
+          "Setup: `/st guide` `phase: setup` · Day: `/st guide` `phase: day` · All commands: `/st help`",
         ].join("\n"),
       },
     );
