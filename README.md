@@ -47,12 +47,12 @@ If both `ALLOWED_USER_IDS` and `ALLOWED_ROLE_IDS` are empty, everyone in the gui
 
 ## Commands
 
-Player day play uses top-level slash commands. Storytellers use `/st …`. Guides: **`/game help`**, **`/game commands`**, **`/st help`**.
+Player day play uses top-level slash commands. Storytellers use `/st …`. Guides: **`/game help`**, **`/st help`** (optional `search:`).
 
 | Command | Description |
 |---------|-------------|
 | `/game setup` | Create a game with existing ST / player / kib roles |
-| `/game help` / `/game commands` | Player command guide |
+| `/game help` | Player command guide (`search:` filters by name/description) |
 | `/nominate` | Nominate a player |
 | `/defend` | Add defense on an open nomination against you |
 | `/vote` | Vote on an open nomination |
@@ -60,7 +60,8 @@ Player day play uses top-level slash commands. Storytellers use `/st …`. Guide
 | `/st do setup-town` | Set roster + seats from ordered @mentions |
 | `/st do` | Autocomplete ST actions (resolve, execute, next-phase, …) |
 | `/st panel` | Pin/refresh kib control panel |
-| `/st help` / `/st commands` | Storyteller command guide |
+| `/st help` | Storyteller command guide (`search:` filters by name/description) |
+| `/st guide setup` / `day` / `night` | Phase checklists |
 | `/st remind` / `/st set-reminders` | Scheduled pings |
 
 ## Deploy to Railway

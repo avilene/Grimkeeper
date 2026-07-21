@@ -45,6 +45,20 @@ export const GAME_LOBBY_ACTIONS: DoAction[] = [
   { name: "list", description: "List active games in this server" },
 ];
 
+/** Storyteller setup steps after `/game setup` (shown in `/game help` Lobby flow). */
+export const ST_SETUP_ACTIONS: DoAction[] = [
+  {
+    name: "setup-town",
+    description: "Set roster + seats from ordered @mentions; opens Voting, Whisper Declaration, Claims, Rules",
+    needs: ["players"],
+  },
+  { name: "log", description: "Create or reopen the ST-only audit log thread" },
+  {
+    name: "recreate-threads",
+    description: "Recreate Whisper Declaration, Public Claims, and Rules threads",
+  },
+];
+
 /** Top-level day commands: `/nominate`, `/defend`, `/roster`, `/whisper …`. */
 export const PLAYER_DAY_ACTIONS: DoAction[] = [
   { name: "nominate", description: "Nominate a player (autocomplete from game roster)", needs: ["player", "accusation"] },

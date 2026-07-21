@@ -6,7 +6,6 @@ import {
 import { prisma } from "@grimkeeper/database";
 import type { GameEngine } from "@grimkeeper/engine";
 
-import { addDayThreadMembers } from "./day-thread.js";
 import {
   DEFAULT_THREAD_AUTO_ARCHIVE,
   ensureThreadAutoArchive,
@@ -112,8 +111,13 @@ async function findTownSurfaceThread(
 
   const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
   if (!isGameTextChannel(parent)) return null;
-  const archived = await parent.threads.fetchArchived({ type: "private" }).catch(() => null);
-  return archived?.threads.find((candidate) => matches(candidate.name)) ?? null;
+
+  for (const type of ["private", "public"] as const) {
+    const archived = await parent.threads.fetchArchived({ type }).catch(() => null);
+    const match = archived?.threads.find((candidate) => matches(candidate.name));
+    if (match) return match;
+  }
+  return null;
 }
 
 async function persistTownSurfaceThreadId(
@@ -129,13 +133,13 @@ async function persistTownSurfaceThreadId(
 }
 
 /**
- * Ensure a town surface private thread exists, members are synced, and Rules stays locked
- * (ST/ManageThreads can write; players read-only).
+ * Ensure a town surface thread exists. Players are not added individually — creation
+ * @mentions ST / player / kib roles so they get notified; threads are public so roles can see them.
  */
 export async function ensureTownSurfaceThread(
   guild: Guild,
   game: TownSurfaceGame,
-  engine: GameEngine,
+  _engine: GameEngine,
   kind: TownSurfaceKind,
 ): Promise<AnyThreadChannel | null> {
   const meta = SURFACE_META[kind];
@@ -153,8 +157,7 @@ export async function ensureTownSurfaceThread(
         autoArchiveDuration: DEFAULT_THREAD_AUTO_ARCHIVE,
         reason: `${meta.label} thread for game ${game.id}`,
         ...( {
-          type: ChannelType.PrivateThread,
-          invitable: false,
+          type: ChannelType.PublicThread,
         } as Record<string, unknown>),
       });
       const ping = formatRolePingLine(game);
@@ -176,7 +179,7 @@ export async function ensureTownSurfaceThread(
   }
   await ensureThreadAutoArchive(thread);
 
-  // Rules: locked so only ManageThreads (ST) can send; players remain members to read.
+  // Rules: locked so only ManageThreads (ST) can send; everyone else can still read.
   if (meta.locked) {
     if (!thread.locked) {
       await thread.setLocked(true, "Rules thread is ST-write / player-read.").catch(() => undefined);
@@ -184,8 +187,6 @@ export async function ensureTownSurfaceThread(
   } else if (thread.locked) {
     await thread.setLocked(false, `Unlock ${meta.label} for player posts.`).catch(() => undefined);
   }
-
-  await addDayThreadMembers(guild, thread.id, engine, { includeDead: true });
 
   if (thread.id !== storedId) {
     await persistTownSurfaceThreadId(game.id, kind, thread.id);
@@ -253,12 +254,12 @@ export function townSurfaceLabel(kind: TownSurfaceKind): string {
 
 /**
  * Point a town surface at an existing thread (must be under the town channel).
- * Applies naming, membership, and Rules lock as needed.
+ * Applies naming and Rules lock as needed (no per-player membership).
  */
 export async function markTownSurfaceThread(
   guild: Guild,
   game: TownSurfaceGame,
-  engine: GameEngine,
+  _engine: GameEngine,
   kind: TownSurfaceKind,
   thread: AnyThreadChannel,
 ): Promise<{ label: string }> {
@@ -284,8 +285,6 @@ export async function markTownSurfaceThread(
   } else if (thread.locked) {
     await thread.setLocked(false, `Unlock ${meta.label} for player posts.`).catch(() => undefined);
   }
-
-  await addDayThreadMembers(guild, thread.id, engine, { includeDead: true });
 
   // Clear other surface slots that pointed at this same thread.
   const clearOther: Record<string, string | null> = {};
