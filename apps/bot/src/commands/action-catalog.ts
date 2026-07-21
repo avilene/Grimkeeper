@@ -41,16 +41,20 @@ export const GAME_LOBBY_ACTIONS: DoAction[] = [
   { name: "list", description: "List active games in this server" },
 ];
 
-/** Top-level day commands: `/nominate`, `/defend`, `/vote`, `/roster`, `/whisper`. */
+/** Top-level day commands: `/nominate`, `/defend`, `/vote`, `/roster`, `/whisper …`. */
 export const PLAYER_DAY_ACTIONS: DoAction[] = [
   { name: "nominate", description: "Nominate a player (autocomplete from game roster)", needs: ["player", "accusation"] },
   { name: "defend", description: "Add defense to an open nomination against you", needs: ["text"] },
   { name: "vote", description: "Vote on an open nomination (autocomplete open nominees)", needs: ["nominee", "choice", "reason?"] },
   { name: "roster", description: "Show seat order and alive/dead" },
   {
-    name: "whisper",
-    description: "Open a private whisper thread with another player",
-    needs: ["player", "name?", "neighbor?"],
+    name: "whisper neighbor",
+    description: "Open or resume NW whispers with both seated neighbors",
+  },
+  {
+    name: "whisper with",
+    description: "Open or resume a whisper with one or more players",
+    needs: ["players", "name?"],
   },
 ];
 

@@ -39,6 +39,9 @@ export {
 export {
   createGameWhisper,
   listGameWhispers,
+  findGameWhisperBetweenPlayers,
+  findGameWhisperByParticipants,
+  whisperParticipantKey,
   type CreateGameWhisperInput,
 } from "./whispers.js";
 
