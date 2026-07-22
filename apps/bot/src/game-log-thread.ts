@@ -90,18 +90,24 @@ export type GameThreadRecord = GameRoleIds & {
 
 /**
  * Parent for the ST audit log thread:
- * - kib channel venue → nest log under that channel
- * - kib thread (or no kib) → nest log under town
+ * - kib **channel** venue → nest log under that channel (never town)
+ * - kib **thread** (or no kib) → nest log under town
  */
 export async function resolveLogParentChannelId(
   guild: Guild,
   game: Pick<GameThreadRecord, "channelId" | "kibThreadId">,
 ): Promise<string> {
-  if (game.kibThreadId) {
-    const kib = await guild.channels.fetch(game.kibThreadId).catch(() => null);
-    if (kib && isKibChannelVenue(kib)) return kib.id;
-  }
+  if (!game.kibThreadId) return game.channelId;
+
+  const kib = await guild.channels.fetch(game.kibThreadId).catch(() => null);
+  if (kib && isKibChannelVenue(kib)) return kib.id;
+  // Kib is a thread under town (or unresolved thread) — log stays a sibling under town.
   return game.channelId;
+}
+
+function logThreadMatchesGame(thread: AnyThreadChannel, gameId: string): boolean {
+  const short = shortGameId(gameId);
+  return !thread.name.includes(" · ") || thread.name.includes(short);
 }
 
 export async function getLogThreadForGame(
@@ -112,18 +118,14 @@ export async function getLogThreadForGame(
 
   if (game.logThreadId) {
     const byId = await guild.channels.fetch(game.logThreadId).catch(() => null);
-    if (byId?.isThread() && byId.parentId === logParentId) {
-      // Reject IDs that clearly belong to another game (game-scoped name mismatch).
-      const short = shortGameId(game.id);
-      if (!byId.name.includes(" · ") || byId.name.includes(short)) {
-        return byId;
-      }
+    // Only reuse a stored log when it is already under the correct parent (kib channel or town).
+    if (byId?.isThread() && byId.parentId === logParentId && logThreadMatchesGame(byId, game.id)) {
+      return byId;
     }
   }
 
   const parent = await guild.channels.fetch(logParentId).catch(() => null);
   const parentName = parent && "name" in parent ? parent.name : "game";
-  // Game-scoped name only — never reuse another game's `log-{channel}` thread.
   const expectedName = logThreadName(parentName, game.id);
 
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
@@ -156,12 +158,21 @@ async function addStOnlyMembersToThread(
   }
 }
 
+export type EnsureLogThreadResult = {
+  thread: AnyThreadChannel | null;
+  created: boolean;
+  threadId: string | null;
+  /** Parent channel/thread id where the log was (or would be) attached. */
+  parentId: string | null;
+  error?: string;
+};
+
 export async function ensureLogThread(
   guild: Guild,
   game: GameThreadRecord,
   engine: GameEngine | null,
   options?: { existingThreadId?: string; invokerId?: string },
-): Promise<{ thread: AnyThreadChannel | null; created: boolean; threadId: string | null }> {
+): Promise<EnsureLogThreadResult> {
   const storytellerIds = engine?.getStorytellerDiscordIds() ?? [];
   const logParentId = await resolveLogParentChannelId(guild, game);
   let thread: AnyThreadChannel | null = null;
@@ -171,6 +182,9 @@ export async function ensureLogThread(
     const existing = await guild.channels.fetch(options.existingThreadId).catch(() => null);
     if (existing?.isThread() && existing.parentId === logParentId) {
       thread = existing;
+    } else if (existing?.isThread()) {
+      // Provided log is under the wrong parent (e.g. town while kib is a channel) — ignore and create under kib.
+      thread = null;
     }
   }
 
@@ -181,7 +195,13 @@ export async function ensureLogThread(
   if (!thread) {
     const parent = await guild.channels.fetch(logParentId).catch(() => null);
     if (!isGameTextChannel(parent)) {
-      return { thread: null, created: false, threadId: null };
+      return {
+        thread: null,
+        created: false,
+        threadId: null,
+        parentId: logParentId,
+        error: `Log parent <#${logParentId}> is not a text channel (cannot create a thread there).`,
+      };
     }
 
     const threadName = logThreadName(parent.name, game.id);
@@ -199,8 +219,22 @@ export async function ensureLogThread(
       await thread
         .send("**Game audit log** (ST-only). Role changes, broadcasts, reminders, and setup events appear here.")
         .catch(() => undefined);
-    } catch {
-      return { thread: null, created: false, threadId: null };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const { reportError } = await import("./error-reporter.js");
+      void reportError("logThread.create.failed", error, {
+        gameId: game.id,
+        parentId: logParentId,
+        kibThreadId: game.kibThreadId,
+        townChannelId: game.channelId,
+      });
+      return {
+        thread: null,
+        created: false,
+        threadId: null,
+        parentId: logParentId,
+        error: `Could not create log thread under <#${logParentId}>: ${detail}`,
+      };
     }
   }
 
@@ -215,7 +249,7 @@ export async function ensureLogThread(
 
   await addStOnlyMembersToThread(guild, thread, game, storytellerIds);
 
-  return { thread, created, threadId: thread.id };
+  return { thread, created, threadId: thread.id, parentId: logParentId };
 }
 
 export async function postGameLog(

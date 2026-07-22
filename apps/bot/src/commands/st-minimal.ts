@@ -555,9 +555,26 @@ export class StCommandsMinimal {
 
     try {
       const engine = await loadEngine(game.id);
-      const result = await ensureLogThread(interaction.guild, game, engine, {
-        invokerId: interaction.user.id,
-      });
+
+      // Resolve kib first — when kib is a channel, the log must nest under that channel.
+      const kib = await getKibThreadForGame(interaction.guild, game);
+      let kibThreadId = game.kibThreadId ?? null;
+      if (kib && kib.id !== game.kibThreadId) {
+        kibThreadId = kib.id;
+        await prisma.game.update({
+          where: { id: game.id },
+          data: { kibThreadId },
+        });
+      } else if (kib) {
+        kibThreadId = kib.id;
+      }
+
+      const result = await ensureLogThread(
+        interaction.guild,
+        { ...game, kibThreadId },
+        engine,
+        { invokerId: interaction.user.id },
+      );
 
       if (result.threadId && result.threadId !== game.logThreadId) {
         await prisma.game.update({
@@ -567,8 +584,12 @@ export class StCommandsMinimal {
       }
 
       if (!result.thread) {
+        const parentHint = result.parentId ? ` Parent: <#${result.parentId}>.` : "";
         await replyOrEditInteraction(interaction, {
-          content: "Could not create or find the ST log thread. Check bot permissions (`Manage Threads`).",
+          content:
+            (result.error ??
+              "Could not create or find the ST log thread. Check bot permissions (`Manage Threads`) on the kib channel (or town, if kib is a thread).") +
+            parentHint,
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -576,12 +597,16 @@ export class StCommandsMinimal {
 
       await postGameLog(
         interaction.guild,
-        { ...game, logThreadId: result.threadId },
+        { ...game, kibThreadId, logThreadId: result.threadId },
         `<@${interaction.user.id}> ensured the ST log thread${result.created ? " (created)" : ""}.`,
       );
 
+      const parentNote =
+        result.parentId && result.parentId !== game.channelId
+          ? ` (under kib <#${result.parentId}>)`
+          : "";
       await replyOrEditInteraction(interaction, {
-        content: `ST log thread ready: <#${result.thread.id}>${result.created ? " (newly created)" : ""}.`,
+        content: `ST log thread ready: <#${result.thread.id}>${result.created ? " (newly created)" : ""}${parentNote}.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

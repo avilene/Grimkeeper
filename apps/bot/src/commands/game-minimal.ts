@@ -215,6 +215,14 @@ export class GameCommandsMinimal {
       existingThreadId: kibVenue?.id,
     });
 
+    // Persist kib before creating the log so the log always nests under a kib *channel* when used.
+    if (kibResult.threadId) {
+      await prisma.game.update({
+        where: { id: gameId },
+        data: { kibThreadId: kibResult.threadId },
+      });
+    }
+
     await setInteractionProgress(interaction, logThread ? "Attaching log thread…" : "Creating log thread…");
     const logResult = await ensureLogThread(interaction.guild, {
       id: gameId,
@@ -229,13 +237,10 @@ export class GameCommandsMinimal {
       invokerId: interaction.user.id,
     });
 
-    if (kibResult.threadId || logResult.threadId) {
+    if (logResult.threadId) {
       await prisma.game.update({
         where: { id: gameId },
-        data: {
-          ...(kibResult.threadId ? { kibThreadId: kibResult.threadId } : {}),
-          ...(logResult.threadId ? { logThreadId: logResult.threadId } : {}),
-        },
+        data: { logThreadId: logResult.threadId },
       });
     }
 
