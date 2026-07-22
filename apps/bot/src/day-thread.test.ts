@@ -331,7 +331,7 @@ describe("sanitizeMarkdownLinkLabel", () => {
 });
 
 describe("formatNominationRef", () => {
-  it("uses a sanitized label when wrapping a jump link", () => {
+  it("appends a jump URL for plain Discord message content", () => {
     const engine = GameEngine.fromEvents(gameId, baseEvents());
     engine.apply({
       type: GameEventType.TownSetup,
@@ -366,7 +366,7 @@ describe("formatNominationRef", () => {
     const nominationId = engine.getState().day!.nominations[0]!.id;
     const url = "https://discord.com/channels/1/2/3";
     expect(formatNominationRef(engine, nominationId, url)).toBe(
-      `[nomination of arlie on sharii🦀](${url})`,
+      `nomination of arlie on sharii🦀 [craboots!] (<${url}>)`,
     );
     expect(formatNominationRef(engine, nominationId, null)).toBe(
       "nomination of arlie on sharii🦀 [craboots!]",

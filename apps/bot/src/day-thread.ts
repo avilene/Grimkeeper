@@ -227,7 +227,7 @@ export function sanitizeMarkdownLinkLabel(text: string): string {
   return cleaned || "nomination";
 }
 
-/** Wrap a nomination phrase in a Discord markdown jump link when a message URL is known. */
+/** Append a Discord jump URL for plain message content (masked `[label](url)` does not render outside embeds). */
 export function formatNominationRef(
   engine: GameEngine,
   nominationId: string,
@@ -236,7 +236,8 @@ export function formatNominationRef(
 ): string {
   const phrase = formatNominationPhrase(engine, nominationId, options);
   if (!messageUrl) return phrase;
-  return `[${sanitizeMarkdownLinkLabel(phrase)}](${messageUrl})`;
+  // Angle brackets keep the jump link clickable without a large embed preview.
+  return `${phrase} (<${messageUrl}>)`;
 }
 
 export function buildDayIntroEmbed(engine: GameEngine): EmbedBuilder {
