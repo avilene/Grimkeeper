@@ -4,6 +4,7 @@ import { reportError } from "../error-reporter.js";
 import {
   INTERACTION_PENDING_CONTENT,
   isBenignInteractionAckError,
+  isUnknownInteractionError,
 } from "./interaction-response.js";
 import { log } from "../logger.js";
 
@@ -123,14 +124,23 @@ function handleAckFailure(
   ageMs: number,
   error: unknown,
 ): void {
-  const context = interactionAckContext(command, ageMs);
-  if (isBenignInteractionAckError(error)) {
-    log("warn", "interaction.defer.skipped", {
-      ...context,
-      code: error && typeof error === "object" && "code" in error ? error.code : undefined,
-    });
+  const code =
+    error && typeof error === "object" && "code" in error ? error.code : undefined;
+  const context = { ...interactionAckContext(command, ageMs), code };
+
+  if (isUnknownInteractionError(error)) {
+    // 10062 — Discord already expired the token (slow bot, duplicate replica, etc.).
+    log("warn", "interaction.ack.unknown", context);
+    void reportError("interaction.ack.unknown", error, context);
     return;
   }
+
+  if (isBenignInteractionAckError(error)) {
+    log("warn", "interaction.ack.skipped", context);
+    void reportError("interaction.ack.skipped", error, context);
+    return;
+  }
+
   log("warn", "interaction.defer.failed", {
     ...context,
     error: error instanceof Error ? error.message : String(error),

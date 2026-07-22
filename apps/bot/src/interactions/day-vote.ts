@@ -26,10 +26,12 @@ import {
   syncGameProjection,
 } from "../commands/command-context.js";
 import { postGameLogVoteCast } from "../game-log-thread.js";
+import { reportError } from "../error-reporter.js";
 import { log } from "../logger.js";
 import {
   INTERACTION_PENDING_CONTENT,
   isRecoverableInteractionResponseError,
+  isUnknownInteractionError,
 } from "./interaction-response.js";
 
 const VOTE_CHOICE_FIELD = "choice";
@@ -132,6 +134,14 @@ export async function handleVoteButton(interaction: ButtonInteraction): Promise<
     }
     if (!isRecoverableInteractionResponseError(error)) {
       throw error;
+    }
+    if (isUnknownInteractionError(error)) {
+      void reportError("vote.modal.open.unknown", error, {
+        customId: interaction.customId,
+        guildId: interaction.guildId,
+        channelId: interaction.channelId,
+        userId: interaction.user.id,
+      });
     }
   }
 

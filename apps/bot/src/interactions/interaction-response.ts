@@ -40,7 +40,9 @@ export function isInteractionAlreadyAcknowledged(error: unknown): boolean {
 }
 
 /**
- * Ack failures that should not page the error channel (duplicate bots, races, expired tokens).
+ * Ack failures that are non-fatal (don't crash the handler / don't retry forever).
+ * Still worth reporting to the error channel — especially 10062 Unknown interaction,
+ * which usually means we missed Discord's 3s ack window.
  */
 export function isBenignInteractionAckError(error: unknown): boolean {
   return isRecoverableInteractionResponseError(error);

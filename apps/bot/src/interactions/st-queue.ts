@@ -26,6 +26,7 @@ import {
 } from "@grimkeeper/database";
 
 import { canUseBot } from "../access.js";
+import { reportError } from "../error-reporter.js";
 import {
   getConfiguredQueueThreadId,
   parseStQueueButtonCustomId,
@@ -35,7 +36,10 @@ import {
   stQueueModalCustomId,
   stQueueSelectCustomId,
 } from "../st-queue-board.js";
-import { isRecoverableInteractionResponseError } from "./interaction-response.js";
+import {
+  isRecoverableInteractionResponseError,
+  isUnknownInteractionError,
+} from "./interaction-response.js";
 
 const FIELD_SCRIPT_NAME = "script_name";
 const FIELD_SCRIPT_LINK = "script_link";
@@ -71,6 +75,14 @@ async function safeEdit(
     }
   } catch (error) {
     if (!isRecoverableInteractionResponseError(error)) throw error;
+    if (isUnknownInteractionError(error)) {
+      void reportError("stQueue.reply.unknown", error, {
+        customId: interaction.customId,
+        guildId: interaction.guildId,
+        channelId: interaction.channelId,
+        userId: interaction.user.id,
+      });
+    }
   }
 }
 
