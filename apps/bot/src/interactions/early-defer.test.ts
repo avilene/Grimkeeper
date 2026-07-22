@@ -1,19 +1,29 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   isHelpOrGuideCommand,
   shouldDeferSlashCommand,
   shouldDeferStReminderCommand,
+  startEarlyDefer,
 } from "./early-defer.js";
 
 function chatCommand(
   commandName: string,
   subcommand: string | null,
   subcommandGroup: string | null = null,
+  extras: Record<string, unknown> = {},
 ) {
   return {
     isChatInputCommand: () => true,
     commandName,
+    deferred: false,
+    replied: false,
+    createdTimestamp: Date.now(),
+    guildId: "g1",
+    channelId: "c1",
+    user: { id: "u1" },
+    deferReply: vi.fn().mockResolvedValue(undefined),
+    reply: vi.fn().mockResolvedValue(undefined),
     options: {
       getSubcommandGroup: (required?: boolean) => {
         if (subcommandGroup === null && required === false) return null;
@@ -26,6 +36,7 @@ function chatCommand(
         return subcommand;
       },
     },
+    ...extras,
   };
 }
 
@@ -92,5 +103,48 @@ describe("shouldDeferSlashCommand", () => {
 describe("shouldDeferStReminderCommand", () => {
   it("matches shouldDeferSlashCommand", () => {
     expect(shouldDeferStReminderCommand(chatCommand("st", "remind") as never)).toBe(true);
+  });
+});
+
+describe("startEarlyDefer", () => {
+  it("public-defers /st guide setup and returns acked", async () => {
+    const interaction = chatCommand("st", "setup", "guide");
+    await expect(startEarlyDefer(interaction as never)).resolves.toBe("acked");
+    expect(interaction.deferReply).toHaveBeenCalledOnce();
+    expect(interaction.reply).not.toHaveBeenCalled();
+  });
+
+  it("returns failed on unknown interaction without throwing", async () => {
+    const interaction = chatCommand("st", "setup", "guide", {
+      deferReply: vi.fn().mockRejectedValue({ code: 10062 }),
+    });
+    await expect(startEarlyDefer(interaction as never)).resolves.toBe("failed");
+  });
+
+  it("returns failed on already-acknowledged without throwing", async () => {
+    const interaction = chatCommand("st", "setup", "guide", {
+      deferReply: vi.fn().mockRejectedValue({ code: 40060 }),
+    });
+    await expect(startEarlyDefer(interaction as never)).resolves.toBe("failed");
+  });
+
+  it("returns skipped on unexpected defer errors so the handler can retry", async () => {
+    const interaction = chatCommand("st", "setup", "guide", {
+      deferReply: vi.fn().mockRejectedValue({ code: 500, message: "Internal Server Error" }),
+    });
+    await expect(startEarlyDefer(interaction as never)).resolves.toBe("skipped");
+  });
+
+  it("skips when already deferred", async () => {
+    const interaction = chatCommand("st", "setup", "guide", { deferred: true });
+    await expect(startEarlyDefer(interaction as never)).resolves.toBe("acked");
+    expect(interaction.deferReply).not.toHaveBeenCalled();
+  });
+
+  it("skips modal-opening queue commands", async () => {
+    const interaction = chatCommand("st", "join", "queue");
+    await expect(startEarlyDefer(interaction as never)).resolves.toBe("skipped");
+    expect(interaction.deferReply).not.toHaveBeenCalled();
+    expect(interaction.reply).not.toHaveBeenCalled();
   });
 });

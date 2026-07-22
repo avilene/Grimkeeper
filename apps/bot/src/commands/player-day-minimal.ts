@@ -375,7 +375,7 @@ export class PlayerDayCommandsMinimal {
 
     const engine = await loadEngine(game.id);
     const state = engine.getState();
-    if (!state.townMode || state.phase !== "day") {
+    if (!state.townMode) {
       await replyOrEditInteraction(interaction, {
         content: "Town is not set up yet. Storyteller must run `/st do setup-town`.",
         flags: MessageFlags.Ephemeral,

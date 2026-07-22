@@ -559,11 +559,40 @@ export async function requireCommandAccess(interaction: CommandInteraction): Pro
   return false;
 }
 
+/**
+ * Role IDs from the slash/button interaction payload (no REST fetch).
+ * Prefer this over guild.members.fetch — we do not request GuildMembers intent, so
+ * fetches often time out and falsely deny ST-role users.
+ */
+export function interactionMemberHasRole(
+  interaction: Pick<CommandInteraction, "member">,
+  roleId: string,
+): boolean | null {
+  const member = interaction.member;
+  if (!member) return null;
+
+  const roles = member.roles;
+  // APIInteractionGuildMember: roles is string[]
+  if (Array.isArray(roles)) {
+    return roles.includes(roleId);
+  }
+  // GuildMember: RoleManager with cache
+  if (roles && typeof roles === "object" && "cache" in roles) {
+    return roles.cache.has(roleId);
+  }
+  return null;
+}
+
 export async function memberHasGameStRole(
   interaction: CommandInteraction,
   game: GameRoleIds,
 ): Promise<boolean> {
   if (!game.stRoleId || !interaction.guild) return false;
+
+  // Interaction payload already includes role IDs for guild commands — authoritative and fast.
+  const fromPayload = interactionMemberHasRole(interaction, game.stRoleId);
+  if (fromPayload !== null) return fromPayload;
+
   const member = await fetchGuildMemberWithTimeout(interaction.guild, interaction.user.id);
   return member?.roles.cache.has(game.stRoleId) ?? false;
 }
@@ -1556,7 +1585,8 @@ export async function createTownVoteThread(
       await thread
         .send({
           content: [
-            "**Town Voting** — nominations and votes happen here.",
+            "**Town Voting** — nominations and votes happen here once Day begins.",
+            "After setup the game starts on **Night 1** (nominations closed). The storyteller runs `/st do next-phase` for Day 1.",
             "You can vote on **any open nomination** with the **Vote** button.",
             "Prefer a private ballot? Use `/privatevote` (ST sees it on the kib vote tracker).",
             "Players: `/nominate` / `/defend` / `/vote` / `/privatevote` / `/roster` / `/whisper`.",
@@ -1616,7 +1646,7 @@ export async function requireTownVotingChannel(
     await replyOrEditInteraction(interaction, {
       content:
         state.phase === "night"
-          ? `It is **Night ${state.nightNumber}**. Nominations open again when the storyteller starts the next day (\`/st do next-phase\`).`
+          ? `It is **Night ${state.nightNumber}**. Nominations are closed until the storyteller starts the next day (\`/st do next-phase\`).`
           : "Town voting is not open yet. The storyteller must run `/st do setup-town`.",
       flags: MessageFlags.Ephemeral,
     });

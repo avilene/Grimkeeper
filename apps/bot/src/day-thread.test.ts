@@ -36,6 +36,17 @@ function baseEvents(): GameEvent[] {
   ];
 }
 
+/** TownSetup starts Night 1; day commands need Day 1. */
+function advanceToDay1(engine: GameEngine): void {
+  for (const event of engine.handle({
+    kind: GameCommandKind.AdvancePhase,
+    gameId,
+    targetPhase: "day",
+  })) {
+    engine.apply(event);
+  }
+}
+
 describe("buildNominationEmbed", () => {
   it("titles the embed as nomination of nominator on nominee", () => {
     const engine = GameEngine.fromEvents(gameId, baseEvents());
@@ -59,6 +70,7 @@ describe("buildNominationEmbed", () => {
       ],
       timestamp: new Date().toISOString(),
     });
+    advanceToDay1(engine);
 
     const nominationEvents = engine.handle({
       kind: GameCommandKind.MakeNomination,
@@ -109,6 +121,7 @@ describe("buildNominationEmbed", () => {
       ],
       timestamp: new Date().toISOString(),
     });
+    advanceToDay1(engine);
 
     const nominationEvents = engine.handle({
       kind: GameCommandKind.MakeNomination,
@@ -175,6 +188,7 @@ describe("buildNominationEmbed", () => {
       ],
       timestamp: new Date().toISOString(),
     });
+    advanceToDay1(engine);
 
     const nominationEvents = engine.handle({
       kind: GameCommandKind.MakeNomination,
@@ -218,6 +232,7 @@ describe("buildNominationEmbed", () => {
       ],
       timestamp: new Date().toISOString(),
     });
+    advanceToDay1(engine);
     for (const event of engine.handle({
       kind: GameCommandKind.MakeNomination,
       gameId,
@@ -260,6 +275,7 @@ describe("block contest display", () => {
       players,
       timestamp: new Date().toISOString(),
     });
+    advanceToDay1(engine);
     return engine;
   }
 
@@ -353,6 +369,7 @@ describe("formatNominationRef", () => {
       ],
       timestamp: new Date().toISOString(),
     });
+    advanceToDay1(engine);
     for (const event of engine.handle({
       kind: GameCommandKind.MakeNomination,
       gameId,

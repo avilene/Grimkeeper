@@ -99,7 +99,12 @@ client.on("interactionCreate", (interaction) => {
   const deferTask = startEarlyDefer(interaction);
 
   void (async () => {
-    await deferTask;
+    const deferResult = await deferTask;
+    // Early ack failed (unknown / already acknowledged) — do not run the handler.
+    // Another replica likely owns this interaction, or the token is already dead;
+    // continuing would race a second defer/reply (40060) and flood error logs.
+    if (deferResult === "failed") return;
+
     logCommandInvoked(interaction);
 
     if (interaction.isButton() || interaction.isModalSubmit() || interaction.isUserSelectMenu()) {

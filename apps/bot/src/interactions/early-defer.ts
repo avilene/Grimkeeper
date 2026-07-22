@@ -148,21 +148,28 @@ function handleAckFailure(
   void reportError("interaction.defer.failed", error, context);
 }
 
+export type EarlyDeferResult = "skipped" | "acked" | "failed";
+
 /**
  * Acknowledge immediately on interactionCreate.
  * - Help/guide: public deferReply (handler editReply with embeds)
  * - Other deferred commands: ephemeral "Working…"
+ *
+ * Returns `"failed"` when Discord rejects the ack as already owned/dead (10062/40060).
+ * Callers must not run the command handler in that case — another replica likely owns
+ * this interaction; a second defer/reply only produces double-ack noise.
+ * Unexpected defer errors return `"skipped"` so the handler can retry its own ack.
  */
-export function startEarlyDefer(interaction: Interaction): Promise<void> {
-  if (!interaction.isChatInputCommand()) return Promise.resolve();
+export function startEarlyDefer(interaction: Interaction): Promise<EarlyDeferResult> {
+  if (!interaction.isChatInputCommand()) return Promise.resolve("skipped");
 
   const command = interaction as ChatInputCommandInteraction;
-  if (command.deferred || command.replied) return Promise.resolve();
+  if (command.deferred || command.replied) return Promise.resolve("acked");
 
   const ageMs = Date.now() - command.createdTimestamp;
   const helpOrGuide = isHelpOrGuideCommand(command);
   if (!helpOrGuide && !shouldDeferSlashCommand(command)) {
-    return Promise.resolve();
+    return Promise.resolve("skipped");
   }
 
   warnIfAckLate(command, ageMs);
@@ -172,9 +179,12 @@ export function startEarlyDefer(interaction: Interaction): Promise<void> {
     : command.reply({ content: INTERACTION_PENDING_CONTENT, flags: MessageFlags.Ephemeral });
 
   return ack.then(
-    () => undefined,
+    () => "acked" as const,
     (error: unknown) => {
       handleAckFailure(command, ageMs, error);
+      // Only abort the handler when Discord says the interaction is already
+      // owned/dead. Other defer failures leave the token usable for a retry.
+      return isBenignInteractionAckError(error) ? "failed" : "skipped";
     },
   );
 }

@@ -277,7 +277,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
         [
           "Day play uses top-level slash commands — not `/game …`.",
           "**`/nominate`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/roster`** · **`/whisper`** · **`/role`** · **`/alias`**",
-          "Nominations and votes happen in the **Town Voting** thread after `/st do setup-town`.",
+          "Nominations and votes happen in the **Town Voting** thread once Day 1 begins (`/st do next-phase` after setup).",
           "Each living player may nominate **once per day**; each player (alive or dead) may be nominated **once per day**. Ghosts cannot nominate.",
           "Public ballot: `/vote` (or the Vote button). Private ballot: `/privatevote` (ST sees it on the kib tracker).",
           "Whispers: `/whisper neighbor` opens NW threads with both seats; `/whisper with` takes `@mentions` (optional `name:`; groups default to `Group (names)`).",
@@ -383,13 +383,13 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
         {
           name: "Notes",
           value: [
-            "`setup-town` opens Voting, Whisper Declaration, Public Claims, and Rules (ST write-only).",
+            "`setup-town` starts **Night 1** with nominations closed; opens Voting, Whisper Declaration, Public Claims, and Rules (ST write-only).",
             "Public: `/vote` or Vote button. Private: `/privatevote` (kib vote tracker).",
             "`/st mark` in a thread assigns it as Rules, Public Claims, or Whisper Declaration.",
             "`/st do recreate-threads` recreates Whisper Declaration, Public Claims, and Rules.",
             "Vote lock/count stay in Town Voting; **Announce & resolve** posts to Town Voting + audit log.",
             "Each living player may nominate once per day; each player may be nominated once. Ghosts cannot nominate.",
-            "`close-nominations` then `next-phase` for Night/Day. Renames town to `base-dayN` / `base-nightN`.",
+            "`next-phase` advances Night 1 → Day 1 → Night 2 …. Renames town to `base-nightN` / `base-dayN`.",
             "`/st do add-st` promotes a co-storyteller. Personal ST threads stay private after `/st do end`.",
             "Day stamps go to Voting, Whisper Declaration, Public Claims, kib, and whisper threads — not Rules.",
           ].join("\n"),
@@ -430,7 +430,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
     return new EmbedBuilder()
       .setColor(GUIDE_COLOR)
       .setTitle("ST checklist · Setup")
-      .setDescription("Lobby → first day. Commands only where the bot is involved.")
+      .setDescription("Lobby → Night 1. Commands only where the bot is involved.")
       .addFields(
         {
           name: "1. Lobby",
@@ -442,7 +442,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
         {
           name: "2. Open town",
           value: checklist([
-            "`/st do setup-town` with `players:` @mentions in **seat order**",
+            "`/st do setup-town` with `players:` @mentions in **seat order** (starts **Night 1**, nominations closed)",
             "Confirm **Town Voting**, **Whisper Declaration**, **Public Claims**, **Rules** opened",
             "Post house rules in **Rules** (ST write-only)",
             "Optional: `/st mark` in a custom thread to assign Rules / Claims / Whisper Declaration",
@@ -450,7 +450,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           ]),
         },
         {
-          name: "3. Before play",
+          name: "3. Before Day 1",
           value: checklist([
             "`/st panel` — pin control panel in kib (or `/st do panel`)",
             "Optional: `/st do vote-visibility` `mode: public|secret`",
@@ -458,6 +458,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "Optional: `/st remind` / `/st set-reminders`",
             "Optional: `/st do add-st` / `/st add-kib`",
             "Optional: `/st do log` if the audit log is missing",
+            "`/st do next-phase` — start **Day 1** (opens nominations)",
           ]),
         },
         {

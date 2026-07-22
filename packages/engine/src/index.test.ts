@@ -832,7 +832,7 @@ describe("GameEngine", () => {
     expect(engine.getNominationById(nomination.id)?.status).toBe("resolved_fail");
   });
 
-  function setupTownEngine(playerCount = 4): GameEngine {
+  function setupTownAtNight(playerCount = 4): GameEngine {
     const engine = GameEngine.fromEvents(gameId, baseEvents());
     const players = Array.from({ length: playerCount }, (_, index) => ({
       playerId: `town-player-${index + 1}`,
@@ -850,17 +850,46 @@ describe("GameEngine", () => {
     return engine;
   }
 
-  it("sets up town with ordered seats and townMode", () => {
-    const engine = setupTownEngine(3);
+  /** Town setup advanced to Day 1 (nominations open) for day-phase tests. */
+  function setupTownEngine(playerCount = 4): GameEngine {
+    const engine = setupTownAtNight(playerCount);
+    for (const event of engine.handle({
+      kind: GameCommandKind.AdvancePhase,
+      gameId,
+      targetPhase: "day",
+    })) {
+      engine.apply(event);
+    }
+    return engine;
+  }
+
+  it("sets up town on Night 1 with nominations closed", () => {
+    const engine = setupTownAtNight(3);
     const state = engine.getState();
 
-    expect(state.phase).toBe("day");
-    expect(state.dayNumber).toBe(1);
+    expect(state.phase).toBe("night");
     expect(state.nightNumber).toBe(1);
+    expect(state.dayNumber).toBe(0);
     expect(state.townMode).toBe(true);
     expect(state.players).toHaveLength(3);
     expect(state.players.map((player) => player.seat)).toEqual([1, 2, 3]);
     expect(state.players.every((player) => player.alive && !player.roleId)).toBe(true);
+    expect(state.day).toBeNull();
+  });
+
+  it("advances from Night 1 to Day 1 with nominations open", () => {
+    const engine = setupTownAtNight(3);
+    for (const event of engine.handle({
+      kind: GameCommandKind.AdvancePhase,
+      gameId,
+      targetPhase: "day",
+    })) {
+      engine.apply(event);
+    }
+    const state = engine.getState();
+    expect(state.phase).toBe("day");
+    expect(state.dayNumber).toBe(1);
+    expect(state.nightNumber).toBe(1);
     expect(state.day?.nominationsOpen).toBe(true);
     expect(state.day?.discordThreadId).toBeNull();
   });

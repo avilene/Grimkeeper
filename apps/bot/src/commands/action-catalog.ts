@@ -18,7 +18,7 @@ export const ST_DO_ACTIONS: DoAction[] = [
   { name: "end", description: "End the game (strip roles, open kib)", needs: ["winner"] },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
   { name: "close-nominations", description: "Close nominations for the day (no new noms until next day)" },
-  { name: "next-phase", description: "Advance day ↔ night (Day 1 → Night 2 → Day 2 …); renames town channel to base-dayN / base-nightN" },
+  { name: "next-phase", description: "Advance night ↔ day (Night 1 → Day 1 → Night 2 …); renames town channel to base-nightN / base-dayN" },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
   { name: "mark-dead", description: "Mark a player dead or alive", needs: ["player", "alive?"] },
   { name: "votes", description: "Refresh the ST vote tracker in kib" },
@@ -89,6 +89,39 @@ export const PLAYER_VOTE_ACTIONS: DoAction[] = [
     needs: ["nominee", "choice", "reason?"],
   },
 ];
+
+/**
+ * Discord mobile/desktop sometimes submits the autocomplete *label*
+ * (`name — description`) as the string value instead of `value`.
+ * Keep only the action token before an em/en/hyphen dash separator.
+ */
+export function normalizeDoActionInput(raw: string): string {
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) return "";
+  // Split on " — ", " – ", or " - " (spaces required so `mark-dead` stays intact).
+  const beforeDash = trimmed.split(/\s+[—–-]\s+/)[0] ?? trimmed;
+  return beforeDash.trim();
+}
+
+export function resolveDoActionName(raw: string, actions: DoAction[]): string | null {
+  const normalized = normalizeDoActionInput(raw);
+  if (!normalized) return null;
+  const exact = actions.find((action) => action.name === normalized);
+  if (exact) return exact.name;
+  // Label without spaced dashes, or trailing junk: prefer longest matching action name prefix.
+  const prefixMatches = actions
+    .filter(
+      (action) =>
+        normalized === action.name ||
+        normalized.startsWith(`${action.name} `) ||
+        normalized.startsWith(`${action.name}—`) ||
+        normalized.startsWith(`${action.name}–`) ||
+        normalized.startsWith(`${action.name}-`),
+    )
+    .sort((a, b) => b.name.length - a.name.length);
+  return prefixMatches[0]?.name ?? null;
+}
+
 export async function respondDoAutocomplete(
   interaction: AutocompleteInteraction,
   actions: DoAction[],
@@ -111,6 +144,7 @@ export async function respondDoAutocomplete(
 
   await interaction.respond(
     matches.map((action) => ({
+      // Shown in the picker. Some clients paste this back as the option value — see normalizeDoActionInput.
       name: `${action.name} — ${action.description}`.slice(0, 100),
       value: action.name,
     })),

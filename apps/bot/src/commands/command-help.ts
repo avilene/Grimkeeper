@@ -8,7 +8,10 @@ import { Discord, Slash, SlashGroup, SlashOption } from "discordx";
 
 import { canUseBot } from "../access.js";
 import { reportError } from "../error-reporter.js";
-import { isUnknownInteractionError } from "../interactions/interaction-response.js";
+import {
+  isRecoverableInteractionResponseError,
+  isUnknownInteractionError,
+} from "../interactions/interaction-response.js";
 import {
   buildDevHelpEmbeds,
   buildGameHelpEmbeds,
@@ -23,6 +26,40 @@ const ACCESS_DENIED =
   "You are not allowed to use this bot. Ask an admin to add your user ID " +
   "to `ALLOWED_USER_IDS` or one of your role IDs to `ALLOWED_ROLE_IDS`.";
 
+function helpReplyContext(interaction: CommandInteraction) {
+  return {
+    command: interaction.commandName,
+    subcommandGroup: interaction.isChatInputCommand()
+      ? interaction.options.getSubcommandGroup(false) ?? undefined
+      : undefined,
+    subcommand: interaction.isChatInputCommand()
+      ? interaction.options.getSubcommand(false) ?? undefined
+      : undefined,
+    guildId: interaction.guildId,
+    channelId: interaction.channelId,
+    userId: interaction.user.id,
+    deferred: interaction.deferred,
+    replied: interaction.replied,
+    ageMs: Date.now() - interaction.createdTimestamp,
+  };
+}
+
+/**
+ * Idempotent public defer for help/guide. Early defer usually already ran;
+ * if Discord says already-acked (40060), continue to editReply.
+ * Unknown interaction (10062) means the token is dead — rethrow.
+ */
+async function ensureHelpDeferred(interaction: CommandInteraction): Promise<void> {
+  if (interaction.deferred || interaction.replied) return;
+  try {
+    await interaction.deferReply();
+  } catch (error) {
+    if (isUnknownInteractionError(error)) throw error;
+    if (isRecoverableInteractionResponseError(error)) return;
+    throw error;
+  }
+}
+
 /**
  * Prefers early public defer (see startEarlyDefer for help/guide), then editReply with embeds.
  * Avoids the ephemeral "Working…" path that can leave guides stuck.
@@ -32,9 +69,7 @@ async function replyHelpEmbeds(
   embeds: EmbedBuilder[],
 ): Promise<void> {
   try {
-    if (!interaction.deferred && !interaction.replied) {
-      await interaction.deferReply();
-    }
+    await ensureHelpDeferred(interaction);
 
     const allowed = await canUseBot(interaction);
     if (!allowed) {
@@ -44,40 +79,18 @@ async function replyHelpEmbeds(
 
     await interaction.editReply({ content: null, embeds });
   } catch (error) {
-    // Token already dead — early ack missed Discord's window or another replica handled it.
-    if (isUnknownInteractionError(error)) {
-      void reportError("help.reply.expired", error, {
-        command: interaction.commandName,
-        subcommandGroup: interaction.isChatInputCommand()
-          ? interaction.options.getSubcommandGroup(false) ?? undefined
-          : undefined,
-        subcommand: interaction.isChatInputCommand()
-          ? interaction.options.getSubcommand(false) ?? undefined
-          : undefined,
-        guildId: interaction.guildId,
-        channelId: interaction.channelId,
-        userId: interaction.user.id,
-        deferred: interaction.deferred,
-        replied: interaction.replied,
-        ageMs: Date.now() - interaction.createdTimestamp,
-      });
+    // Token dead / already handled elsewhere (early ack miss, duplicate replica, etc.).
+    // Includes 40060 — local deferred/replied flags stay false after a failed defer race.
+    if (isRecoverableInteractionResponseError(error)) {
+      void reportError(
+        isUnknownInteractionError(error) ? "help.reply.expired" : "help.reply.skipped",
+        error,
+        helpReplyContext(interaction),
+      );
       return;
     }
 
-    void reportError("help.reply.failed", error, {
-      command: interaction.commandName,
-      subcommandGroup: interaction.isChatInputCommand()
-        ? interaction.options.getSubcommandGroup(false) ?? undefined
-        : undefined,
-      subcommand: interaction.isChatInputCommand()
-        ? interaction.options.getSubcommand(false) ?? undefined
-        : undefined,
-      guildId: interaction.guildId,
-      channelId: interaction.channelId,
-      userId: interaction.user.id,
-      deferred: interaction.deferred,
-      replied: interaction.replied,
-    });
+    void reportError("help.reply.failed", error, helpReplyContext(interaction));
 
     if (interaction.deferred || interaction.replied) {
       await interaction

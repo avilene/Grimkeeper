@@ -1960,13 +1960,13 @@ export class GameEngine {
           isFake: player.discordUserId.startsWith("dev:"),
           ghostVoteUsed: false,
         }));
-        this.state.phase = "day";
-        this.state.dayNumber = 1;
-        // Night 1 is skipped at setup (roles/first night handled offline); next night is Night 2.
+        // BotC starts on Night 1; next phase is Day 1 (nominations still closed until then).
+        this.state.phase = "night";
         this.state.nightNumber = 1;
+        this.state.dayNumber = 0;
         this.state.townMode = true;
         this.state.seatsOpen = false;
-        this.state.day = createEmptyDayState(1);
+        this.state.day = null;
         break;
       case GameEventType.PlayerAliveChanged: {
         const player = this.state.players.find((candidate) => candidate.id === event.playerId);

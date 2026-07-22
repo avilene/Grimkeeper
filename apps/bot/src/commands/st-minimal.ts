@@ -18,7 +18,7 @@ import { runSetPlayerVote } from "../set-vote.js";
 import { upsertStControlPanel } from "../st-control-panel.js";
 import { upsertStVoteTracker } from "../st-vote-tracker.js";
 import { parseUserMentionsFromString } from "../town-setup.js";
-import { closeTownNominations, advanceTownPhase, postVoteThreadDayStart, postKibPhaseHeader } from "../town-day.js";
+import { closeTownNominations, advanceTownPhase } from "../town-day.js";
 import {
   ensureTownSurfaceThreads,
   markTownSurfaceThread,
@@ -26,7 +26,7 @@ import {
   postDayMarkersToTownSurfaces,
   reloadTownSurfaceGame,
 } from "../town-surfaces.js";
-import { respondDoAutocomplete, ST_DO_ACTIONS } from "./action-catalog.js";
+import { respondDoAutocomplete, resolveDoActionName, ST_DO_ACTIONS } from "./action-catalog.js";
 import { resolveOrCreatePlayerAlias } from "./alias.js";
 import {
   addRoleToUser,
@@ -176,9 +176,8 @@ export class StCommandsMinimal {
     if (!interaction) return;
     if (!(await requireCommandAccess(interaction))) return;
 
-    const normalized = action.trim().toLowerCase();
-    const known = ST_DO_ACTIONS.some((entry) => entry.name === normalized);
-    if (!known) {
+    const normalized = resolveDoActionName(action, ST_DO_ACTIONS);
+    if (!normalized) {
       await replyOrEditInteraction(interaction, {
         content: `Unknown action \`${action}\`. Start typing after \`action:\` to see options, or use \`/st help\`.`,
         flags: MessageFlags.Ephemeral,
@@ -595,20 +594,22 @@ export class StCommandsMinimal {
         return;
       }
 
+      const parentNote =
+        result.parentId && result.parentId !== game.channelId
+          ? ` (under kib <#${result.parentId}>)`
+          : "";
+      // Reply before audit log so a slow sanitize/fetch cannot leave "Working…" stuck
+      // (or lose a race that overwrites the success reply).
+      await replyOrEditInteraction(interaction, {
+        content: `ST log thread ready: <#${result.thread.id}>${result.created ? " (newly created)" : ""}${parentNote}.`,
+        flags: MessageFlags.Ephemeral,
+      });
+
       await postGameLog(
         interaction.guild,
         { ...game, kibThreadId, logThreadId: result.threadId },
         `<@${interaction.user.id}> ensured the ST log thread${result.created ? " (created)" : ""}.`,
       );
-
-      const parentNote =
-        result.parentId && result.parentId !== game.channelId
-          ? ` (under kib <#${result.parentId}>)`
-          : "";
-      await replyOrEditInteraction(interaction, {
-        content: `ST log thread ready: <#${result.thread.id}>${result.created ? " (newly created)" : ""}${parentNote}.`,
-        flags: MessageFlags.Ephemeral,
-      });
     } catch (error) {
       await replyEngineError(interaction, error);
     }
@@ -931,32 +932,28 @@ export class StCommandsMinimal {
 
       await setInteractionProgress(interaction, "Opening voting thread…");
       const voteThread = await createTownVoteThread(guild, game, engine);
-      if (voteThread) {
-        const openEvents = engine.handle({
-          kind: GameCommandKind.OpenDay,
-          gameId: game.id,
-          discordThreadId: voteThread.id,
-        });
-        await persistEvents(engine, openEvents);
-      }
 
       await setInteractionProgress(interaction, "Opening town threads…");
       const surfaces = await ensureTownSurfaceThreads(guild, game, engine);
-      const refreshedSurfaces = (await reloadTownSurfaceGame(game.id)) ?? game;
 
-      const { renameTownPhaseSurfaces } = await import("../town-day.js");
+      const { renameTownPhaseSurfaces, postKibPhaseHeader } = await import("../town-day.js");
+      const nightNumber = engine.getState().nightNumber || 1;
       await renameTownPhaseSurfaces(
         guild,
         game,
         voteThread?.id ?? null,
-        "day",
-        engine.getState().dayNumber || 1,
+        "night",
+        nightNumber,
       );
 
-      const dayNumber = engine.getState().dayNumber || 1;
-      await postKibPhaseHeader(guild, game, "day", dayNumber);
-      await postVoteThreadDayStart(guild, game, engine, dayNumber);
-      await postDayMarkersToTownSurfaces(guild, refreshedSurfaces, dayNumber);
+      await postKibPhaseHeader(guild, game, "night", nightNumber);
+      if (voteThread) {
+        await voteThread
+          .send(
+            `**Night ${nightNumber}** has begun — nominations open when the storyteller starts Day 1 (\`/st do next-phase\`).`,
+          )
+          .catch(() => undefined);
+      }
 
       await setInteractionProgress(interaction, "Pinning ST panel…");
       await upsertPinnedGameStatus(guild, game.channelId, engine);
@@ -976,6 +973,7 @@ export class StCommandsMinimal {
         guild,
         game,
         `<@${interaction.user.id}> setup-town — **${players.length}** players (${playerNames}).` +
+          ` Night **${nightNumber}** (nominations closed).` +
           ` Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.` +
           (voteThread ? ` Voting: <#${voteThread.id}>.` : "") +
           (surfaceLinks.length > 0
@@ -986,13 +984,14 @@ export class StCommandsMinimal {
       await replyOrEditInteraction(interaction, {
         content: [
           `Town set up with **${players.length}** players in <#${game.channelId}>.`,
+          `**Night ${nightNumber}** — nominations are closed until Day 1.`,
           engine.getSeatingChart().join("\n"),
           threadSummary.created > 0 || threadSummary.failed > 0
             ? `Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.`
             : "",
           voteThread
-            ? `Voting thread: <#${voteThread.id}> — nominate and vote there (\`/vote\` public, \`/privatevote\` private).`
-            : "Players can `/nominate` in this channel.",
+            ? `Voting thread: <#${voteThread.id}> — opens for nominations on Day 1 (\`/st do next-phase\`).`
+            : "Use `/st do next-phase` to start Day 1 and open nominations.",
           surfaces.whisperDecl
             ? `Whisper Declaration: <#${surfaces.whisperDecl.id}>`
             : null,

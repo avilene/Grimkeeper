@@ -290,7 +290,7 @@ export class GameCommandsMinimal {
         new EmbedBuilder()
           .setTitle("Grimkeeper game set up")
           .setDescription(
-            `Game ready in this channel.\nStoryteller: run \`/st do setup-town\` with ordered @mentions to set up players and open voting.${roleHint}${threadHint}${logHint}${devHint}`,
+            `Game ready in this channel.\nStoryteller: run \`/st do setup-town\` with ordered @mentions to set up players (starts Night 1).${roleHint}${threadHint}${logHint}${devHint}`,
           )
           .addFields({ name: "Game ID", value: gameId }),
       ],
@@ -350,7 +350,7 @@ export class GameCommandsMinimal {
         new EmbedBuilder()
           .setTitle("Grimkeeper game created")
           .setDescription(
-            `Game lobby created.\nStoryteller: run \`/st do setup-town\` with ordered @mentions to set up players and open voting.${threadHint}${devHint}`,
+            `Game lobby created.\nStoryteller: run \`/st do setup-town\` with ordered @mentions to set up players (starts Night 1).${threadHint}${devHint}`,
           )
           .addFields({ name: "Game ID", value: gameId }),
       ],

@@ -147,7 +147,7 @@ export async function renameTownPhaseSurfaces(
 }
 
 /**
- * Advance town phase: day → night (Night dayNumber+1), or night → day.
+ * Advance town phase: day → night (Night nightNumber+1), or night → day (Day dayNumber+1).
  * Keeps the Town Voting thread name; renames the parent channel when possible.
  */
 export async function advanceTownPhase(
@@ -216,7 +216,11 @@ export async function advanceTownPhase(
     await persistEvents(engine, events);
 
     const dayNumber = engine.getState().dayNumber;
-    const voteThreadId = previousThreadId ?? engine.getState().day?.discordThreadId;
+    let voteThreadId = previousThreadId ?? engine.getState().day?.discordThreadId ?? null;
+    if (!voteThreadId) {
+      const voting = await resolveVotingChannel(guild, game, engine);
+      voteThreadId = voting?.id ?? null;
+    }
     if (voteThreadId) {
       const openEvents = engine.handle({
         kind: GameCommandKind.OpenDay,
@@ -227,7 +231,7 @@ export async function advanceTownPhase(
     }
 
     await syncGameProjection(game.id, engine);
-    await renameTownPhaseSurfaces(guild, game, voteThreadId ?? null, "day", dayNumber);
+    await renameTownPhaseSurfaces(guild, game, voteThreadId, "day", dayNumber);
 
     await postKibPhaseHeader(guild, game, "day", dayNumber);
     await postVoteThreadDayStart(guild, game, engine, dayNumber);
