@@ -1,4 +1,7 @@
-import type { CommandInteraction, GuildMember } from "discord.js";
+import type { CommandInteraction, Guild, GuildMember } from "discord.js";
+
+/** Default budget for guild member REST/gateway lookups that can stall without GuildMembers intent. */
+export const MEMBER_FETCH_TIMEOUT_MS = 2_000;
 
 export function parseList(value: string | undefined): Set<string> {
   if (!value) return new Set();
@@ -8,6 +11,27 @@ export function parseList(value: string | undefined): Set<string> {
       .map((item) => item.trim())
       .filter(Boolean),
   );
+}
+
+/**
+ * Fetch one guild member with a hard timeout.
+ * Prefer this over bare `guild.members.fetch(id)` on interaction paths — hangs leave
+ * ephemeral "Working…" replies stuck forever.
+ */
+export async function fetchGuildMemberWithTimeout(
+  guild: Guild,
+  userId: string,
+  timeoutMs = MEMBER_FETCH_TIMEOUT_MS,
+): Promise<GuildMember | null> {
+  const cached = guild.members.cache?.get(userId);
+  if (cached && !cached.partial) return cached;
+
+  return Promise.race([
+    guild.members.fetch(userId).catch(() => null),
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), timeoutMs);
+    }),
+  ]);
 }
 
 export async function canUseBot(interaction: CommandInteraction): Promise<boolean> {
@@ -32,24 +56,12 @@ export async function canUseBot(interaction: CommandInteraction): Promise<boolea
     return false;
   }
 
-  const member = await fetchMemberWithTimeout(interaction, userId);
+  const guild = interaction.guild;
+  if (!guild) return false;
+  const member = await fetchGuildMemberWithTimeout(guild, userId);
   if (!member) return false;
 
   return member.roles.cache.some((role) => allowedRoleIds.has(role.id));
-}
-
-async function fetchMemberWithTimeout(
-  interaction: CommandInteraction,
-  userId: string,
-): Promise<GuildMember | null> {
-  const guild = interaction.guild;
-  if (!guild) return null;
-  return Promise.race([
-    guild.members.fetch(userId).catch(() => null),
-    new Promise<null>((resolve) => {
-      setTimeout(() => resolve(null), 2_000);
-    }),
-  ]);
 }
 
 export async function isInExplicitAllowlist(interaction: CommandInteraction): Promise<boolean> {

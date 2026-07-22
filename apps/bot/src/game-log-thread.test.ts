@@ -47,6 +47,9 @@ describe("sanitizeGameLogMentions", () => {
   it("replaces user and role mentions with name + id", async () => {
     const guild = {
       members: {
+        cache: {
+          get: () => undefined,
+        },
         fetch: vi.fn(async (id: string) => {
           if (id === "111111111111111111") {
             return { displayName: "Alice", user: { username: "alice" } };

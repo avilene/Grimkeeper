@@ -640,81 +640,109 @@ export class StCommandsMinimal {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
     const guild = interaction.guild;
-    if (!guild) return;
-
-    const gameRoles = await resolveGameRoles(guild, game);
-    if (!gameRoles) {
+    if (!guild) {
       await replyOrEditInteraction(interaction, {
-        content: "Could not find game roles. Run `/game setup` with ST, player, and kib roles.",
+        content: "This command must be used in a server.",
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    const engine = await loadEngine(game.id);
-    const isPlayer = engine.getPlayerByDiscordId(user.id);
-    const isSt = engine.isStoryteller(user.id);
-    if (isPlayer || isSt) {
+    try {
+      const gameRoles = await resolveGameRoles(guild, game);
+      if (!gameRoles) {
+        await replyOrEditInteraction(interaction, {
+          content: "Could not find game roles. Run `/game setup` with ST, player, and kib roles.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const engine = await loadEngine(game.id);
+      const isPlayer = engine.getPlayerByDiscordId(user.id);
+      const isSt = engine.isStoryteller(user.id);
+      if (isPlayer || isSt) {
+        await replyOrEditInteraction(interaction, {
+          content: "That user is already a player or storyteller in this game.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      // REST role assign — no guild.members.fetch (can stall without GuildMembers intent).
+      await addRoleToUser(guild, user.id, gameRoles.spectatorRole.id);
+
+      const kib = await getKibThreadForGame(guild, game);
+      // Thread membership only applies to kib threads; channel kib uses the role alone.
+      if (kib?.isThread()) {
+        await kib.members.add(user.id).catch(() => undefined);
+      }
+
+      const kibHint = kib
+        ? kib.isThread()
+          ? ` Added to <#${kib.id}>.`
+          : ` Kib channel: <#${kib.id}> (role grants access).`
+        : " Could not resolve kib (channel/thread missing).";
+
+      // Reply before audit log so a slow log sanitize/fetch cannot leave "Working…" stuck.
       await replyOrEditInteraction(interaction, {
-        content: "That user is already a player or storyteller in this game.",
+        content: `Assigned spectator role to <@${user.id}>.${kibHint}`,
         flags: MessageFlags.Ephemeral,
       });
-      return;
+
+      await postGameLogRoleChange(
+        guild,
+        game,
+        "added",
+        user.id,
+        `<@&${gameRoles.spectatorRole.id}> (kib)`,
+        interaction.user.id,
+      );
+    } catch (error) {
+      await replyEngineError(interaction, error);
     }
-
-    await addRoleToUser(guild, user.id, gameRoles.spectatorRole.id);
-
-    const thread = await getKibThreadForGame(guild, game);
-    if (thread?.isThread()) {
-      await thread.members.add(user.id).catch(() => undefined);
-    }
-
-    await postGameLogRoleChange(
-      guild,
-      game,
-      "added",
-      user.id,
-      `<@&${gameRoles.spectatorRole.id}> (kib)`,
-      interaction.user.id,
-    );
-
-    const threadHint = thread
-      ? ` Added to <#${thread.id}>.`
-      : " Could not add to kib (channel/thread missing).";
-    await replyOrEditInteraction(interaction, {
-      content: `Assigned spectator role to <@${user.id}>.${threadHint}`,
-      flags: MessageFlags.Ephemeral,
-    });
   }
 
   async removeSpectator(user: User, interaction: CommandInteraction): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
     const guild = interaction.guild;
-    if (!guild) return;
-
-    const gameRoles = await resolveGameRoles(guild, game);
-    if (!gameRoles) {
+    if (!guild) {
       await replyOrEditInteraction(interaction, {
-        content: "Could not find game roles. Run `/game setup` with ST, player, and kib roles.",
+        content: "This command must be used in a server.",
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    await removeRoleFromUser(guild, user.id, gameRoles.spectatorRole.id);
-    await postGameLogRoleChange(
-      guild,
-      game,
-      "removed",
-      user.id,
-      `<@&${gameRoles.spectatorRole.id}> (kib)`,
-      interaction.user.id,
-    );
-    await replyOrEditInteraction(interaction, {
-      content: `Removed spectator role from <@${user.id}>.`,
-      flags: MessageFlags.Ephemeral,
-    });
+    try {
+      const gameRoles = await resolveGameRoles(guild, game);
+      if (!gameRoles) {
+        await replyOrEditInteraction(interaction, {
+          content: "Could not find game roles. Run `/game setup` with ST, player, and kib roles.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await removeRoleFromUser(guild, user.id, gameRoles.spectatorRole.id);
+
+      await replyOrEditInteraction(interaction, {
+        content: `Removed spectator role from <@${user.id}>.`,
+        flags: MessageFlags.Ephemeral,
+      });
+
+      await postGameLogRoleChange(
+        guild,
+        game,
+        "removed",
+        user.id,
+        `<@&${gameRoles.spectatorRole.id}> (kib)`,
+        interaction.user.id,
+      );
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
   }
 
   /** Promote a co-ST: engine + Discord ST role (+ kib/log access). Does not create a personal player thread. */

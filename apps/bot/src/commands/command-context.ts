@@ -762,18 +762,18 @@ export async function getGameRolesByName(
   return { stRole, playersRole, spectatorRole };
 }
 
+/**
+ * Assign a role via REST (no guild.members.fetch).
+ * Avoids hanging interaction handlers when member cache/gateway is incomplete.
+ */
 export async function addRoleToUser(guild: Guild | null, userId: string, roleId: string): Promise<void> {
   if (!guild) return;
-  const member = await guild.members.fetch(userId).catch(() => null);
-  if (!member) return;
-  await member.roles.add(roleId).catch(() => undefined);
+  await guild.members.addRole({ user: userId, role: roleId }).catch(() => undefined);
 }
 
 export async function removeRoleFromUser(guild: Guild | null, userId: string, roleId: string): Promise<void> {
   if (!guild) return;
-  const member = await guild.members.fetch(userId).catch(() => null);
-  if (!member) return;
-  await member.roles.remove(roleId).catch(() => undefined);
+  await guild.members.removeRole({ user: userId, role: roleId }).catch(() => undefined);
 }
 
 export async function applyGameChannelPermissions(
@@ -1039,12 +1039,19 @@ export async function createKibThread(
   return { mention: `<#${venue.id}>`, threadId: venue.id };
 }
 
+/**
+ * Add cached members who already have `roleId` to a private thread.
+ *
+ * Intentionally does **not** call `guild.members.fetch()` (no args). Without the
+ * GuildMembers privileged intent, discord.js waits up to ~120s for gateway chunks
+ * that never arrive — that left slash commands stuck on ephemeral "Working…".
+ * Callers that know specific user IDs should `thread.members.add(id)` those directly.
+ */
 export async function addRoleMembersToThread(
   guild: Guild,
   thread: AnyThreadChannel,
   roleId: string,
 ): Promise<void> {
-  await guild.members.fetch().catch(() => undefined);
   for (const member of guild.members.cache.values()) {
     if (member.roles.cache.has(roleId)) {
       await thread.members.add(member.id).catch(() => undefined);

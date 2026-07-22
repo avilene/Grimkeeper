@@ -5,7 +5,7 @@ import {
 } from "discord.js";
 import type { GameEngine } from "@grimkeeper/engine";
 
-import { getAdminRoleIds } from "./access.js";
+import { fetchGuildMemberWithTimeout, getAdminRoleIds } from "./access.js";
 import {
   addRoleMembersToThread,
   DEFAULT_THREAD_AUTO_ARCHIVE,
@@ -46,7 +46,7 @@ export async function sanitizeGameLogMentions(guild: Guild, message: string): Pr
   const users = new Map<string, string>();
   await Promise.all(
     userIds.map(async (userId) => {
-      const member = await guild.members.fetch(userId).catch(() => null);
+      const member = await fetchGuildMemberWithTimeout(guild, userId);
       const name =
         member?.displayName ??
         member?.user.globalName ??
