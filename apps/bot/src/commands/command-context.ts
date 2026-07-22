@@ -33,6 +33,7 @@ import {
 import {
   canUseBot,
   canManageChannelReminders,
+  fetchGuildMemberWithTimeout,
   getAdminRoleIds,
   getReminderPingRoleId,
   isInExplicitAllowlist,
@@ -340,7 +341,13 @@ export async function requireStorytellerGame(interaction: CommandInteraction) {
   }
 
   const engine = await loadEngine(game.id);
-  if (!engine.isStoryteller(interaction.user.id)) {
+  const isEngineSt = engine.isStoryteller(interaction.user.id);
+  const hasStRole = await memberHasGameStRole(interaction, game);
+  const isAllowlistOverride = await isInExplicitAllowlist(interaction);
+
+  // Accept Discord ST role for the linked game (same as reminders) — not only engine storyteller ids.
+  // Running from a kib channel/thread resolves the game via kibThreadId first.
+  if (!isEngineSt && !hasStRole && !isAllowlistOverride) {
     await replyOrEditInteraction(interaction, {
       content: "Only storytellers can run this command.",
       flags: MessageFlags.Ephemeral,
@@ -557,7 +564,7 @@ export async function memberHasGameStRole(
   game: GameRoleIds,
 ): Promise<boolean> {
   if (!game.stRoleId || !interaction.guild) return false;
-  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  const member = await fetchGuildMemberWithTimeout(interaction.guild, interaction.user.id);
   return member?.roles.cache.has(game.stRoleId) ?? false;
 }
 
