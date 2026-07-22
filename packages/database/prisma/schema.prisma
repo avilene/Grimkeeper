@@ -158,3 +158,55 @@ model GameEvent {
   @@unique([gameId, seq])
   @@index([gameId])
 }
+
+/** Per-guild ST queue board (usually a dedicated Discord thread). */
+model StQueueBoard {
+  id             String         @id @default(cuid())
+  guildId        String         @unique
+  threadId       String
+  panelMessageId String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  entries        StQueueEntry[]
+
+  @@index([threadId])
+}
+
+/** One storyteller's open (or closed) queue slot. */
+model StQueueEntry {
+  id             String           @id @default(cuid())
+  boardId        String
+  guildId        String
+  ownerDiscordId String
+  scriptName     String
+  scriptLink     String           @default("")
+  description    String           @default("")
+  /** JSON string array of image URLs. */
+  scriptImageUrls String          @default("[]")
+  /** open | closed */
+  status         String           @default("open")
+  position       Int
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  board          StQueueBoard     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  members        StQueueMember[]
+
+  @@index([guildId, status])
+  @@index([boardId, position])
+  @@index([ownerDiscordId])
+}
+
+/** Co-storyteller or interested player on a queue entry. */
+model StQueueMember {
+  id            String       @id @default(cuid())
+  entryId       String
+  discordUserId String
+  /** co_st | player */
+  role          String
+  createdAt     DateTime     @default(now())
+  entry         StQueueEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, discordUserId, role])
+  @@index([entryId])
+  @@index([discordUserId])
+}

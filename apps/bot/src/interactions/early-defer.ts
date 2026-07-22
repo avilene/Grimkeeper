@@ -11,6 +11,8 @@ const FAST_SUBCOMMANDS = new Set(["help", "guide"]);
 /** Nested `/st guide setup|day|night` — ack with public defer, not ephemeral "Working…". */
 const FAST_SUBCOMMAND_GROUPS = new Set(["guide"]);
 const GUIDE_NESTED_SUBCOMMANDS = new Set(["setup", "day", "night"]);
+/** `/st queue join|edit` open a modal — must not early-ack. */
+const QUEUE_MODAL_SUBCOMMANDS = new Set(["join", "edit"]);
 
 /** Top-level player day commands. */
 const PLAYER_DAY_COMMANDS = new Set([
@@ -51,10 +53,24 @@ export function isHelpOrGuideCommand(interaction: Interaction): boolean {
   return false;
 }
 
-/** Ephemeral "Working…" early ack for slower slash handlers (not help/guide). */
+/** Slash commands that open a modal as the first response. */
+export function isModalOpeningCommand(interaction: Interaction): boolean {
+  if (!interaction.isChatInputCommand()) return false;
+  const subcommandGroup = interaction.options.getSubcommandGroup(false);
+  const subcommand = interaction.options.getSubcommand(false);
+  return (
+    interaction.commandName === "st" &&
+    subcommandGroup === "queue" &&
+    subcommand !== null &&
+    QUEUE_MODAL_SUBCOMMANDS.has(subcommand)
+  );
+}
+
+/** Ephemeral "Working…" early ack for slower slash handlers (not help/guide/modals). */
 export function shouldDeferSlashCommand(interaction: Interaction): boolean {
   if (!interaction.isChatInputCommand()) return false;
   if (isHelpOrGuideCommand(interaction)) return false;
+  if (isModalOpeningCommand(interaction)) return false;
 
   if (PLAYER_DAY_COMMANDS.has(interaction.commandName)) {
     return true;

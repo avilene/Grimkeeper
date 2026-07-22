@@ -89,6 +89,30 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
     description: "Remove kib role. Same as `/st do remove-spectator`.",
   },
   {
+    command: "/st queue show",
+    description: "Show the current ST queue from any channel.",
+  },
+  {
+    command: "/st queue join",
+    description: "Join the ST queue (modal: script name, link, notes, optional image URLs).",
+  },
+  {
+    command: "/st queue edit",
+    description: "Edit your open ST queue entry.",
+  },
+  {
+    command: "/st queue attach",
+    description: "Attach script images by uploading in-channel within 2 minutes.",
+  },
+  {
+    command: "/st queue leave",
+    description: "Close your open ST queue entry.",
+  },
+  {
+    command: "/st queue refresh",
+    description: "Refresh the live queue panel in the board thread.",
+  },
+  {
     command: "/st remind",
     description: "Schedule a reminder (requires ST role, storyteller, or allowlist).",
   },
@@ -332,6 +356,10 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             cmd(
               "/st add-kib / remove-kib",
               "Assign or remove kib role (same as `/st do add-spectator` / `remove-spectator`).",
+            ),
+            cmd(
+              "/st queue show|join|edit|attach|leave|refresh",
+              "ST queue board: who's ready to run (script, notes, co-STs, player signups). Live panel in the configured queue thread.",
             ),
             cmd("/st help", "This guide (optional `search:`)."),
           ].join("\n\n"),

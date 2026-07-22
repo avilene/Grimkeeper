@@ -36,9 +36,14 @@ if (!token) {
   throw new Error("DISCORD_TOKEN is required. Copy .env.example to .env and fill it in.");
 }
 
+const stQueueEnabled = Boolean(process.env.ST_QUEUE_THREAD_ID?.trim());
+
 const client = new Client({
   botId: process.env.DISCORD_CLIENT_ID,
-  intents: [IntentsBitField.Flags.Guilds],
+  // GuildMessages is only needed for ST queue image-attach collection.
+  intents: stQueueEnabled
+    ? [IntentsBitField.Flags.Guilds, IntentsBitField.Flags.GuildMessages]
+    : [IntentsBitField.Flags.Guilds],
   silent: false,
   simpleCommand: {
     prefix: "!",
@@ -58,6 +63,19 @@ client.once(Events.ClientReady, async () => {
   } catch (error) {
     await reportError("commands.register.failed", error, { botMode: "minimal" });
   }
+
+  if (stQueueEnabled) {
+    try {
+      const { refreshQueuePanel } = await import("./st-queue-board.js");
+      for (const [, guild] of client.guilds.cache) {
+        await refreshQueuePanel(guild).catch(() => undefined);
+      }
+      log("info", "stQueue.panel.refresh.ok");
+    } catch (error) {
+      void reportError("stQueue.panel.refresh.failed", error);
+    }
+  }
+
   await notifyLifecycle(
     "bot.started",
     {
@@ -90,7 +108,15 @@ client.on("interactionCreate", (interaction) => {
       const { handleStPanelButton, handleStPanelUserSelect } = await import(
         "./interactions/st-panel.js"
       );
+      // Only load/process ST queue interactions when ST_QUEUE_THREAD_ID is set.
+      const queueHandlers = stQueueEnabled
+        ? await import("./interactions/st-queue.js")
+        : null;
       if (interaction.isButton()) {
+        if (queueHandlers) {
+          const handledQueue = await queueHandlers.handleStQueueButton(interaction);
+          if (handledQueue) return;
+        }
         const handledPanel = await handleStPanelButton(interaction);
         if (handledPanel) return;
         const handledLock = await handleLockVotesButton(interaction);
@@ -99,10 +125,18 @@ client.on("interactionCreate", (interaction) => {
         if (handled) return;
       }
       if (interaction.isUserSelectMenu()) {
+        if (queueHandlers) {
+          const handledQueue = await queueHandlers.handleStQueueUserSelect(interaction);
+          if (handledQueue) return;
+        }
         const handled = await handleStPanelUserSelect(interaction);
         if (handled) return;
       }
       if (interaction.isModalSubmit()) {
+        if (queueHandlers) {
+          const handledQueue = await queueHandlers.handleStQueueModalSubmit(interaction);
+          if (handledQueue) return;
+        }
         const handled = await handleVoteModalSubmit(interaction);
         if (handled) return;
       }

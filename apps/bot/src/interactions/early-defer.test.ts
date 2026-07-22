@@ -81,6 +81,12 @@ describe("shouldDeferSlashCommand", () => {
   it("does not defer /role (public character lookup)", () => {
     expect(shouldDeferSlashCommand(chatCommand("role", null) as never)).toBe(false);
   });
+
+  it("does not ephemeral-defer modal-opening /st queue commands", () => {
+    expect(shouldDeferSlashCommand(chatCommand("st", "join", "queue") as never)).toBe(false);
+    expect(shouldDeferSlashCommand(chatCommand("st", "edit", "queue") as never)).toBe(false);
+    expect(shouldDeferSlashCommand(chatCommand("st", "show", "queue") as never)).toBe(true);
+  });
 });
 
 describe("shouldDeferStReminderCommand", () => {
