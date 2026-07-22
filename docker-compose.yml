@@ -11,6 +11,11 @@ services:
       DEPLOY_TRIGGER: ${DEPLOY_TRIGGER:-unknown}
     volumes:
       - grimkeeper-data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Optional — enable with: docker compose --profile logging up -d
   promtail:
