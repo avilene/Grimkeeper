@@ -36,6 +36,23 @@ export const ST_DO_ACTIONS: DoAction[] = [
   { name: "start", description: "Legacy start (prefer setup-town)" },
 ];
 
+/**
+ * First-class `/st <name>` shortcuts for mobile (same handlers as `/st do <name>`).
+ * Prefer actions that are frequent and/or need options (harder via kib panel alone).
+ * Keep `/st do` for the full catalog — do not remove actions from ST_DO_ACTIONS.
+ */
+export const ST_SLASH_SHORTCUTS: DoAction[] = [
+  { name: "setup-town", description: "Set roster + seats from ordered @mentions", needs: ["players"] },
+  { name: "say", description: "Broadcast to all player threads from kib", needs: ["message"] },
+  { name: "log", description: "Create or reopen the ST-only audit log thread" },
+  { name: "end", description: "End the game (strip roles, open kib)", needs: ["winner"] },
+  { name: "next-phase", description: "Advance night ↔ day (opens/closes nominations with the phase)" },
+  { name: "close-nominations", description: "Close nominations for the day" },
+  { name: "resolve-next", description: "Resolve the oldest open nomination" },
+  { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
+  { name: "mark-dead", description: "Mark a player dead or alive", needs: ["player", "alive?"] },
+];
+
 /** Lobby / setup under `/game …`. */
 export const GAME_LOBBY_ACTIONS: DoAction[] = [
   { name: "setup", description: "Create a game with existing ST/player/kib roles", needs: ["st", "player_role", "kib", "kib_thread? (channel or thread)", "log_thread?"] },

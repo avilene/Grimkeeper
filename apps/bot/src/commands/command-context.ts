@@ -1586,7 +1586,7 @@ export async function createTownVoteThread(
         .send({
           content: [
             "**Town Voting** — nominations and votes happen here once Day begins.",
-            "After setup the game starts on **Night 1** (nominations closed). The storyteller runs `/st do next-phase` for Day 1.",
+            "After setup the game starts on **Night 1** (nominations closed). The storyteller runs `/st next-phase` for Day 1.",
             "You can vote on **any open nomination** with the **Vote** button.",
             "Prefer a private ballot? Use `/privatevote` (ST sees it on the kib vote tracker).",
             "Players: `/nominate` / `/defend` / `/vote` / `/privatevote` / `/roster` / `/whisper`.",
@@ -1646,8 +1646,8 @@ export async function requireTownVotingChannel(
     await replyOrEditInteraction(interaction, {
       content:
         state.phase === "night"
-          ? `It is **Night ${state.nightNumber}**. Nominations are closed until the storyteller starts the next day (\`/st do next-phase\`).`
-          : "Town voting is not open yet. The storyteller must run `/st do setup-town`.",
+          ? `It is **Night ${state.nightNumber}**. Nominations are closed until the storyteller starts the next day (\`/st next-phase\`).`
+          : "Town voting is not open yet. The storyteller must run `/st setup-town`.",
       flags: MessageFlags.Ephemeral,
     });
     return false;

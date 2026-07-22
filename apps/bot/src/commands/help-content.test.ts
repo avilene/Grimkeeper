@@ -6,6 +6,7 @@ import {
   PLAYER_VOTE_ACTIONS,
   ST_DO_ACTIONS,
   ST_SETUP_ACTIONS,
+  ST_SLASH_SHORTCUTS,
 } from "./action-catalog.js";
 import {
   buildDevHelpEmbeds,
@@ -52,13 +53,22 @@ describe("help content", () => {
       expect(gameText).toContain(action.description);
     }
     for (const action of ST_SETUP_ACTIONS) {
-      expect(gameText).toContain(`/st do ${action.name}`);
+      const prefix = ST_SLASH_SHORTCUTS.some((s) => s.name === action.name) ? "/st" : "/st do";
+      expect(gameText).toContain(`${prefix} ${action.name}`);
       expect(gameText).toContain(action.description);
     }
+    expect(gameText).toContain("/st setup-town");
+    expect(gameText).toContain("/st log");
+    expect(gameText).toContain("/st do recreate-threads");
 
     expect(st.data.title).toBe("Storyteller guide");
     expect(st.data.description).toContain("/game setup");
     expect(st.data.description).toContain("log thread");
+    expect(st.data.description).toContain("/st next-phase");
+    for (const action of ST_SLASH_SHORTCUTS) {
+      expect(stText).toContain(`/st ${action.name}`);
+      expect(stText).toContain(action.description);
+    }
     for (const action of ST_DO_ACTIONS) {
       expect(stText).toContain(`/st do ${action.name}`);
       expect(stText).toContain(action.description);
@@ -67,9 +77,12 @@ describe("help content", () => {
     expect(stText.toLowerCase()).toContain("next-phase");
     expect(stText.toLowerCase()).toContain("add-st");
     expect(st.data.description).toContain("/st guide setup");
-    expect(st.data.description).toContain("/st add-kib");
     expect(stText).toContain("/st guide setup|day|night");
     expect(stText).toContain("/st add-kib / remove-kib");
+    for (const field of st.data.fields ?? []) {
+      expect(field.value.length).toBeLessThanOrEqual(1024);
+    }
+    expect((st.data.description ?? "").length).toBeLessThanOrEqual(4096);
   });
 
   it("builds phase checklists", () => {
@@ -77,13 +90,13 @@ describe("help content", () => {
     const day = buildStGuideEmbed("day");
     const night = buildStGuideEmbed("night");
     expect(setup.data.title).toContain("Setup");
-    expect(fieldValues(setup)).toContain("/st do setup-town");
+    expect(fieldValues(setup)).toContain("/st setup-town");
     expect(day.data.title).toContain("Day");
-    expect(fieldValues(day)).toContain("/st do close-nominations");
-    expect(fieldValues(day)).toContain("/st do next-phase");
+    expect(fieldValues(day)).toContain("/st close-nominations");
+    expect(fieldValues(day)).toContain("/st next-phase");
     expect(night.data.title).toContain("Night");
-    expect(fieldValues(night)).toContain("/st do say");
-    expect(fieldValues(night)).toContain("/st do mark-dead");
+    expect(fieldValues(night)).toContain("/st say");
+    expect(fieldValues(night)).toContain("/st mark-dead");
     for (const embed of [setup, day, night]) {
       for (const field of embed.data.fields ?? []) {
         expect(field.value.length).toBeLessThanOrEqual(1024);
@@ -104,6 +117,7 @@ describe("help content", () => {
     expect(whisperHits.some((entry) => entry.command.includes("whisper"))).toBe(true);
 
     const phaseHits = searchHelpEntries(ST_HELP_ENTRIES, "next-phase");
+    expect(phaseHits.some((entry) => entry.command === "/st next-phase")).toBe(true);
     expect(phaseHits.some((entry) => entry.command === "/st do next-phase")).toBe(true);
 
     const remindHits = searchHelpEntries(ST_HELP_ENTRIES, "reminder");

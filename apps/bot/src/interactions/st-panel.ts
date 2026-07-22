@@ -50,7 +50,7 @@ async function loadPanelStorytellerContext(
     return {
       ok: false,
       error:
-        "No matching game for this panel (it may be from an older game). Run `/st do setup-town` or refresh the panel from kib.",
+        "No matching game for this panel (it may be from an older game). Run `/st setup-town` or refresh the panel from kib.",
     };
   }
   if (game.phase === "ended") {

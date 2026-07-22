@@ -349,7 +349,7 @@ export class StCommandsMinimal {
       const engine = await loadEngine(game.id);
       if (!engine.getState().townMode) {
         await replyOrEditInteraction(interaction, {
-          content: "Mark town threads after `/st do setup-town`.",
+          content: "Mark town threads after `/st setup-town`.",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -433,6 +433,141 @@ export class StCommandsMinimal {
   ): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     await this.removeSpectator(user, interaction);
+  }
+
+  @Slash({
+    name: "setup-town",
+    description: "Set roster + seats from ordered @mentions (same as /st do setup-town)",
+  })
+  async setupTownSlash(
+    @SlashOption({
+      name: "players",
+      description: "Ordered @mentions in seat order",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    players: string,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.setupTown(players, interaction);
+  }
+
+  @Slash({
+    name: "say",
+    description: "Broadcast to all player ST threads from kib (same as /st do say)",
+  })
+  async saySlash(
+    @SlashOption({
+      name: "message",
+      description: "Text to send to every player ST thread",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    message: string,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.say(message, interaction);
+  }
+
+  @Slash({
+    name: "log",
+    description: "Create or reopen the ST-only audit log (same as /st do log)",
+  })
+  async logSlash(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.log(interaction);
+  }
+
+  @Slash({
+    name: "end",
+    description: "End the game and open kib (same as /st do end)",
+  })
+  async endSlash(
+    @SlashChoice({ name: "Good wins", value: "good" })
+    @SlashChoice({ name: "Evil wins", value: "evil" })
+    @SlashOption({
+      name: "winner",
+      description: "Which team won",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    winner: "good" | "evil",
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.end(winner, interaction);
+  }
+
+  @Slash({
+    name: "next-phase",
+    description: "Advance night ↔ day (same as /st do next-phase)",
+  })
+  async nextPhaseSlash(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.nextPhase(interaction);
+  }
+
+  @Slash({
+    name: "close-nominations",
+    description: "Close nominations for the day (same as /st do close-nominations)",
+  })
+  async closeNominationsSlash(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.closeNominations(interaction);
+  }
+
+  @Slash({
+    name: "resolve-next",
+    description: "Resolve the oldest open nomination (same as /st do resolve-next)",
+  })
+  async resolveNextSlash(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.resolveNext(interaction);
+  }
+
+  @Slash({
+    name: "execute",
+    description: "Execute a player after a passed nomination (same as /st do execute)",
+  })
+  async executeSlash(
+    @SlashOption({
+      name: "player",
+      description: "Player to execute",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    player: User,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.execute(player, interaction);
+  }
+
+  @Slash({
+    name: "mark-dead",
+    description: "Mark a player dead or alive (same as /st do mark-dead)",
+  })
+  async markDeadSlash(
+    @SlashOption({
+      name: "player",
+      description: "Player to mark",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    player: User,
+    @SlashOption({
+      name: "alive",
+      description: "true = alive, false = dead (default false)",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    alive: boolean | undefined,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.markDead(player, alive, interaction);
   }
 
   async start(interaction: CommandInteraction): Promise<void> {
@@ -524,7 +659,7 @@ export class StCommandsMinimal {
 
       if (sent === 0) {
         await replyOrEditInteraction(interaction, {
-          content: "No player threads found. Run `/st do setup-town` first.",
+          content: "No player threads found. Run `/st setup-town` first.",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -625,7 +760,7 @@ export class StCommandsMinimal {
       const engine = await loadEngine(game.id);
       if (!engine.getState().townMode) {
         await replyOrEditInteraction(interaction, {
-          content: "Town surfaces are only for town-mode games. Run `/st do setup-town` first.",
+          content: "Town surfaces are only for town-mode games. Run `/st setup-town` first.",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -950,7 +1085,7 @@ export class StCommandsMinimal {
       if (voteThread) {
         await voteThread
           .send(
-            `**Night ${nightNumber}** has begun — nominations open when the storyteller starts Day 1 (\`/st do next-phase\`).`,
+            `**Night ${nightNumber}** has begun — nominations open when the storyteller starts Day 1 (\`/st next-phase\`).`,
           )
           .catch(() => undefined);
       }
@@ -990,8 +1125,8 @@ export class StCommandsMinimal {
             ? `Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.`
             : "",
           voteThread
-            ? `Voting thread: <#${voteThread.id}> — opens for nominations on Day 1 (\`/st do next-phase\`).`
-            : "Use `/st do next-phase` to start Day 1 and open nominations.",
+            ? `Voting thread: <#${voteThread.id}> — opens for nominations on Day 1 (\`/st next-phase\`).`
+            : "Use `/st next-phase` to start Day 1 and open nominations.",
           surfaces.whisperDecl
             ? `Whisper Declaration: <#${surfaces.whisperDecl.id}>`
             : null,
@@ -1024,7 +1159,7 @@ export class StCommandsMinimal {
         interaction.user.id,
       );
       await replyOrEditInteraction(interaction, {
-        content: `Nominations closed for day **${dayNumber}**. Use \`/st do next-phase\` to start night.`,
+        content: `Nominations closed for day **${dayNumber}**. Use \`/st next-phase\` to start night.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -1110,7 +1245,7 @@ export class StCommandsMinimal {
       await replyOrEditInteraction(interaction, {
         content:
           `${nom} ${passed ? "passed" : "failed"}. ${tally}` +
-          (passed ? " Use `/st do execute` (or the control panel) if needed." : ""),
+          (passed ? " Use `/st execute` (or the control panel) if needed." : ""),
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

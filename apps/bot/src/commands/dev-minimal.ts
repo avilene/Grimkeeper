@@ -179,7 +179,7 @@ export class DevCommandsMinimal {
         new EmbedBuilder()
           .setTitle("Dev setup ready")
           .setDescription(
-            `Lobby has ${playerCount} players. Run \`/st do setup-town\` when ready.`,
+            `Lobby has ${playerCount} players. Run \`/st setup-town\` when ready.`,
           )
           .addFields({
             name: "Players",

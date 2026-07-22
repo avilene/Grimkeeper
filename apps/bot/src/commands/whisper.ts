@@ -54,7 +54,7 @@ async function requireWhisperContext(
   const state = context.engine.getState();
   if (state.phase === "lobby" || state.phase === "ended" || !state.townMode) {
     await replyOrEditInteraction(interaction, {
-      content: "Whispers open after `/st do setup-town`.",
+      content: "Whispers open after `/st setup-town`.",
       flags: MessageFlags.Ephemeral,
     });
     return null;

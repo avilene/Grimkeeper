@@ -95,7 +95,7 @@ export function buildStControlPanelEmbed(engine: GameEngine): EmbedBuilder {
     .setDescription(
       [
         "Live storyteller controls for this game.",
-        "Type fewer slash commands — use these buttons, or `/st do` with autocomplete.",
+        "Type fewer slash commands — use these buttons, or mobile-friendly `/st next-phase` / `/st resolve-next` / … (full catalog: `/st do`).",
         "Panel: resolve · execute · votes · close nominations · next phase · mark dead/alive · visibility.",
         "",
         `${phaseLabel} · Nominations: **${state.phase === "day" && nominationsOpen ? "open" : "closed"}**`,
