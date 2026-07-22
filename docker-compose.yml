@@ -58,6 +58,11 @@ services:
       - ${DOCKER_CONFIG_DIR:-/root/.docker}:/root/.docker:ro
     ports:
       - "${DEPLOY_WEBHOOK_PORT:-9000}:9000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   grimkeeper-data:
