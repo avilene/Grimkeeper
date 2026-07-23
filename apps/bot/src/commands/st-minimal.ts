@@ -15,6 +15,7 @@ import { isAllowedUserId } from "../access.js";
 import { formatVoteVisibility } from "../day-thread.js";
 import { ensureLogThread, postGameLog, postGameLogRoleChange } from "../game-log-thread.js";
 import { upsertPinnedGameStatus } from "../game-status.js";
+import { log } from "../logger.js";
 import { runSetPlayerVote } from "../set-vote.js";
 import { upsertStControlPanel } from "../st-control-panel.js";
 import { upsertStVoteTracker } from "../st-vote-tracker.js";
@@ -23,7 +24,8 @@ import { closeTownNominations, advanceTownPhase, renameTownPhaseSurfaces, postKi
 import {
   ensureTownSurfaceThreads,
   markTownSurfaceThread,
-  parseTownSurfaceKind,
+  markTownVoteThread,
+  parseMarkableTownSurface,
   postDayMarkersToTownSurfaces,
   reloadTownSurfaceGame,
 } from "../town-surfaces.js";
@@ -323,9 +325,10 @@ export class StCommandsMinimal {
 
   @Slash({
     name: "mark",
-    description: "Mark this thread as Rules, Public Claims, or Whisper Declaration",
+    description: "Mark this thread as Town Voting, Rules, Public Claims, or Whisper Declaration",
   })
   async mark(
+    @SlashChoice({ name: "Town Voting", value: "voting" })
     @SlashChoice({ name: "Rules", value: "rules" })
     @SlashChoice({ name: "Public Claims", value: "claims" })
     @SlashChoice({ name: "Whisper Declaration", value: "whisper" })
@@ -344,10 +347,10 @@ export class StCommandsMinimal {
     const guild = interaction.guild;
     if (!guild) return;
 
-    const kind = parseTownSurfaceKind(surface);
+    const kind = parseMarkableTownSurface(surface);
     if (!kind) {
       await replyOrEditInteraction(interaction, {
-        content: "Pick `rules`, `claims`, or `whisper`.",
+        content: "Pick `voting`, `rules`, `claims`, or `whisper`.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -372,7 +375,22 @@ export class StCommandsMinimal {
         return;
       }
 
-      const { label } = await markTownSurfaceThread(guild, game, engine, kind, channel);
+      const { label } =
+        kind === "voting"
+          ? await markTownVoteThread(game, channel)
+          : await markTownSurfaceThread(guild, game, engine, kind, channel);
+
+      // Persist Town Voting on day state when present (day or leftover overnight day).
+      if (kind === "voting" && engine.getState().day) {
+        const openEvents = engine.handle({
+          kind: GameCommandKind.OpenDay,
+          gameId: game.id,
+          discordThreadId: channel.id,
+        });
+        await persistEvents(engine, openEvents);
+        await syncGameProjection(game.id, engine);
+      }
+
       await postGameLog(
         guild,
         game,
@@ -407,7 +425,7 @@ export class StCommandsMinimal {
       const thread = await getKibThreadForGame(interaction.guild, game);
       await replyOrEditInteraction(interaction, {
         content: message
-          ? `ST control panel updated in ${thread ? `<#${thread.id}>` : "kib"}.`
+          ? `Posted a **new** ST control panel in ${thread ? `<#${thread.id}>` : "kib"} (old panels’ buttons disabled).`
           : "Could not post the control panel (is kib available?).",
         flags: MessageFlags.Ephemeral,
       });
@@ -524,6 +542,33 @@ export class StCommandsMinimal {
   async nextPhaseSlash(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     await this.nextPhase(interaction);
+  }
+
+  @Slash({
+    name: "reset-to-setup",
+    description: "Wipe day/night back to Setup (ALLOWED_USER_IDS only)",
+  })
+  async resetToSetupSlash(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.resetToSetup(interaction);
+  }
+
+  @Slash({
+    name: "recreate-player-thread",
+    description: "Create or reopen one player's private ST thread",
+  })
+  async recreatePlayerThreadSlash(
+    @SlashOption({
+      name: "player",
+      description: "Player whose ST thread to recreate",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    player: User,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.recreatePlayerThread(player, interaction);
   }
 
   @Slash({
@@ -787,8 +832,11 @@ export class StCommandsMinimal {
       const voteThread = await createTownVoteThread(guild, game, engine);
       const surfaces = await ensureTownSurfaceThreads(guild, game, engine);
       const refreshed = (await reloadTownSurfaceGame(game.id)) ?? game;
-      const dayNumber = engine.getState().dayNumber || 1;
-      await postDayMarkersToTownSurfaces(guild, refreshed, dayNumber);
+      const state = engine.getState();
+      // Only stamp day markers during an actual day (Night 1 still has dayNumber 0).
+      if (state.phase === "day" && state.dayNumber > 0) {
+        await postDayMarkersToTownSurfaces(guild, refreshed, state.dayNumber);
+      }
 
       const links = [
         voteThread ? `Town Voting: <#${voteThread.id}>` : null,
@@ -824,6 +872,11 @@ export class StCommandsMinimal {
     if (!guild) return;
 
     try {
+      log("info", "st.recreate-player-thread.start", {
+        gameId: game.id,
+        playerId: playerUser.id,
+        channelId: interaction.channelId,
+      });
       const engine = await loadEngine(game.id);
       if (!engine.getState().townMode) {
         await replyOrEditInteraction(interaction, {
@@ -856,11 +909,18 @@ export class StCommandsMinimal {
 
       if (!thread) {
         await replyOrEditInteraction(interaction, {
-          content: `Could not create an ST thread for **${player.displayName}**. Check bot permissions (\`Create Private Threads\`, \`Manage Threads\`).`,
+          content: `Could not create an ST thread for **${player.displayName}**. Check bot permissions (\`Create Private Threads\`, \`Manage Threads\`) on the **town** channel.`,
           flags: MessageFlags.Ephemeral,
         });
         return;
       }
+
+      log("info", "st.recreate-player-thread.done", {
+        gameId: game.id,
+        playerId: playerUser.id,
+        threadId: thread.id,
+        created,
+      });
 
       await postGameLog(
         guild,

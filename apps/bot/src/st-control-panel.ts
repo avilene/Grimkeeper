@@ -170,28 +170,55 @@ export function buildStControlPanelComponents(
   ];
 }
 
-async function findStControlPanelMessage(
-  channel: KibVenue,
-  gameId: string,
-): Promise<Message | null> {
+async function findStControlPanelMessages(channel: KibVenue): Promise<Message[]> {
+  const found: Message[] = [];
+  const seen = new Set<string>();
+  const consider = (message: Message) => {
+    if (seen.has(message.id)) return;
+    if (!parseStPanelFooter(message.embeds[0]?.footer?.text)) return;
+    seen.add(message.id);
+    found.push(message);
+  };
+
   const pinned = await channel.messages.fetchPinned().catch(() => null);
   if (pinned) {
-    for (const message of pinned.values()) {
-      if (parseStPanelFooter(message.embeds[0]?.footer?.text) === gameId) {
-        return message;
-      }
-    }
+    for (const message of pinned.values()) consider(message);
   }
   const recent = await channel.messages.fetch({ limit: 30 }).catch(() => null);
-  if (!recent) return null;
-  for (const message of recent.values()) {
-    if (parseStPanelFooter(message.embeds[0]?.footer?.text) === gameId) {
-      return message;
-    }
+  if (recent) {
+    for (const message of recent.values()) consider(message);
   }
-  return null;
+  return found;
 }
 
+/** Strip buttons from prior panels so STs cannot keep clicking stale customIds. */
+async function retireStControlPanels(
+  channel: KibVenue,
+  options?: { exceptMessageId?: string },
+): Promise<number> {
+  const all = await findStControlPanelMessages(channel);
+  let retired = 0;
+  await Promise.all(
+    all.map(async (message) => {
+      if (options?.exceptMessageId && message.id === options.exceptMessageId) return;
+      await message.unpin().catch(() => undefined);
+      await message
+        .edit({
+          embeds: message.embeds,
+          components: [],
+          content: "_Superseded — use the latest ST control panel below (or `/st panel`)._",
+        })
+        .catch(() => undefined);
+      retired += 1;
+    }),
+  );
+  return retired;
+}
+
+/**
+ * Always post a **new** control panel message with fresh button customIds.
+ * Older panels in kib are unpinned and have their buttons stripped.
+ */
 export async function upsertStControlPanel(
   guild: Guild,
   parentChannelId: string,
@@ -206,16 +233,11 @@ export async function upsertStControlPanel(
 
   const embed = buildStControlPanelEmbed(engine);
   const components = buildStControlPanelComponents(engine);
-  const existing = await findStControlPanelMessage(thread, engine.getState().gameId);
-
-  if (existing) {
-    await existing.edit({ embeds: [embed], components }).catch(() => undefined);
-    return existing;
-  }
 
   const message = await thread.send({ embeds: [embed], components }).catch(() => null);
-  if (message) {
-    await message.pin().catch(() => undefined);
-  }
+  if (!message) return null;
+
+  await message.pin().catch(() => undefined);
+  await retireStControlPanels(thread, { exceptMessageId: message.id });
   return message;
 }

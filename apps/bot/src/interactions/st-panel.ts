@@ -9,12 +9,14 @@ import { getGameById } from "@grimkeeper/database";
 import { GameCommandKind } from "@grimkeeper/engine";
 
 import {
+  canActAsStoryteller,
   getStorytellerThread,
   loadEngine,
   persistEvents,
   refreshNominationEverywhere,
   refreshAllNominationEverywhere,
   replyEngineError,
+  resolveActiveGameForInteraction,
   resolveVotingChannel,
   syncGameProjection,
 } from "../commands/command-context.js";
@@ -45,24 +47,37 @@ async function loadPanelStorytellerContext(
     return { ok: false, error: "This must be used in a server." };
   }
 
-  const game = await getGameById(gameId);
-  if (!game || game.guildId !== interaction.guildId) {
+  let game = await getGameById(gameId);
+  const gameOk =
+    Boolean(game) && game!.guildId === interaction.guildId && game!.phase !== "ended";
+
+  // Stale panel buttons keep an old/missing gameId — recover from kib/town venue.
+  if (!gameOk) {
+    const recovered = await resolveActiveGameForInteraction(interaction);
+    if (recovered && recovered.guildId === interaction.guildId && recovered.phase !== "ended") {
+      game = recovered;
+    } else if (game?.phase === "ended" && game.guildId === interaction.guildId) {
+      return { ok: false, error: "That game has ended. Run `/st panel` from the current game’s kib." };
+    } else {
+      return {
+        ok: false,
+        error:
+          "No matching game for this panel (it may be from an older game). Run `/st panel` from kib to post a fresh one.",
+      };
+    }
+  }
+
+  const engine = await loadEngine(game!.id);
+  if (!(await canActAsStoryteller(interaction, game!, engine))) {
     return {
       ok: false,
-      error:
-        "No matching game for this panel (it may be from an older game). Run `/st setup-town` or refresh the panel from kib.",
+      error: !game!.stRoleId
+        ? "Only storytellers can use the control panel. This game has no ST role linked — ask an ST to `/st do add-st` you, or re-run `/game setup` with `st:`."
+        : "Only storytellers can use the control panel. Need this game’s ST Discord role, `/st do add-st`, or `ALLOWED_USER_IDS`.",
     };
   }
-  if (game.phase === "ended") {
-    return { ok: false, error: "That game has ended." };
-  }
 
-  const engine = await loadEngine(game.id);
-  if (!engine.isStoryteller(interaction.user.id)) {
-    return { ok: false, error: "Only storytellers can use the control panel." };
-  }
-
-  return { ok: true, game, engine, guild: interaction.guild };
+  return { ok: true, game: game!, engine, guild: interaction.guild };
 }
 
 async function requirePanelStoryteller(
@@ -125,8 +140,12 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
     const { game, engine, guild } = ctx;
 
     if (action === "refresh") {
-      await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
-      await interaction.editReply({ content: "Control panel refreshed." });
+      const message = await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
+      await interaction.editReply({
+        content: message
+          ? "Posted a **new** control panel in kib (old panels’ buttons were disabled)."
+          : "Could not post a new control panel (is kib available?).",
+      });
       return true;
     }
 

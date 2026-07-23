@@ -1,5 +1,13 @@
 import type { CommandInteraction, Guild, GuildMember } from "discord.js";
 
+/** Minimal interaction shape for allowlist / role checks (slash, buttons, selects). */
+export type AccessInteraction = {
+  user?: { id: string } | null;
+  guildId?: string | null;
+  guild?: Guild | null;
+  member?: CommandInteraction["member"];
+};
+
 /** Default budget for guild member REST/gateway lookups that can stall without GuildMembers intent. */
 export const MEMBER_FETCH_TIMEOUT_MS = 2_000;
 
@@ -40,7 +48,7 @@ export async function fetchGuildMemberWithTimeout(
   ]);
 }
 
-export async function canUseBot(interaction: CommandInteraction): Promise<boolean> {
+export async function canUseBot(interaction: AccessInteraction): Promise<boolean> {
   const allowedUserIds = parseList(process.env.ALLOWED_USER_IDS);
   const allowedRoleIds = parseList(process.env.ALLOWED_ROLE_IDS);
   const userId = interaction?.user?.id;
@@ -70,7 +78,7 @@ export async function canUseBot(interaction: CommandInteraction): Promise<boolea
   return member.roles.cache.some((role) => allowedRoleIds.has(role.id));
 }
 
-export async function isInExplicitAllowlist(interaction: CommandInteraction): Promise<boolean> {
+export async function isInExplicitAllowlist(interaction: AccessInteraction): Promise<boolean> {
   const allowedUserIds = parseList(process.env.ALLOWED_USER_IDS);
   const allowedRoleIds = parseList(process.env.ALLOWED_ROLE_IDS);
   if (allowedUserIds.size === 0 && allowedRoleIds.size === 0) {
@@ -88,26 +96,30 @@ export async function isInExplicitAllowlist(interaction: CommandInteraction): Pr
     return false;
   }
 
-  const member = await interaction.guild?.members.fetch(userId).catch(() => null);
+  const guild = interaction.guild;
+  if (!guild) return false;
+  const member = await fetchGuildMemberWithTimeout(guild, userId);
   if (!member) return false;
 
   return member.roles.cache.some((role) => allowedRoleIds.has(role.id));
 }
 
-export async function hasReminderManagerRole(interaction: CommandInteraction): Promise<boolean> {
+export async function hasReminderManagerRole(interaction: AccessInteraction): Promise<boolean> {
   const reminderRoleIds = parseList(process.env.REMINDER_ROLE_IDS);
   if (reminderRoleIds.size === 0) return false;
 
   const userId = interaction.user?.id;
   if (!userId || !interaction.guildId) return false;
 
-  const member = await interaction.guild?.members.fetch(userId).catch(() => null);
+  const guild = interaction.guild;
+  if (!guild) return false;
+  const member = await fetchGuildMemberWithTimeout(guild, userId);
   if (!member) return false;
 
   return member.roles.cache.some((role) => reminderRoleIds.has(role.id));
 }
 
-export async function canManageChannelReminders(interaction: CommandInteraction): Promise<boolean> {
+export async function canManageChannelReminders(interaction: AccessInteraction): Promise<boolean> {
   if (await isInExplicitAllowlist(interaction)) return true;
   return hasReminderManagerRole(interaction);
 }

@@ -12,8 +12,12 @@ import {
   isGameTextChannel,
   shortGameId,
 } from "./commands/command-context.js";
+import { townVoteThreadName } from "./day-thread.js";
 
 export type TownSurfaceKind = "whisper-decl" | "claims" | "rules";
+
+/** Surfaces assignable via `/st mark` (includes Town Voting). */
+export type MarkableTownSurface = TownSurfaceKind | "voting";
 
 export type TownSurfaceGame = {
   id: string;
@@ -253,6 +257,21 @@ export function parseTownSurfaceKind(value: string): TownSurfaceKind | null {
   return null;
 }
 
+/** Parse `/st mark surface:` including Town Voting. */
+export function parseMarkableTownSurface(value: string): MarkableTownSurface | null {
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "voting" ||
+    normalized === "vote" ||
+    normalized === "votes" ||
+    normalized === "town-voting" ||
+    normalized === "town_voting"
+  ) {
+    return "voting";
+  }
+  return parseTownSurfaceKind(value);
+}
+
 export function townSurfaceLabel(kind: TownSurfaceKind): string {
   return SURFACE_META[kind].label;
 }
@@ -317,6 +336,58 @@ export async function markTownSurfaceThread(
     .catch(() => undefined);
 
   return { label: meta.label };
+}
+
+/**
+ * Point Town Voting at an existing town-channel thread (rename + unlock).
+ * Caller should `OpenDay` when day state exists so nominations resolve here.
+ */
+export async function markTownVoteThread(
+  game: TownSurfaceGame,
+  thread: AnyThreadChannel,
+): Promise<{ label: string }> {
+  if (thread.parentId !== game.channelId) {
+    throw new Error("Mark a thread inside this game’s town channel.");
+  }
+
+  const label = "Town Voting";
+  const threadName = townVoteThreadName(game.id);
+
+  if (thread.archived) {
+    await thread.setArchived(false, `Marked as ${label}.`).catch(() => undefined);
+  }
+  if (thread.name !== threadName) {
+    await thread.setName(threadName, `Marked as ${label}.`).catch(() => undefined);
+  }
+  await ensureThreadAutoArchive(thread);
+
+  if (thread.locked) {
+    await thread.setLocked(false, `Unlock ${label} for nominations and votes.`).catch(() => undefined);
+  }
+
+  // This thread can no longer be Rules / Claims / Whisper Declaration.
+  const clearOther: Record<string, string | null> = {};
+  for (const other of Object.keys(SURFACE_META) as TownSurfaceKind[]) {
+    const field = SURFACE_META[other].dbField;
+    if (game[field] === thread.id) {
+      clearOther[field] = null;
+    }
+  }
+  if (Object.keys(clearOther).length > 0) {
+    await prisma.game.update({
+      where: { id: game.id },
+      data: clearOther,
+    });
+  }
+
+  await thread
+    .send({
+      content: `This thread is now **${label}** for the game.`,
+      allowedMentions: { parse: [] },
+    })
+    .catch(() => undefined);
+
+  return { label };
 }
 
 export async function getTownSurfaceThread(

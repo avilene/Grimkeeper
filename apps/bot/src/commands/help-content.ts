@@ -102,7 +102,8 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
   },
   {
     command: "/st mark",
-    description: "In a town thread: assign it as Rules, Public Claims, or Whisper Declaration.",
+    description:
+      "In a town thread: assign it as Town Voting, Rules, Public Claims, or Whisper Declaration.",
   },
   {
     command: "/st queue show",
@@ -373,7 +374,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             ),
             cmd(
               "/st mark",
-              "In a town thread: assign it as Rules, Public Claims, or Whisper Declaration.",
+              "In a town thread: assign it as Town Voting, Rules, Public Claims, or Whisper Declaration.",
             ),
             cmd(
               "/st panel",
@@ -412,8 +413,8 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           value: [
             "`setup-town` enters **Setup** (opens Voting, Whisper Declaration, Public Claims, Rules). `/st next-phase` → Night 1 → Day 1.",
             "Public: `/vote` or Vote button. Private: `/privatevote` (kib vote tracker).",
-            "`/st mark` assigns a thread as Rules, Public Claims, or Whisper Declaration.",
-            "`/st do recreate-threads` (Voting + town surfaces) · `recreate-player-thread` (one private ST thread).",
+            "`/st mark` assigns a thread as Town Voting, Rules, Public Claims, or Whisper Declaration.",
+            "`/st do recreate-threads` (Voting + town surfaces) · `/st recreate-player-thread` (one private ST thread).",
             "Vote lock/count stay in Town Voting; **Announce & resolve** posts to Town Voting + audit log.",
             "Each living player may nominate once per day; each player may be nominated once. Ghosts cannot nominate.",
             "`next-phase` advances Setup → Night 1 → Day 1 → …. Renames town to `base-setup` / `base-nightN` / `base-dayN`.",
@@ -473,7 +474,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "`/st setup-town` with `players:` @mentions in **seat order** (starts **Night 1**, nominations closed)",
             "Confirm **Town Voting**, **Whisper Declaration**, **Public Claims**, **Rules** opened",
             "Post house rules in **Rules** (ST write-only)",
-            "Optional: `/st mark` in a custom thread to assign Rules / Claims / Whisper Declaration",
+            "Optional: `/st mark` in a custom thread to assign Town Voting / Rules / Claims / Whisper Declaration",
             "Missing surfaces? `/st do recreate-threads` (includes Town Voting)",
           ]),
         },

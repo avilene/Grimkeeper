@@ -158,15 +158,20 @@ export async function syncGameProjection(gameId: string, engine: GameEngine): Pr
   await syncGameProjectionFromEngine(gameId, engine);
 }
 
-async function resolveParentChannelId(
-  interaction: CommandInteraction | AutocompleteInteraction,
-): Promise<string | null> {
+async function resolveParentChannelId(interaction: {
+  channelId: string | null;
+  channel?: CommandInteraction["channel"] | null;
+  guild?: Guild | null;
+  inGuild?: () => boolean;
+}): Promise<string | null> {
   if (!interaction.channelId) return null;
   const cached = interaction.channel;
   if (cached?.isThread()) return cached.parentId ?? interaction.channelId;
   if (cached) return interaction.channelId;
-  if (interaction.inGuild()) {
-    const fetched = await interaction.guild!.channels.fetch(interaction.channelId).catch(() => null);
+  const inGuild =
+    typeof interaction.inGuild === "function" ? interaction.inGuild() : Boolean(interaction.guild);
+  if (inGuild && interaction.guild) {
+    const fetched = await interaction.guild.channels.fetch(interaction.channelId).catch(() => null);
     if (fetched?.isThread()) return fetched.parentId ?? interaction.channelId;
     if (fetched) return interaction.channelId;
   }
@@ -174,9 +179,13 @@ async function resolveParentChannelId(
 }
 
 /** Active game for this interaction’s channel; only falls back to guild when exactly one is active. */
-export async function resolveActiveGameForInteraction(
-  interaction: CommandInteraction | AutocompleteInteraction,
-) {
+export async function resolveActiveGameForInteraction(interaction: {
+  guildId: string | null;
+  channelId: string | null;
+  channel?: CommandInteraction["channel"] | null;
+  guild?: Guild | null;
+  inGuild?: () => boolean;
+}) {
   if (!interaction.guildId) return null;
 
   // Match town, kib venue (channel or thread), or log thread by the interaction channel itself.
@@ -340,13 +349,7 @@ export async function requireStorytellerGame(interaction: CommandInteraction) {
   }
 
   const engine = await loadEngine(game.id);
-  const isEngineSt = engine.isStoryteller(interaction.user.id);
-  const hasStRole = await memberHasGameStRole(interaction, game);
-  const isAllowlistOverride = await isInExplicitAllowlist(interaction);
-
-  // Accept Discord ST role for the linked game (same as reminders) — not only engine storyteller ids.
-  // Running from a kib channel/thread resolves the game via kibThreadId first.
-  if (!isEngineSt && !hasStRole && !isAllowlistOverride) {
+  if (!(await canActAsStoryteller(interaction, game, engine))) {
     const detail = !game.stRoleId
       ? " This game has no ST role linked in the DB — re-run `/game setup` with `st:`, or ask an allowlisted ST to `/st do add-st` you."
       : " Need this game’s ST Discord role, engine storyteller status (`/st do add-st`), or `ALLOWED_USER_IDS`.";
@@ -355,9 +358,6 @@ export async function requireStorytellerGame(interaction: CommandInteraction) {
       gameId: game.id,
       channelId: interaction.channelId,
       stRoleId: game.stRoleId ?? null,
-      isEngineSt,
-      hasStRole,
-      isAllowlistOverride,
     });
     await replyOrEditInteraction(interaction, {
       content: `Only storytellers can run this command.${detail}`,
@@ -582,7 +582,7 @@ export async function requireCommandAccess(interaction: CommandInteraction): Pro
  *   without Guild Members intent — callers should REST-fetch rather than deny)
  */
 export function interactionMemberHasRole(
-  interaction: Pick<CommandInteraction, "member">,
+  interaction: Pick<CommandInteraction, "member"> | { member?: CommandInteraction["member"] },
   roleId: string,
 ): boolean | null {
   const member = interaction.member;
@@ -602,7 +602,11 @@ export function interactionMemberHasRole(
 }
 
 export async function memberHasGameStRole(
-  interaction: CommandInteraction,
+  interaction: {
+    user: { id: string };
+    guild: Guild | null;
+    member?: CommandInteraction["member"];
+  },
   game: GameRoleIds,
 ): Promise<boolean> {
   if (!game.stRoleId || !interaction.guild) return false;
@@ -614,6 +618,26 @@ export async function memberHasGameStRole(
   // REST member fetch (does not require Guild Members gateway intent).
   const member = await fetchGuildMemberWithTimeout(interaction.guild, interaction.user.id);
   return member?.roles.cache.has(game.stRoleId) ?? false;
+}
+
+/**
+ * Same access as `/st` commands: engine storyteller, game ST Discord role, or allowlist.
+ * Use for buttons/selects (control panel, vote tracker) as well as slash commands.
+ */
+export async function canActAsStoryteller(
+  interaction: {
+    user: { id: string };
+    guild: Guild | null;
+    guildId?: string | null;
+    member?: CommandInteraction["member"];
+  },
+  game: GameRoleIds,
+  engine: { isStoryteller: (userId: string) => boolean },
+): Promise<boolean> {
+  if (engine.isStoryteller(interaction.user.id)) return true;
+  if (await memberHasGameStRole(interaction, game)) return true;
+  if (await isInExplicitAllowlist(interaction)) return true;
+  return false;
 }
 
 export async function requireKibThread(
@@ -1175,11 +1199,17 @@ export async function ensurePlayerStThread(
   if (isFakePlayer(player.discordUserId)) return { thread: null, created: false };
 
   const threadName = personalPlayerThreadName(game.id, player.displayName);
-  const threadIndex = options?.threadIndex ?? (await loadParentThreadIndex(guild, game.channelId));
-  let thread = threadIndex.get(threadName) ?? null;
+  let thread =
+    options?.threadIndex?.get(threadName) ??
+    (await findPersonalPlayerThread(guild, game.channelId, game.id, player.displayName));
   let created = false;
 
   if (!thread) {
+    log("info", "st.player-thread.create", {
+      gameId: game.id,
+      playerId: player.discordUserId,
+      threadName,
+    });
     thread = await createPersonalPlayerThread(
       interaction,
       game.id,
@@ -1188,7 +1218,7 @@ export async function ensurePlayerStThread(
       player.displayName,
     );
     created = Boolean(thread);
-    if (thread) threadIndex.set(threadName, thread);
+    if (thread && options?.threadIndex) options.threadIndex.set(threadName, thread);
   }
 
   if (!thread) return { thread: null, created: false };
@@ -1199,6 +1229,8 @@ export async function ensurePlayerStThread(
   await ensureThreadAutoArchive(thread);
 
   await thread.members.add(player.discordUserId).catch(() => undefined);
+  // Always invite the acting ST (role cache is often empty without Guild Members intent).
+  await thread.members.add(interaction.user.id).catch(() => undefined);
   await addStorytellersToPlayerThread(guild, thread, engine, game.stRoleId);
 
   const shouldAnnounce = options?.announce ?? created;
@@ -1478,8 +1510,12 @@ export async function resolveVotingChannel(
     const thread = await guild.channels.fetch(dayThreadId).catch(() => null);
     if (thread?.isThread() && thread.parentId === game.channelId) {
       const short = shortGameId(game.id);
-      // Ignore a stored Town Voting ID that clearly belongs to another game.
-      if (!thread.name.includes(" · ") || thread.name.includes(short)) {
+      if (state.townMode) {
+        // After `/st mark` remaps a former vote thread to Rules/Claims/etc., ignore the stale ID.
+        if (thread.name.includes("Town Voting") && thread.name.includes(short)) {
+          return thread as DayDiscussionChannel;
+        }
+      } else if (!thread.name.includes(" · ") || thread.name.includes(short)) {
         return thread as DayDiscussionChannel;
       }
     }
