@@ -7,12 +7,10 @@ import {
 } from "./town-surfaces.js";
 
 describe("town surface thread names", () => {
-  it("includes the surface label and short game id", () => {
-    expect(townSurfaceThreadName("whisper-decl", "abcdef12-xxxx")).toBe(
-      "Whisper Declaration · abcdef",
-    );
-    expect(townSurfaceThreadName("claims", "abcdef12-xxxx")).toBe("Public Claims · abcdef");
-    expect(townSurfaceThreadName("rules", "abcdef12-xxxx")).toBe("Rules · abcdef");
+  it("uses the surface label without short game id", () => {
+    expect(townSurfaceThreadName("whisper-decl", "abcdef12-xxxx")).toBe("Whisper Declaration");
+    expect(townSurfaceThreadName("claims", "abcdef12-xxxx")).toBe("Public Claims");
+    expect(townSurfaceThreadName("rules", "abcdef12-xxxx")).toBe("Rules");
   });
 
   it("parses mark surface aliases", () => {

@@ -20,7 +20,11 @@ import { discordTimestamp } from "./reminder-message.js";
 const USER_MENTION_RE = /<@!?(\d{17,20})>/g;
 const ROLE_MENTION_RE = /<@&(\d{17,20})>/g;
 
-export function logThreadName(parentChannelName: string, gameId: string): string {
+export function logThreadName(parentChannelName: string, _gameId?: string): string {
+  return `log-${parentChannelName}`.slice(0, 100);
+}
+
+export function legacyLogThreadName(parentChannelName: string, gameId: string): string {
   return `log-${parentChannelName} · ${shortGameId(gameId)}`.slice(0, 100);
 }
 
@@ -105,40 +109,40 @@ export async function resolveLogParentChannelId(
   return game.channelId;
 }
 
-function logThreadMatchesGame(thread: AnyThreadChannel, gameId: string): boolean {
-  const short = shortGameId(gameId);
-  return !thread.name.includes(" · ") || thread.name.includes(short);
-}
-
 export async function getLogThreadForGame(
   guild: Guild,
   game: Pick<GameThreadRecord, "id" | "channelId" | "kibThreadId" | "logThreadId">,
 ): Promise<AnyThreadChannel | null> {
   const logParentId = await resolveLogParentChannelId(guild, game);
+  const parent = await guild.channels.fetch(logParentId).catch(() => null);
+  const parentName = parent && "name" in parent ? parent.name : "game";
 
   if (game.logThreadId) {
     const byId = await guild.channels.fetch(game.logThreadId).catch(() => null);
     // Only reuse a stored log when it is already under the correct parent (kib channel or town).
-    if (byId?.isThread() && byId.parentId === logParentId && logThreadMatchesGame(byId, game.id)) {
+    if (byId?.isThread() && byId.parentId === logParentId) {
       return byId;
     }
   }
 
-  const parent = await guild.channels.fetch(logParentId).catch(() => null);
-  const parentName = parent && "name" in parent ? parent.name : "game";
-  const expectedName = logThreadName(parentName, game.id);
+  const expectedNames = new Set([
+    logThreadName(parentName),
+    legacyLogThreadName(parentName, game.id),
+  ]);
 
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
   const activeThread = active?.threads.find(
     (candidate) =>
-      candidate.parentId === logParentId && candidate.name === expectedName,
+      candidate.parentId === logParentId && expectedNames.has(candidate.name),
   );
   if (activeThread) return activeThread;
 
   if (!isGameTextChannel(parent)) return null;
 
   const archived = await parent.threads.fetchArchived({ type: "private" }).catch(() => null);
-  return archived?.threads.find((candidate) => candidate.name === expectedName) ?? null;
+  return (
+    archived?.threads.find((candidate) => expectedNames.has(candidate.name)) ?? null
+  );
 }
 
 async function addStOnlyMembersToThread(
@@ -204,7 +208,7 @@ export async function ensureLogThread(
       };
     }
 
-    const threadName = logThreadName(parent.name, game.id);
+    const threadName = logThreadName(parent.name);
     try {
       thread = await parent.threads.create({
         name: threadName,

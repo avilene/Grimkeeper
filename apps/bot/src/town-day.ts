@@ -146,7 +146,7 @@ export async function renameTownPhaseSurfaces(
   const thread = await guild.channels.fetch(voteThreadId).catch(() => null);
   if (!thread || !("setName" in thread) || typeof thread.setName !== "function") return;
 
-  const threadName = townVoteThreadName(game.id);
+  const threadName = townVoteThreadName();
   if (thread.name !== threadName) {
     await thread.setName(threadName, "Keep Town Voting thread name").catch(() => undefined);
   }

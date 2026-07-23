@@ -10,8 +10,8 @@ import {
 } from "./game-log-thread.js";
 
 describe("logThreadName", () => {
-  it("includes short game id so games do not share log threads", () => {
-    expect(logThreadName("town-square", "abcdef12-3456")).toBe("log-town-square · abcdef");
+  it("uses a clean log name without short game id", () => {
+    expect(logThreadName("town-square", "abcdef12-3456")).toBe("log-town-square");
   });
 
   it("truncates to 100 characters", () => {
@@ -50,7 +50,8 @@ describe("sanitizeGameLogMentions", () => {
         cache: {
           get: () => undefined,
         },
-        fetch: vi.fn(async (id: string) => {
+        fetch: vi.fn(async (query: string | { user: string }) => {
+          const id = typeof query === "string" ? query : query.user;
           if (id === "111111111111111111") {
             return { displayName: "Alice", user: { username: "alice" } };
           }

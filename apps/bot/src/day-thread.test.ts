@@ -400,7 +400,8 @@ describe("formatNominationRef", () => {
 
 describe("town phase channel naming", () => {
   it("keeps a stable Town Voting thread name", () => {
-    expect(townVoteThreadName("abcdef12-3456")).toBe("Town Voting · abcdef");
+    expect(townVoteThreadName("abcdef12-3456")).toBe("Town Voting");
+    expect(townVoteThreadName()).toBe("Town Voting");
   });
 
   it("builds base-dayN / base-nightN / setup parent names and strips prior suffixes", () => {

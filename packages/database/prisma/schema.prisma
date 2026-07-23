@@ -19,6 +19,7 @@ model Game {
   kibRoleId            String?
   kibThreadId          String?
   logThreadId          String?
+  votingThreadId       String?
   whisperDeclThreadId  String?
   claimsThreadId       String?
   rulesThreadId        String?
@@ -60,6 +61,8 @@ model Player {
   roleId        String?
   alive         Boolean @default(true)
   ghostVoteUsed Boolean @default(false)
+  /** Private player ST Discord thread id. */
+  stThreadId    String?
   game          Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@unique([gameId, discordUserId])

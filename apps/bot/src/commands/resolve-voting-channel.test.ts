@@ -15,6 +15,26 @@ function thread(id: string, name: string, parentId = TOWN_ID) {
 }
 
 describe("findTownVoteThread", () => {
+  it("prefers stored votingThreadId over name matches", async () => {
+    const stored = thread("vote-stored", "Town Voting");
+    const other = thread("vote-other", "Town Voting · abcdef");
+    const guild = {
+      channels: {
+        fetch: vi.fn(async (id: string) => (id === "vote-stored" ? stored : null)),
+        fetchActiveThreads: vi.fn(async () => ({
+          threads: {
+            find: () => other,
+          },
+        })),
+      },
+    };
+
+    await expect(
+      findTownVoteThread(guild as never, TOWN_ID, GAME_ID, "vote-stored"),
+    ).resolves.toEqual(stored);
+    expect(guild.channels.fetchActiveThreads).not.toHaveBeenCalled();
+  });
+
   it("does not treat Rules / Claims / Whisper / ST threads as Town Voting", async () => {
     const voting = thread("vote-1", "Town Voting · abcdef");
     const guild = {
@@ -37,7 +57,28 @@ describe("findTownVoteThread", () => {
       },
     };
 
-    await expect(findTownVoteThread(guild as never, TOWN_ID, GAME_ID)).resolves.toEqual(voting);
+    await expect(findTownVoteThread(guild as never, TOWN_ID, GAME_ID, null)).resolves.toEqual(
+      voting,
+    );
+  });
+
+  it("matches clean Town Voting names", async () => {
+    const voting = thread("vote-1", "Town Voting");
+    const guild = {
+      channels: {
+        fetchActiveThreads: vi.fn(async () => ({
+          threads: {
+            find: (predicate: (t: { parentId: string; name: string }) => boolean) =>
+              [voting].find(predicate),
+          },
+        })),
+        fetch: vi.fn(),
+      },
+    };
+
+    await expect(findTownVoteThread(guild as never, TOWN_ID, GAME_ID, null)).resolves.toEqual(
+      voting,
+    );
   });
 
   it("returns null when only non-voting town surfaces exist", async () => {
@@ -55,6 +96,7 @@ describe("findTownVoteThread", () => {
           },
         })),
         fetch: vi.fn(async () => ({
+          type: 0,
           isTextBased: () => true,
           isDMBased: () => false,
           isThread: () => false,
@@ -67,11 +109,40 @@ describe("findTownVoteThread", () => {
       },
     };
 
-    await expect(findTownVoteThread(guild as never, TOWN_ID, GAME_ID)).resolves.toBeNull();
+    await expect(findTownVoteThread(guild as never, TOWN_ID, GAME_ID, null)).resolves.toBeNull();
   });
 });
 
 describe("resolveVotingChannel", () => {
+  it("prefers game.votingThreadId over a stale day.discordThreadId", async () => {
+    const voting = thread("vote-1", "Town Voting");
+    const guild = {
+      channels: {
+        fetch: vi.fn(async (id: string) => {
+          if (id === "vote-1") return voting;
+          if (id === "rules-stale") return thread("rules-stale", "Rules");
+          return null;
+        }),
+        fetchActiveThreads: vi.fn(),
+      },
+    };
+    const engine = {
+      getState: () => ({
+        townMode: true,
+        day: { discordThreadId: "rules-stale" },
+      }),
+    };
+
+    await expect(
+      resolveVotingChannel(
+        guild as never,
+        { id: GAME_ID, channelId: TOWN_ID, votingThreadId: "vote-1" },
+        engine as never,
+      ),
+    ).resolves.toEqual(voting);
+    expect(guild.channels.fetchActiveThreads).not.toHaveBeenCalled();
+  });
+
   it("ignores a stale day.discordThreadId that is no longer named Town Voting", async () => {
     const voting = thread("vote-1", "Town Voting · abcdef");
     const guild = {
@@ -97,7 +168,11 @@ describe("resolveVotingChannel", () => {
     };
 
     await expect(
-      resolveVotingChannel(guild as never, { id: GAME_ID, channelId: TOWN_ID }, engine as never),
+      resolveVotingChannel(
+        guild as never,
+        { id: GAME_ID, channelId: TOWN_ID, votingThreadId: null },
+        engine as never,
+      ),
     ).resolves.toEqual(voting);
   });
 
@@ -108,6 +183,7 @@ describe("resolveVotingChannel", () => {
           if (id === TOWN_ID) {
             return {
               id: TOWN_ID,
+              type: 0,
               isTextBased: () => true,
               isDMBased: () => false,
               isThread: () => false,
@@ -133,7 +209,11 @@ describe("resolveVotingChannel", () => {
     };
 
     await expect(
-      resolveVotingChannel(guild as never, { id: GAME_ID, channelId: TOWN_ID }, engine as never),
+      resolveVotingChannel(
+        guild as never,
+        { id: GAME_ID, channelId: TOWN_ID, votingThreadId: null },
+        engine as never,
+      ),
     ).resolves.toBeNull();
   });
 });

@@ -42,8 +42,8 @@ import { isDevMode } from "../dev.js";
 import {
   clearNominationMessageInChannel,
   dayThreadName,
+  legacyTownVoteThreadName,
   townVoteThreadName,
-  townVoteThreadNameSuffix,
   postNominationToChannel,
   updateNominationMessagesInChannels,
   type DayDiscussionChannel,
@@ -63,6 +63,11 @@ import { log, serializeError } from "../logger.js";
 
 export function shortGameId(gameId: string): string {
   return gameId.slice(0, 6);
+}
+
+/** Legacy `· <shortId>` suffix used before ID-based thread lookup. */
+export function legacyGameNameSuffix(gameId: string): string {
+  return `· ${shortGameId(gameId)}`;
 }
 
 /** Prefer 1-week archive; Discord may reject longer durations on unboosted servers. */
@@ -89,22 +94,40 @@ export async function ensureThreadAutoArchive(thread: AnyThreadChannel): Promise
   }
 }
 
-export function kibThreadName(parentChannelName: string, gameId?: string): string {
-  if (gameId) {
-    return `kib-${parentChannelName} · ${shortGameId(gameId)}`.slice(0, 100);
-  }
+/** Clean kib thread name (resolved via `kibThreadId`, not the short game id). */
+export function kibThreadName(parentChannelName: string, _gameId?: string): string {
   return `kib-${parentChannelName}`.slice(0, 100);
+}
+
+export function legacyKibThreadName(parentChannelName: string, gameId: string): string {
+  return `kib-${parentChannelName} ${legacyGameNameSuffix(gameId)}`.slice(0, 100);
 }
 
 export function stPlayerThreadName(displayName: string): string {
   return `ST ${displayName}`.slice(0, 100);
 }
 
-export function storytellerThreadName(parentChannelName?: string, gameId?: string): string {
+/** @deprecated Prefer `stPlayerThreadName`; kept for call sites that still pass gameId. */
+export function personalPlayerThreadName(_gameId: string, displayName: string): string {
+  return stPlayerThreadName(displayName);
+}
+
+export function legacyPersonalPlayerThreadName(gameId: string, displayName: string): string {
+  return `ST ${displayName} ${legacyGameNameSuffix(gameId)}`.slice(0, 100);
+}
+
+export function storytellerThreadName(parentChannelName?: string, _gameId?: string): string {
   if (parentChannelName) {
-    return kibThreadName(parentChannelName, gameId);
+    return kibThreadName(parentChannelName);
   }
-  return gameId ? `kib · ${shortGameId(gameId)}`.slice(0, 100) : "kib";
+  return "kib";
+}
+
+export function legacyStorytellerThreadName(parentChannelName: string | undefined, gameId: string): string {
+  if (parentChannelName) {
+    return legacyKibThreadName(parentChannelName, gameId);
+  }
+  return `kib ${legacyGameNameSuffix(gameId)}`.slice(0, 100);
 }
 
 export function resolvePlayerRef(
@@ -982,11 +1005,6 @@ export async function ensureGameThreads(
   return { stThread, playerThreadsCreated, playerThreadsFailed };
 }
 
-export function personalPlayerThreadName(gameId: string, displayName: string): string {
-  // Include game id so successive games in the same channel do not reuse stale threads.
-  return `ST ${displayName} · ${gameId.slice(0, 6)}`.slice(0, 100);
-}
-
 export function isGameTextChannel(
   channel: { type: ChannelType } | null,
 ): channel is { type: ChannelType.GuildText | ChannelType.GuildAnnouncement; threads: { create: (...args: never[]) => Promise<AnyThreadChannel> } } {
@@ -1049,10 +1067,30 @@ export async function findPersonalPlayerThread(
   gameId: string,
   displayName: string,
   threadIndex?: Map<string, AnyThreadChannel>,
+  storedThreadId?: string | null,
 ): Promise<AnyThreadChannel | null> {
-  const threadName = personalPlayerThreadName(gameId, displayName);
+  if (storedThreadId) {
+    const byId = await guild.channels.fetch(storedThreadId).catch(() => null);
+    if (byId?.isThread() && byId.parentId === parentChannelId) {
+      return byId;
+    }
+  }
+
+  const cleanName = stPlayerThreadName(displayName);
+  const legacyName = legacyPersonalPlayerThreadName(gameId, displayName);
   const index = threadIndex ?? (await loadParentThreadIndex(guild, parentChannelId));
-  return index.get(threadName) ?? null;
+  return index.get(legacyName) ?? index.get(cleanName) ?? null;
+}
+
+async function persistPlayerStThreadId(
+  gameId: string,
+  discordUserId: string,
+  threadId: string,
+): Promise<void> {
+  await prisma.player.updateMany({
+    where: { gameId, discordUserId },
+    data: { stThreadId: threadId },
+  });
 }
 
 export async function createKibThread(
@@ -1068,7 +1106,7 @@ export async function createKibThread(
   const parent = await guild.channels.fetch(channelId).catch(() => null);
   if (!isGameTextChannel(parent)) return { mention: null, threadId: null };
 
-  const threadName = kibThreadName(parent.name, gameId);
+  const threadName = kibThreadName(parent.name);
   let venue: KibVenue | null = null;
 
   if (options?.existingThreadId) {
@@ -1201,7 +1239,7 @@ export async function ensurePlayerStThread(
   interaction: CommandInteraction,
   game: GameRoleIds & { id: string; channelId: string },
   engine: GameEngine,
-  player: { discordUserId: string; displayName: string },
+  player: { discordUserId: string; displayName: string; stThreadId?: string | null },
   options?: {
     threadIndex?: Map<string, AnyThreadChannel>;
     /** Post the “Private ST thread…” intro (default true when newly created). */
@@ -1212,10 +1250,30 @@ export async function ensurePlayerStThread(
   if (!guild) return { thread: null, created: false };
   if (isFakePlayer(player.discordUserId)) return { thread: null, created: false };
 
-  const threadName = personalPlayerThreadName(game.id, player.displayName);
+  let storedThreadId = player.stThreadId ?? null;
+  if (!storedThreadId) {
+    const row = await prisma.player.findUnique({
+      where: {
+        gameId_discordUserId: { gameId: game.id, discordUserId: player.discordUserId },
+      },
+      select: { stThreadId: true },
+    });
+    storedThreadId = row?.stThreadId ?? null;
+  }
+
+  const threadName = stPlayerThreadName(player.displayName);
   let thread =
-    options?.threadIndex?.get(threadName) ??
-    (await findPersonalPlayerThread(guild, game.channelId, game.id, player.displayName));
+    (storedThreadId && options?.threadIndex
+      ? [...options.threadIndex.values()].find((candidate) => candidate.id === storedThreadId)
+      : undefined) ??
+    (await findPersonalPlayerThread(
+      guild,
+      game.channelId,
+      game.id,
+      player.displayName,
+      options?.threadIndex,
+      storedThreadId,
+    ));
   let created = false;
 
   if (!thread) {
@@ -1241,6 +1299,8 @@ export async function ensurePlayerStThread(
     await thread.setArchived(false, "Reopening player ST thread.").catch(() => undefined);
   }
   await ensureThreadAutoArchive(thread);
+
+  await persistPlayerStThreadId(game.id, player.discordUserId, thread.id);
 
   await thread.members.add(player.discordUserId).catch(() => undefined);
   // Always invite the acting ST (role cache is often empty without Guild Members intent).
@@ -1297,7 +1357,7 @@ export async function ensureStorytellerThread(
     const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
     if (!isGameTextChannel(parent)) return null;
 
-    const threadName = storytellerThreadName(parent.name, gameId);
+    const threadName = storytellerThreadName(parent.name);
 
     try {
       const thread = await parent.threads.create({
@@ -1384,7 +1444,7 @@ export async function createPersonalPlayerThread(
     return null;
   }
 
-  const threadName = personalPlayerThreadName(gameId, displayName);
+  const threadName = stPlayerThreadName(displayName);
 
   try {
     const thread = await parent.threads.create({
@@ -1402,6 +1462,7 @@ export async function createPersonalPlayerThread(
       content: `Hi <@${userId}>! This is your private game thread for Grimkeeper.\nOnly you, the storyteller, and server admins can see this thread — do not try to invite others.`,
       allowedMentions: { users: [userId] },
     });
+    await persistPlayerStThreadId(gameId, userId, thread.id);
     return thread;
   } catch {
     return null;
@@ -1415,8 +1476,15 @@ export function isStorytellerThread(
   gameId?: string,
 ): boolean {
   if (candidate.parentId !== parentChannelId) return false;
-  const expectedName = storytellerThreadName(parentChannelName, gameId);
-  return candidate.name === expectedName;
+  const clean = storytellerThreadName(parentChannelName);
+  if (candidate.name === clean) return true;
+  if (gameId && parentChannelName) {
+    return candidate.name === legacyStorytellerThreadName(parentChannelName, gameId);
+  }
+  if (gameId) {
+    return candidate.name === legacyStorytellerThreadName(undefined, gameId);
+  }
+  return false;
 }
 
 export async function getStorytellerThread(
@@ -1430,27 +1498,23 @@ export async function getStorytellerThread(
       return byId as KibVenue;
     }
     if (byId?.isThread() && byId.parentId === parentChannelId) {
-      if (options.gameId) {
-        const short = shortGameId(options.gameId);
-        if (byId.name.includes(" · ") && !byId.name.includes(short)) {
-          // Stale cross-game kibThreadId — fall through to name lookup.
-        } else {
-          return byId;
-        }
-      } else {
-        return byId;
-      }
+      return byId;
     }
   }
 
   const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
   const parentChannelName = parent && "name" in parent ? parent.name : undefined;
   const expectedNames = new Set<string>();
-  const scoped = storytellerThreadName(parentChannelName, options?.gameId);
-  expectedNames.add(scoped);
-  // Migrate older kib threads that predate game-id suffixes.
-  if (options?.gameId && parentChannelName) {
+  const clean = storytellerThreadName(parentChannelName);
+  expectedNames.add(clean);
+  if (parentChannelName) {
     expectedNames.add(kibThreadName(parentChannelName));
+  }
+  if (options?.gameId) {
+    expectedNames.add(legacyStorytellerThreadName(parentChannelName, options.gameId));
+    if (parentChannelName) {
+      expectedNames.add(legacyKibThreadName(parentChannelName, options.gameId));
+    }
   }
 
   const matchesName = (candidate: { parentId: string | null; name: string }) =>
@@ -1458,7 +1522,7 @@ export async function getStorytellerThread(
 
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
   const activeThread =
-    active?.threads.find((candidate) => candidate.name === scoped && matchesName(candidate)) ??
+    active?.threads.find((candidate) => candidate.name === clean && matchesName(candidate)) ??
     active?.threads.find((candidate) => matchesName(candidate));
   if (activeThread) return activeThread;
 
@@ -1466,7 +1530,7 @@ export async function getStorytellerThread(
 
   const archived = await parent.threads.fetchArchived({ type: "private" }).catch(() => null);
   return (
-    archived?.threads.find((candidate) => candidate.name === scoped && matchesName(candidate)) ??
+    archived?.threads.find((candidate) => candidate.name === clean && matchesName(candidate)) ??
     archived?.threads.find((candidate) => matchesName(candidate)) ??
     null
   );
@@ -1514,29 +1578,46 @@ export async function openStorytellerThread(
 
 export async function resolveVotingChannel(
   guild: Guild,
-  game: { id: string; channelId: string },
+  game: { id: string; channelId: string; votingThreadId?: string | null },
   engine: GameEngine,
 ): Promise<DayDiscussionChannel | null> {
   const state = engine.getState();
-  const dayThreadId = state.day?.discordThreadId;
 
+  let votingThreadId = game.votingThreadId;
+  if (votingThreadId === undefined) {
+    const row = await prisma.game.findUnique({
+      where: { id: game.id },
+      select: { votingThreadId: true },
+    });
+    votingThreadId = row?.votingThreadId ?? null;
+  }
+
+  if (votingThreadId) {
+    const byId = await guild.channels.fetch(votingThreadId).catch(() => null);
+    if (byId?.isThread() && byId.parentId === game.channelId) {
+      return byId as DayDiscussionChannel;
+    }
+  }
+
+  const dayThreadId = state.day?.discordThreadId;
   if (dayThreadId) {
     const thread = await guild.channels.fetch(dayThreadId).catch(() => null);
     if (thread?.isThread() && thread.parentId === game.channelId) {
-      const short = shortGameId(game.id);
       if (state.townMode) {
-        // After `/st mark` remaps a former vote thread to Rules/Claims/etc., ignore the stale ID.
-        if (thread.name.includes("Town Voting") && thread.name.includes(short)) {
+        if (isTownVotingThreadName(thread.name, game.id)) {
           return thread as DayDiscussionChannel;
         }
-      } else if (!thread.name.includes(" · ") || thread.name.includes(short)) {
-        return thread as DayDiscussionChannel;
+      } else {
+        const short = shortGameId(game.id);
+        if (!thread.name.includes(" · ") || thread.name.includes(short)) {
+          return thread as DayDiscussionChannel;
+        }
       }
     }
   }
 
   if (state.townMode) {
-    const byName = await findTownVoteThread(guild, game.channelId, game.id);
+    const byName = await findTownVoteThread(guild, game.channelId, game.id, votingThreadId ?? null);
     return (byName as DayDiscussionChannel) ?? null;
   }
 
@@ -1549,11 +1630,24 @@ export async function listPersonalPlayerThreads(
   engine: GameEngine,
   options?: { includeArchived?: boolean },
 ): Promise<DayDiscussionChannel[]> {
+  const rows = await prisma.player.findMany({
+    where: { gameId: game.id },
+    select: { discordUserId: true, stThreadId: true, displayName: true },
+  });
+  const stThreadByUser = new Map(rows.map((row) => [row.discordUserId, row]));
   const threadIndex = await loadParentThreadIndex(guild, game.channelId);
   const threads: DayDiscussionChannel[] = [];
   for (const player of engine.getState().players) {
     if (isFakePlayer(player.discordUserId)) continue;
-    const thread = threadIndex.get(personalPlayerThreadName(game.id, player.displayName));
+    const stored = stThreadByUser.get(player.discordUserId);
+    const thread = await findPersonalPlayerThread(
+      guild,
+      game.channelId,
+      game.id,
+      player.displayName,
+      threadIndex,
+      stored?.stThreadId,
+    );
     if (!thread) continue;
     if (thread.archived && !options?.includeArchived) continue;
     threads.push(thread as DayDiscussionChannel);
@@ -1695,14 +1789,14 @@ export async function refreshStVoteTrackerForGame(
  */
 export async function createTownVoteThread(
   guild: Guild,
-  game: GameRoleIds & { id: string; channelId: string },
+  game: GameRoleIds & { id: string; channelId: string; votingThreadId?: string | null },
   _engine: GameEngine,
 ): Promise<AnyThreadChannel | null> {
   const parent = await guild.channels.fetch(game.channelId).catch(() => null);
   if (!isGameTextChannel(parent)) return null;
 
-  const threadName = townVoteThreadName(game.id);
-  const existing = await findTownVoteThread(guild, game.channelId, game.id);
+  const threadName = townVoteThreadName();
+  const existing = await findTownVoteThread(guild, game.channelId, game.id, game.votingThreadId);
   let thread = existing;
 
   if (!thread) {
@@ -1738,7 +1832,7 @@ export async function createTownVoteThread(
     } catch {
       return null;
     }
-  } else if (thread.name !== threadName) {
+  } else if (thread.name !== threadName && !isTownVotingThreadName(thread.name, game.id)) {
     await thread.setName(threadName, "Restore Town Voting thread name").catch(() => undefined);
   }
 
@@ -1747,20 +1841,43 @@ export async function createTownVoteThread(
   }
   await ensureThreadAutoArchive(thread);
 
+  await prisma.game.update({
+    where: { id: game.id },
+    data: { votingThreadId: thread.id },
+  });
+
   return thread;
+}
+
+export function isTownVotingThreadName(name: string, gameId: string): boolean {
+  if (!name.includes("Town Voting")) return false;
+  if (name === townVoteThreadName()) return true;
+  return name.includes(legacyGameNameSuffix(gameId)) || name === legacyTownVoteThreadName(gameId);
 }
 
 export async function findTownVoteThread(
   guild: Guild,
   parentChannelId: string,
   gameId: string,
+  storedThreadId?: string | null,
 ): Promise<AnyThreadChannel | null> {
-  const expectedName = townVoteThreadName(gameId);
-  const suffix = townVoteThreadNameSuffix(gameId);
-  // Must be Town Voting — Whisper Declaration / Claims / Rules / ST threads share the same
-  // `· <shortId>` suffix and must not be mistaken for the vote channel.
-  const matchesVoteThread = (name: string) =>
-    name.includes("Town Voting") && (name === expectedName || name.includes(suffix));
+  let votingThreadId = storedThreadId;
+  if (votingThreadId === undefined) {
+    const row = await prisma.game.findUnique({
+      where: { id: gameId },
+      select: { votingThreadId: true },
+    });
+    votingThreadId = row?.votingThreadId ?? null;
+  }
+
+  if (votingThreadId) {
+    const byId = await guild.channels.fetch(votingThreadId).catch(() => null);
+    if (byId?.isThread() && byId.parentId === parentChannelId) {
+      return byId;
+    }
+  }
+
+  const matchesVoteThread = (name: string) => isTownVotingThreadName(name, gameId);
 
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
   const activeThread = active?.threads.find(

@@ -84,9 +84,12 @@ const SURFACE_META: Record<
   },
 };
 
-export function townSurfaceThreadName(kind: TownSurfaceKind, gameId: string): string {
-  const label = SURFACE_META[kind].label;
-  return `${label} · ${shortGameId(gameId)}`.slice(0, 100);
+export function townSurfaceThreadName(kind: TownSurfaceKind, _gameId?: string): string {
+  return SURFACE_META[kind].label.slice(0, 100);
+}
+
+export function legacyTownSurfaceThreadName(kind: TownSurfaceKind, gameId: string): string {
+  return `${SURFACE_META[kind].label} · ${shortGameId(gameId)}`.slice(0, 100);
 }
 
 export function townSurfaceNameSuffix(gameId: string): string {
@@ -107,10 +110,13 @@ async function findTownSurfaceThread(
     }
   }
 
-  const suffix = townSurfaceNameSuffix(gameId);
   const label = SURFACE_META[kind].label;
+  const cleanName = townSurfaceThreadName(kind);
+  const legacyName = legacyTownSurfaceThreadName(kind, gameId);
   const matches = (name: string) =>
-    name.includes(label) && (name.endsWith(suffix) || name.includes(suffix));
+    name === cleanName ||
+    name === legacyName ||
+    (name.includes(label) && name.includes(townSurfaceNameSuffix(gameId)));
 
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
   const activeThread = active?.threads.find(
@@ -156,7 +162,7 @@ export async function ensureTownSurfaceThread(
   const parent = await guild.channels.fetch(game.channelId).catch(() => null);
   if (!isGameTextChannel(parent)) return null;
 
-  const threadName = townSurfaceThreadName(kind, game.id);
+  const threadName = townSurfaceThreadName(kind);
   let thread = await findTownSurfaceThread(guild, game.channelId, kind, game.id, storedId);
 
   if (!thread) {
@@ -292,7 +298,7 @@ export async function markTownSurfaceThread(
   }
 
   const meta = SURFACE_META[kind];
-  const threadName = townSurfaceThreadName(kind, game.id);
+  const threadName = townSurfaceThreadName(kind);
 
   if (thread.archived) {
     await thread.setArchived(false, `Marked as ${meta.label}.`).catch(() => undefined);
@@ -318,6 +324,14 @@ export async function markTownSurfaceThread(
     if (game[field] === thread.id) {
       clearOther[field] = null;
     }
+  }
+  // If this thread was Town Voting, clear votingThreadId.
+  const gameRow = await prisma.game.findUnique({
+    where: { id: game.id },
+    select: { votingThreadId: true },
+  });
+  if (gameRow?.votingThreadId === thread.id) {
+    clearOther.votingThreadId = null;
   }
 
   await prisma.game.update({
@@ -351,7 +365,7 @@ export async function markTownVoteThread(
   }
 
   const label = "Town Voting";
-  const threadName = townVoteThreadName(game.id);
+  const threadName = townVoteThreadName();
 
   if (thread.archived) {
     await thread.setArchived(false, `Marked as ${label}.`).catch(() => undefined);
@@ -373,12 +387,14 @@ export async function markTownVoteThread(
       clearOther[field] = null;
     }
   }
-  if (Object.keys(clearOther).length > 0) {
-    await prisma.game.update({
-      where: { id: game.id },
-      data: clearOther,
-    });
-  }
+
+  await prisma.game.update({
+    where: { id: game.id },
+    data: {
+      ...clearOther,
+      votingThreadId: thread.id,
+    },
+  });
 
   await thread
     .send({

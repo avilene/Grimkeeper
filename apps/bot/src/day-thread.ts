@@ -61,13 +61,17 @@ export function dayThreadName(dayNumber: number): string {
   return `Day ${dayNumber} — Town Square`.slice(0, 100);
 }
 
-/** Stable suffix so Town Voting threads stay findable across games. */
+/** Stable suffix so legacy Town Voting threads stay findable across games. */
 export function townVoteThreadNameSuffix(gameId: string): string {
   return `· ${gameId.slice(0, 6)}`;
 }
 
-/** Fixed Town Voting thread name (not renamed each phase). */
-export function townVoteThreadName(gameId: string): string {
+/** Fixed Town Voting thread name (resolved via `votingThreadId`, not the short game id). */
+export function townVoteThreadName(_gameId?: string): string {
+  return "Town Voting";
+}
+
+export function legacyTownVoteThreadName(gameId: string): string {
   return `Town Voting ${townVoteThreadNameSuffix(gameId)}`.slice(0, 100);
 }
 
