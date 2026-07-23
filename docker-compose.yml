@@ -1,4 +1,7 @@
 services:
+  # Keep exactly one bot container. Discord delivers every interaction to every
+  # process sharing DISCORD_TOKEN — scale>1 or a lingering second instance causes
+  # fast 10062 ack races. `docker compose up -d --scale bot=N` must stay at N=1.
   bot:
     image: ${GRIMKEEPER_IMAGE:-grimkeeper-bot:local}
     build: .

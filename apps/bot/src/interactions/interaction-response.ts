@@ -41,8 +41,8 @@ export function isInteractionAlreadyAcknowledged(error: unknown): boolean {
 
 /**
  * Ack failures that are non-fatal (don't crash the handler / don't retry forever).
- * Still worth reporting to the error channel — especially 10062 Unknown interaction,
- * which usually means we missed Discord's 3s ack window.
+ * Callers decide whether to surface them: fast 10062/40060 is usually a twin
+ * gateway consumer; late 10062 usually means we missed Discord's ~3s ack window.
  */
 export function isBenignInteractionAckError(error: unknown): boolean {
   return isRecoverableInteractionResponseError(error);

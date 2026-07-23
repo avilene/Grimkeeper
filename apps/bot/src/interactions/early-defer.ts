@@ -26,6 +26,17 @@ const PLAYER_DAY_COMMANDS = new Set([
 ]);
 
 const INTERACTION_DEFER_BUDGET_MS = 2_800;
+/**
+ * Discord's interaction ack window is ~3s. A 10062 (unknown interaction) with
+ * age well under that is almost always a second gateway consumer racing the
+ * ack (deploy overlap / accidental scale>1), not a slow handler.
+ */
+export const UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS = 2_500;
+
+/** True when a 10062 is worth error-channel noise (likely missed 3s deadline). */
+export function shouldReportUnknownInteractionAck(ageMs: number): boolean {
+  return ageMs > UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS;
+}
 
 /**
  * Help + phase guides: handler builds embeds then editReply.
@@ -129,14 +140,22 @@ function handleAckFailure(
   const context = { ...interactionAckContext(command, ageMs), code };
 
   if (isUnknownInteractionError(error)) {
-    // 10062 — Discord already expired the token (slow bot, duplicate replica, etc.).
-    log("warn", "interaction.ack.unknown", context);
+    // Fast 10062 → twin consumer already acked. Slow 10062 → missed ~3s window.
+    // reportError already logs; avoid a second identical log line for the same event.
+    if (!shouldReportUnknownInteractionAck(ageMs)) {
+      log("info", "interaction.ack.unknown", { ...context, likelyDuplicateConsumer: true });
+      return;
+    }
     void reportError("interaction.ack.unknown", error, context);
     return;
   }
 
   if (isBenignInteractionAckError(error)) {
-    log("warn", "interaction.ack.skipped", context);
+    // 40060 — already acknowledged; same race pattern when age is low.
+    if (!shouldReportUnknownInteractionAck(ageMs)) {
+      log("info", "interaction.ack.skipped", { ...context, likelyDuplicateConsumer: true });
+      return;
+    }
     void reportError("interaction.ack.skipped", error, context);
     return;
   }
