@@ -87,6 +87,21 @@ docker compose up --build
 
 Mount a volume at `/app/data` for SQLite persistence (configured in `docker-compose.yml`).
 
+### Admin UI on the droplet
+
+Enable the `admin` compose profile (same image + SQLite volume as the bot). Full steps: [`apps/admin/README.md`](apps/admin/README.md#production-droplet).
+
+```bash
+# In .env on the droplet:
+# COMPOSE_PROFILES=admin
+# DISCORD_CLIENT_SECRET=...
+# ADMIN_SESSION_SECRET=...
+# ADMIN_OAUTH_CALLBACK_URL=https://admin.example.com/auth/callback
+# ALLOWED_USER_IDS=your_discord_user_id
+
+pnpm docker:redeploy
+```
+
 ## Grafana Cloud Logs (Free Tier)
 
 This repository includes a `promtail` service that ships container logs to Grafana Cloud Loki.

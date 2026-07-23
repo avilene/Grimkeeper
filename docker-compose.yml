@@ -9,11 +9,40 @@ services:
     env_file:
       - .env
     environment:
+      GRIMKEEPER_SERVICE: bot
       DATABASE_URL: file:/app/data/grimkeeper.db
       DEV_MODE: ${DEV_MODE:-false}
       DEPLOY_TRIGGER: ${DEPLOY_TRIGGER:-unknown}
     volumes:
       - grimkeeper-data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional — enable with COMPOSE_PROFILES=admin (or --profile admin).
+  # Shares the bot SQLite volume. Requires Discord OAuth + ALLOWED_USER_IDS.
+  # See apps/admin/README.md (Production).
+  admin:
+    profiles: ["admin"]
+    image: ${GRIMKEEPER_IMAGE:-grimkeeper-bot:local}
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - bot
+    env_file:
+      - .env
+    environment:
+      GRIMKEEPER_SERVICE: admin
+      DATABASE_URL: file:/app/data/grimkeeper.db
+      # Container always listens on 3847; map a host port via ADMIN_HOST_PORT.
+      ADMIN_PORT: "3847"
+      NODE_ENV: production
+    volumes:
+      - grimkeeper-data:/app/data
+    ports:
+      - "${ADMIN_BIND:-0.0.0.0}:${ADMIN_HOST_PORT:-3847}:3847"
     logging:
       driver: json-file
       options:

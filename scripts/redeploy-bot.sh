@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Pull GRIMKEEPER_IMAGE and restart the bot container (droplet / webhook / watcher).
+# Pull GRIMKEEPER_IMAGE and restart bot (+ admin when the admin compose profile is on).
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -29,19 +29,28 @@ fi
 
 printf '[%s] [redeploy] Pulling %s (trigger=%s)\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GRIMKEEPER_IMAGE" "$trigger"
 
-if ! docker compose pull bot; then
+# Compose loads COMPOSE_PROFILES from .env — include admin when that profile is enabled.
+services="bot"
+if docker compose config --services 2>/dev/null | grep -qx admin; then
+  services="bot admin"
+fi
+
+# shellcheck disable=SC2086
+if ! docker compose pull $services; then
   notify_failure "docker compose pull failed — run docker login ghcr.io on the droplet"
   echo "docker compose pull failed" >&2
   exit 1
 fi
 
-if ! DEPLOY_TRIGGER="$trigger" docker compose up -d --no-build --force-recreate bot; then
+# shellcheck disable=SC2086
+if ! DEPLOY_TRIGGER="$trigger" docker compose up -d --no-build --force-recreate $services; then
   notify_failure "docker compose up failed"
   echo "docker compose up failed" >&2
   exit 1
 fi
 
-docker compose ps bot
+# shellcheck disable=SC2086
+docker compose ps $services
 
 if [ -f ./scripts/docker-cleanup.sh ]; then
   sh ./scripts/docker-cleanup.sh || true

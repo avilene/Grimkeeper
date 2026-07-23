@@ -11,7 +11,7 @@ Minimal web UI to inspect/edit live game projections.
 - List/edit games and players (Discord IDs, seats, roles, threads, …)
 - Errors/performance via **Sentry** (`SENTRY_DSN`) — not a built-in log explorer
 
-## Setup
+## Local setup
 
 1. In the [Discord Developer Portal](https://discord.com/developers/applications) for the same app as the bot:
    - OAuth2 → add redirect: `http://localhost:3847/auth/callback`
@@ -41,6 +41,45 @@ pnpm admin:dev
 
 Open http://localhost:3847
 
+## Production (droplet)
+
+Admin shares the bot Docker image and the SQLite volume. Enable the compose profile:
+
+1. **Discord Developer Portal** → OAuth2 → Redirects, add your public callback, e.g.
+   - `https://admin.example.com/auth/callback` (recommended, behind Caddy/nginx), or
+   - `http://YOUR_DROPLET_IP:3847/auth/callback` (quick / no TLS)
+2. On the droplet `.env` (same file as the bot):
+
+```bash
+COMPOSE_PROFILES=admin
+
+DISCORD_CLIENT_ID=...              # already required by the bot
+DISCORD_CLIENT_SECRET=...          # Discord OAuth2 → Client Secret
+ADMIN_SESSION_SECRET=...           # openssl rand -hex 32
+ADMIN_OAUTH_CALLBACK_URL=https://admin.example.com/auth/callback
+ALLOWED_USER_IDS=YOUR_DISCORD_USER_ID
+# Optional host bind / port (container always listens on 3847)
+# ADMIN_HOST_PORT=3847
+# ADMIN_BIND=0.0.0.0
+# ADMIN_COOKIE_SECURE=true         # auto-on when callback URL is https://
+# SENTRY_DSN=...                   # optional; same as bot is fine
+```
+
+3. Redeploy (pulls the image and recreates **bot + admin**):
+
+```bash
+pnpm docker:redeploy
+# or: docker compose --profile admin up -d
+```
+
+4. Open the public URL and log in with Discord. Empty `ALLOWED_USER_IDS` denies everyone.
+
+**Notes**
+
+- Keep **exactly one** bot replica (`docker compose ps` — scale must stay 1).
+- Prefer HTTPS + reverse proxy; if you terminate TLS elsewhere, leave `ADMIN_COOKIE_SECURE` unset (auto-detects `https://` callbacks) or set it to `true`.
+- To bind admin to localhost only (proxy on the host): `ADMIN_BIND=127.0.0.1`
+
 ## Routes
 
 | Method | Path | Description |
@@ -61,4 +100,3 @@ Open http://localhost:3847
 - [ ] CSRF tokens on POST forms
 - [ ] Audit log of admin edits
 - [ ] Optional: append compensating engine events instead of raw projection writes
-- [ ] Docker / compose service for droplet deploys

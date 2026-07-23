@@ -89,7 +89,11 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.ADMIN_COOKIE_SECURE === "true",
+      // Prefer explicit ADMIN_COOKIE_SECURE; otherwise secure cookies when OAuth is HTTPS.
+      secure:
+        process.env.ADMIN_COOKIE_SECURE === "true" ||
+        (process.env.ADMIN_COOKIE_SECURE !== "false" &&
+          adminConfig.redirectUri().startsWith("https://")),
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   }),

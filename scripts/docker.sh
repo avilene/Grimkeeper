@@ -49,6 +49,12 @@ Droplet setup (recommended — skips pnpm install on server):
   3. docker login ghcr.io -u YOUR_USER
   4. pnpm docker:redeploy
 
+Admin UI on the droplet (optional compose profile):
+  1. Discord OAuth2 redirect: https://YOUR_HOST/auth/callback (or http://IP:3847/auth/callback)
+  2. In .env: COMPOSE_PROFILES=admin (and OAuth / ALLOWED_USER_IDS — see apps/admin/README.md)
+  3. pnpm docker:redeploy   # recreates bot + admin from the same image
+  4. Open http://YOUR_DROPLET:3847 (or put Caddy/nginx + TLS in front)
+
 Build notifications:
   - GitHub repo secret: DISCORD_BUILD_WEBHOOK_URL (Discord channel webhook)
   - Each push to main posts build success/failure to that channel
@@ -96,15 +102,27 @@ case "$cmd" in
         echo "Lockfile unchanged — reusing cached deps layer (compile only)."
       fi
       echo "Building locally (set GRIMKEEPER_IMAGE in .env to skip this on droplet)..."
-      docker compose build bot
+      services="bot"
+      if docker compose config --services 2>/dev/null | grep -qx admin; then
+        services="bot admin"
+      fi
+      # shellcheck disable=SC2086
+      docker compose build $services
       record_lockfile_hash
-      DEPLOY_TRIGGER=manual docker compose up -d
+      # shellcheck disable=SC2086
+      DEPLOY_TRIGGER=manual docker compose up -d $services
     fi
     docker compose ps
     ;;
   restart)
-    DEPLOY_TRIGGER=restart docker compose up -d --no-build bot
-    docker compose ps
+    services="bot"
+    if docker compose config --services 2>/dev/null | grep -qx admin; then
+      services="bot admin"
+    fi
+    # shellcheck disable=SC2086
+    DEPLOY_TRIGGER=restart docker compose up -d --no-build $services
+    # shellcheck disable=SC2086
+    docker compose ps $services
     ;;
   cleanup)
     sh scripts/docker-cleanup.sh
@@ -114,10 +132,17 @@ case "$cmd" in
     ;;
   fresh)
     echo "Force full local rebuild (pnpm install + compile)..."
-    docker compose build --no-cache bot
+    services="bot"
+    if docker compose config --services 2>/dev/null | grep -qx admin; then
+      services="bot admin"
+    fi
+    # shellcheck disable=SC2086
+    docker compose build --no-cache $services
     record_lockfile_hash
-    DEPLOY_TRIGGER=manual docker compose up -d
-    docker compose ps
+    # shellcheck disable=SC2086
+    DEPLOY_TRIGGER=manual docker compose up -d $services
+    # shellcheck disable=SC2086
+    docker compose ps $services
     ;;
   -h|--help|help)
     usage
