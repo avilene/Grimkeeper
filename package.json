@@ -9,6 +9,7 @@
     "build": "pnpm -r build",
     "dev": "pnpm --filter bot dev",
     "predev": "pnpm --filter @grimkeeper/database db:generate:if-needed",
+    "admin:dev": "pnpm --filter admin dev",
     "test": "pnpm --filter @grimkeeper/engine test && pnpm --filter @grimkeeper/database test && pnpm --filter bot test",
     "db:push": "pnpm --filter @grimkeeper/database db:push",
     "db:generate": "pnpm --filter @grimkeeper/database db:generate",

@@ -157,6 +157,8 @@ model GameEvent {
 
   @@unique([gameId, seq])
   @@index([gameId])
+  @@index([type, createdAt])
+  @@index([createdAt])
 }
 
 /** Per-guild ST queue board (usually a dedicated Discord thread). */
