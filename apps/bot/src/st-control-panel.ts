@@ -191,35 +191,34 @@ async function findStControlPanelMessages(channel: KibVenue): Promise<Message[]>
   return found;
 }
 
-async function findStControlPanelMessage(
+/** Strip buttons from prior panels so STs cannot keep clicking stale customIds. */
+async function retireStControlPanels(
   channel: KibVenue,
-  gameId: string,
-): Promise<Message | null> {
+  options?: { exceptMessageId?: string },
+): Promise<number> {
   const all = await findStControlPanelMessages(channel);
-  return all.find((message) => parseStPanelFooter(message.embeds[0]?.footer?.text) === gameId) ?? null;
-}
-
-/** Disable buttons on panels for other/ended games so STs stop clicking stale customIds. */
-async function retireStaleStControlPanels(
-  channel: KibVenue,
-  currentGameId: string,
-): Promise<void> {
-  const all = await findStControlPanelMessages(channel);
+  let retired = 0;
   await Promise.all(
     all.map(async (message) => {
-      const footerGameId = parseStPanelFooter(message.embeds[0]?.footer?.text);
-      if (!footerGameId || footerGameId === currentGameId) return;
+      if (options?.exceptMessageId && message.id === options.exceptMessageId) return;
+      await message.unpin().catch(() => undefined);
       await message
         .edit({
           embeds: message.embeds,
           components: [],
-          content: "_This panel is from an older game — use the current ST control panel (or `/st panel`)._",
+          content: "_Superseded — use the latest ST control panel below (or `/st panel`)._",
         })
         .catch(() => undefined);
+      retired += 1;
     }),
   );
+  return retired;
 }
 
+/**
+ * Always post a **new** control panel message with fresh button customIds.
+ * Older panels in kib are unpinned and have their buttons stripped.
+ */
 export async function upsertStControlPanel(
   guild: Guild,
   parentChannelId: string,
@@ -232,20 +231,13 @@ export async function upsertStControlPanel(
   });
   if (!thread?.isTextBased()) return null;
 
-  const gameId = engine.getState().gameId;
   const embed = buildStControlPanelEmbed(engine);
   const components = buildStControlPanelComponents(engine);
-  await retireStaleStControlPanels(thread, gameId);
-  const existing = await findStControlPanelMessage(thread, gameId);
-
-  if (existing) {
-    await existing.edit({ content: null, embeds: [embed], components }).catch(() => undefined);
-    return existing;
-  }
 
   const message = await thread.send({ embeds: [embed], components }).catch(() => null);
-  if (message) {
-    await message.pin().catch(() => undefined);
-  }
+  if (!message) return null;
+
+  await message.pin().catch(() => undefined);
+  await retireStControlPanels(thread, { exceptMessageId: message.id });
   return message;
 }

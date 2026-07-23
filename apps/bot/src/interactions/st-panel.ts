@@ -140,12 +140,11 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
     const { game, engine, guild } = ctx;
 
     if (action === "refresh") {
-      await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
+      const message = await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
       await interaction.editReply({
-        content:
-          game.id === gameId
-            ? "Control panel refreshed."
-            : "Control panel refreshed for the **current** game (this button was from an older panel).",
+        content: message
+          ? "Posted a **new** control panel in kib (old panels’ buttons were disabled)."
+          : "Could not post a new control panel (is kib available?).",
       });
       return true;
     }

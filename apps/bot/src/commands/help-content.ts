@@ -414,7 +414,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             "`setup-town` enters **Setup** (opens Voting, Whisper Declaration, Public Claims, Rules). `/st next-phase` → Night 1 → Day 1.",
             "Public: `/vote` or Vote button. Private: `/privatevote` (kib vote tracker).",
             "`/st mark` assigns a thread as Town Voting, Rules, Public Claims, or Whisper Declaration.",
-            "`/st do recreate-threads` (Voting + town surfaces) · `recreate-player-thread` (one private ST thread).",
+            "`/st do recreate-threads` (Voting + town surfaces) · `/st recreate-player-thread` (one private ST thread).",
             "Vote lock/count stay in Town Voting; **Announce & resolve** posts to Town Voting + audit log.",
             "Each living player may nominate once per day; each player may be nominated once. Ghosts cannot nominate.",
             "`next-phase` advances Setup → Night 1 → Day 1 → …. Renames town to `base-setup` / `base-nightN` / `base-dayN`.",

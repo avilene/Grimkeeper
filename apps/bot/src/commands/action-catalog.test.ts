@@ -27,6 +27,11 @@ describe("normalizeDoActionInput", () => {
     expect(normalizeDoActionInput("close-nominations — Close nominations")).toBe(
       "close-nominations",
     );
+    expect(
+      normalizeDoActionInput(
+        "recreate-player-thread—Create or reopen one player's private ST thread",
+      ),
+    ).toBe("recreate-player-thread");
   });
 });
 
@@ -39,6 +44,9 @@ describe("resolveDoActionName", () => {
       ),
     ).toBe("log");
     expect(resolveDoActionName("LOG", ST_DO_ACTIONS)).toBe("log");
+    expect(resolveDoActionName("recreate-player-thread", ST_DO_ACTIONS)).toBe(
+      "recreate-player-thread",
+    );
   });
 
   it("returns null for unknown actions", () => {
@@ -65,6 +73,7 @@ describe("ST_SLASH_SHORTCUTS", () => {
         "end",
         "next-phase",
         "reset-to-setup",
+        "recreate-player-thread",
         "close-nominations",
         "resolve-next",
         "execute",

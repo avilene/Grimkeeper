@@ -64,6 +64,11 @@ export const ST_SLASH_SHORTCUTS: DoAction[] = [
     name: "reset-to-setup",
     description: "Wipe day/night back to Setup (ALLOWED_USER_IDS only)",
   },
+  {
+    name: "recreate-player-thread",
+    description: "Create or reopen one player's private ST thread",
+    needs: ["player"],
+  },
   { name: "close-nominations", description: "Close nominations for the day" },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
@@ -132,8 +137,9 @@ export const PLAYER_VOTE_ACTIONS: DoAction[] = [
 export function normalizeDoActionInput(raw: string): string {
   const trimmed = raw.trim().toLowerCase();
   if (!trimmed) return "";
-  // Split on " — ", " – ", or " - " (spaces required so `mark-dead` stays intact).
-  const beforeDash = trimmed.split(/\s+[—–-]\s+/)[0] ?? trimmed;
+  // Split on spaced dashes, or bare em/en dashes (mobile often pastes `name—description`
+  // with no spaces). Do not split on bare `-` so `mark-dead` / `recreate-player-thread` stay intact.
+  const beforeDash = trimmed.split(/\s+[—–-]\s+|[—–]/)[0] ?? trimmed;
   return beforeDash.trim();
 }
 

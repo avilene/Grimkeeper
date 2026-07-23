@@ -424,7 +424,7 @@ export class StCommandsMinimal {
       const thread = await getKibThreadForGame(interaction.guild, game);
       await replyOrEditInteraction(interaction, {
         content: message
-          ? `ST control panel updated in ${thread ? `<#${thread.id}>` : "kib"}.`
+          ? `Posted a **new** ST control panel in ${thread ? `<#${thread.id}>` : "kib"} (old panels’ buttons disabled).`
           : "Could not post the control panel (is kib available?).",
         flags: MessageFlags.Ephemeral,
       });
@@ -550,6 +550,24 @@ export class StCommandsMinimal {
   async resetToSetupSlash(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     await this.resetToSetup(interaction);
+  }
+
+  @Slash({
+    name: "recreate-player-thread",
+    description: "Create or reopen one player's private ST thread",
+  })
+  async recreatePlayerThreadSlash(
+    @SlashOption({
+      name: "player",
+      description: "Player whose ST thread to recreate",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    player: User,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.recreatePlayerThread(player, interaction);
   }
 
   @Slash({
