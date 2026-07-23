@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { interactionMemberHasRole, memberHasGameStRole } from "./command-context.js";
+import {
+  canActAsStoryteller,
+  interactionMemberHasRole,
+  memberHasGameStRole,
+} from "./command-context.js";
 
 describe("interactionMemberHasRole", () => {
   it("reads role ids from APIInteractionGuildMember (string[] roles)", () => {
@@ -118,5 +122,46 @@ describe("memberHasGameStRole", () => {
       }),
     ).resolves.toBe(true);
     expect(fetch).toHaveBeenCalledWith("u1");
+  });
+});
+
+describe("canActAsStoryteller", () => {
+  it("accepts engine storytellers without checking Discord roles", async () => {
+    const interaction = {
+      user: { id: "u1" },
+      guild: null,
+      member: null,
+    };
+    await expect(
+      canActAsStoryteller(interaction as never, { channelId: "town", stRoleId: "st" }, {
+        isStoryteller: (id) => id === "u1",
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it("accepts later-added Discord ST role holders who are not engine STs", async () => {
+    const interaction = {
+      user: { id: "u2" },
+      guild: { id: "g1" },
+      member: { roles: ["game-st"] },
+    };
+    await expect(
+      canActAsStoryteller(interaction as never, { channelId: "town", stRoleId: "game-st" }, {
+        isStoryteller: () => false,
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it("rejects users with neither engine ST nor game ST role", async () => {
+    const interaction = {
+      user: { id: "u3" },
+      guild: { id: "g1" },
+      member: { roles: ["player"] },
+    };
+    await expect(
+      canActAsStoryteller(interaction as never, { channelId: "town", stRoleId: "game-st" }, {
+        isStoryteller: () => false,
+      }),
+    ).resolves.toBe(false);
   });
 });

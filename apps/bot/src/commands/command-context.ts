@@ -340,13 +340,7 @@ export async function requireStorytellerGame(interaction: CommandInteraction) {
   }
 
   const engine = await loadEngine(game.id);
-  const isEngineSt = engine.isStoryteller(interaction.user.id);
-  const hasStRole = await memberHasGameStRole(interaction, game);
-  const isAllowlistOverride = await isInExplicitAllowlist(interaction);
-
-  // Accept Discord ST role for the linked game (same as reminders) — not only engine storyteller ids.
-  // Running from a kib channel/thread resolves the game via kibThreadId first.
-  if (!isEngineSt && !hasStRole && !isAllowlistOverride) {
+  if (!(await canActAsStoryteller(interaction, game, engine))) {
     const detail = !game.stRoleId
       ? " This game has no ST role linked in the DB — re-run `/game setup` with `st:`, or ask an allowlisted ST to `/st do add-st` you."
       : " Need this game’s ST Discord role, engine storyteller status (`/st do add-st`), or `ALLOWED_USER_IDS`.";
@@ -355,9 +349,6 @@ export async function requireStorytellerGame(interaction: CommandInteraction) {
       gameId: game.id,
       channelId: interaction.channelId,
       stRoleId: game.stRoleId ?? null,
-      isEngineSt,
-      hasStRole,
-      isAllowlistOverride,
     });
     await replyOrEditInteraction(interaction, {
       content: `Only storytellers can run this command.${detail}`,
@@ -582,7 +573,7 @@ export async function requireCommandAccess(interaction: CommandInteraction): Pro
  *   without Guild Members intent — callers should REST-fetch rather than deny)
  */
 export function interactionMemberHasRole(
-  interaction: Pick<CommandInteraction, "member">,
+  interaction: Pick<CommandInteraction, "member"> | { member?: CommandInteraction["member"] },
   roleId: string,
 ): boolean | null {
   const member = interaction.member;
@@ -602,7 +593,11 @@ export function interactionMemberHasRole(
 }
 
 export async function memberHasGameStRole(
-  interaction: CommandInteraction,
+  interaction: {
+    user: { id: string };
+    guild: Guild | null;
+    member?: CommandInteraction["member"];
+  },
   game: GameRoleIds,
 ): Promise<boolean> {
   if (!game.stRoleId || !interaction.guild) return false;
@@ -614,6 +609,26 @@ export async function memberHasGameStRole(
   // REST member fetch (does not require Guild Members gateway intent).
   const member = await fetchGuildMemberWithTimeout(interaction.guild, interaction.user.id);
   return member?.roles.cache.has(game.stRoleId) ?? false;
+}
+
+/**
+ * Same access as `/st` commands: engine storyteller, game ST Discord role, or allowlist.
+ * Use for buttons/selects (control panel, vote tracker) as well as slash commands.
+ */
+export async function canActAsStoryteller(
+  interaction: {
+    user: { id: string };
+    guild: Guild | null;
+    guildId?: string | null;
+    member?: CommandInteraction["member"];
+  },
+  game: GameRoleIds,
+  engine: { isStoryteller: (userId: string) => boolean },
+): Promise<boolean> {
+  if (engine.isStoryteller(interaction.user.id)) return true;
+  if (await memberHasGameStRole(interaction, game)) return true;
+  if (await isInExplicitAllowlist(interaction)) return true;
+  return false;
 }
 
 export async function requireKibThread(

@@ -9,6 +9,7 @@ import { getGameById } from "@grimkeeper/database";
 import { GameCommandKind } from "@grimkeeper/engine";
 
 import {
+  canActAsStoryteller,
   getStorytellerThread,
   loadEngine,
   persistEvents,
@@ -58,8 +59,13 @@ async function loadPanelStorytellerContext(
   }
 
   const engine = await loadEngine(game.id);
-  if (!engine.isStoryteller(interaction.user.id)) {
-    return { ok: false, error: "Only storytellers can use the control panel." };
+  if (!(await canActAsStoryteller(interaction, game, engine))) {
+    return {
+      ok: false,
+      error: !game.stRoleId
+        ? "Only storytellers can use the control panel. This game has no ST role linked — ask an ST to `/st do add-st` you, or re-run `/game setup` with `st:`."
+        : "Only storytellers can use the control panel. Need this game’s ST Discord role, `/st do add-st`, or `ALLOWED_USER_IDS`.",
+    };
   }
 
   return { ok: true, game, engine, guild: interaction.guild };

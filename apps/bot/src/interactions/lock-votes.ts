@@ -3,6 +3,7 @@ import { createReminder, getGameById, prisma } from "@grimkeeper/database";
 import { GameCommandKind, type GameEngine } from "@grimkeeper/engine";
 
 import {
+  canActAsStoryteller,
   loadEngine,
   persistEvents,
   refreshNominationEverywhere,
@@ -65,8 +66,12 @@ export async function handleLockVotesButton(interaction: ButtonInteraction): Pro
 
   try {
     const engine = await loadEngine(game.id);
-    if (!engine.isStoryteller(interaction.user.id)) {
-      await interaction.editReply({ content: "Only storytellers can use the vote tracker." });
+    if (!(await canActAsStoryteller(interaction, game, engine))) {
+      await interaction.editReply({
+        content: !game.stRoleId
+          ? "Only storytellers can use the vote tracker. This game has no ST role linked — ask an ST to `/st do add-st` you."
+          : "Only storytellers can use the vote tracker. Need this game’s ST Discord role, `/st do add-st`, or `ALLOWED_USER_IDS`.",
+      });
       return true;
     }
 
