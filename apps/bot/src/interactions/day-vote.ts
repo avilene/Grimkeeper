@@ -30,8 +30,10 @@ import { reportError } from "../error-reporter.js";
 import { log } from "../logger.js";
 import {
   INTERACTION_PENDING_CONTENT,
+  interactionCreatedAgeMs,
   isRecoverableInteractionResponseError,
   isUnknownInteractionError,
+  shouldReportUnknownInteractionAck,
 } from "./interaction-response.js";
 
 const VOTE_CHOICE_FIELD = "choice";
@@ -136,11 +138,21 @@ export async function handleVoteButton(interaction: ButtonInteraction): Promise<
       throw error;
     }
     if (isUnknownInteractionError(error)) {
+      const ageMs = interactionCreatedAgeMs(interaction);
+      if (!shouldReportUnknownInteractionAck(ageMs)) {
+        log("info", "vote.modal.open.unknown", {
+          customId: interaction.customId,
+          ageMs,
+          suppressed: true,
+        });
+        return true;
+      }
       void reportError("vote.modal.open.unknown", error, {
         customId: interaction.customId,
         guildId: interaction.guildId,
         channelId: interaction.channelId,
         userId: interaction.user.id,
+        ageMs,
       });
     }
   }

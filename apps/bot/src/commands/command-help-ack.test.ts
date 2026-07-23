@@ -74,6 +74,7 @@ describe("StGuideCommands.setup ack handling", () => {
     const cmd = new StGuideCommands();
     const ix = interaction({
       deferred: true,
+      createdTimestamp: Date.now() - 2_800,
       editReply: vi.fn().mockRejectedValue({ code: 40060, name: "DiscordAPIError" }),
     });
     await cmd.setup(ix as never);
@@ -90,9 +91,22 @@ describe("StGuideCommands.setup ack handling", () => {
     expect(ix.reply).not.toHaveBeenCalled();
   });
 
-  it("reports unknown interaction as expired, not failed", async () => {
+  it("does not error-channel spam fast unknown interactions", async () => {
     const cmd = new StGuideCommands();
     const ix = interaction({
+      createdTimestamp: Date.now() - 191,
+      deferReply: vi.fn().mockRejectedValue({ code: 10062 }),
+    });
+    await cmd.setup(ix as never);
+    expect(reportError).not.toHaveBeenCalled();
+    expect(ix.reply).not.toHaveBeenCalled();
+    expect(ix.editReply).not.toHaveBeenCalled();
+  });
+
+  it("reports late unknown interaction as expired, not failed", async () => {
+    const cmd = new StGuideCommands();
+    const ix = interaction({
+      createdTimestamp: Date.now() - 2_800,
       deferReply: vi.fn().mockRejectedValue({ code: 10062 }),
     });
     await cmd.setup(ix as never);

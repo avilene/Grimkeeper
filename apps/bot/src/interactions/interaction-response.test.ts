@@ -2,11 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   INTERACTION_PENDING_CONTENT,
+  interactionCreatedAgeMs,
   isBenignInteractionAckError,
   isInteractionAlreadyAcknowledged,
   isRecoverableInteractionResponseError,
   isUnknownInteractionError,
+  shouldReportUnknownInteractionAck,
   toEditReplyPayload,
+  UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS,
   withAcknowledgedFallback,
 } from "./interaction-response.js";
 
@@ -30,6 +33,18 @@ describe("isRecoverableInteractionResponseError", () => {
   });
 });
 
+describe("shouldReportUnknownInteractionAck", () => {
+  it("suppresses fast races and reports near the 3s deadline", () => {
+    expect(shouldReportUnknownInteractionAck(191)).toBe(false);
+    expect(shouldReportUnknownInteractionAck(UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS)).toBe(false);
+    expect(shouldReportUnknownInteractionAck(UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS + 1)).toBe(true);
+  });
+
+  it("computes interaction age from createdTimestamp", () => {
+    const now = 1_000_000;
+    expect(interactionCreatedAgeMs({ createdTimestamp: now - 500 }, now)).toBe(500);
+  });
+});
 describe("isInteractionAlreadyAcknowledged", () => {
   it("matches recoverable acknowledgement errors", () => {
     expect(isInteractionAlreadyAcknowledged({ code: 40060 })).toBe(true);

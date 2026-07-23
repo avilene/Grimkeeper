@@ -24,7 +24,11 @@ import {
 import { loadCommandModules } from "./load-commands.js";
 import { log } from "./logger.js";
 import { startEarlyDefer } from "./interactions/early-defer.js";
-import { isRecoverableInteractionResponseError } from "./interactions/interaction-response.js";
+import {
+  interactionCreatedAgeMs,
+  isRecoverableInteractionResponseError,
+  shouldReportUnknownInteractionAck,
+} from "./interactions/interaction-response.js";
 import { tryMarkInteractionOnce } from "./interactions/interaction-dedup.js";
 import { logCommandInvoked } from "./action-log.js";
 import { startReminderScheduler } from "./reminder-scheduler.js";
@@ -148,11 +152,8 @@ client.on("interactionCreate", (interaction) => {
     }
     await client.executeInteraction(interaction);
   })().catch((error: unknown) => {
-    const recoverable =
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      (error.code === 10062 || isRecoverableInteractionResponseError(error));
+    const recoverable = isRecoverableInteractionResponseError(error);
+    const ageMs = interactionCreatedAgeMs(interaction);
 
     const context = {
       command: interaction.isChatInputCommand() ? interaction.commandName : interaction.type,
@@ -165,11 +166,15 @@ client.on("interactionCreate", (interaction) => {
       guildId: interaction.guildId,
       channelId: interaction.channelId,
       userId: interaction.user.id,
+      ageMs,
     };
 
     if (recoverable) {
-      // Still surface to the error channel — these often explain "hanging" commands
-      // (expired token, duplicate bot ack, etc.).
+      // Fast 10062/40060 → twin consumer race. Late → missed ~3s ack window.
+      if (!shouldReportUnknownInteractionAck(ageMs)) {
+        log("info", "interaction.recoverable", { ...context, suppressed: true });
+        return;
+      }
       void reportError("interaction.recoverable", error, context);
       return;
     }

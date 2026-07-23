@@ -5,8 +5,14 @@ import {
   INTERACTION_PENDING_CONTENT,
   isBenignInteractionAckError,
   isUnknownInteractionError,
+  shouldReportUnknownInteractionAck,
 } from "./interaction-response.js";
 import { log } from "../logger.js";
+
+export {
+  UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS,
+  shouldReportUnknownInteractionAck,
+} from "./interaction-response.js";
 
 const FAST_SUBCOMMANDS = new Set(["help", "guide"]);
 /** Nested `/st guide setup|day|night` — ack with public defer, not ephemeral "Working…". */
@@ -26,17 +32,6 @@ const PLAYER_DAY_COMMANDS = new Set([
 ]);
 
 const INTERACTION_DEFER_BUDGET_MS = 2_800;
-/**
- * Discord's interaction ack window is ~3s. A 10062 (unknown interaction) with
- * age well under that is almost always a second gateway consumer racing the
- * ack (deploy overlap / accidental scale>1), not a slow handler.
- */
-export const UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS = 2_500;
-
-/** True when a 10062 is worth error-channel noise (likely missed 3s deadline). */
-export function shouldReportUnknownInteractionAck(ageMs: number): boolean {
-  return ageMs > UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS;
-}
 
 /**
  * Help + phase guides: handler builds embeds then editReply.

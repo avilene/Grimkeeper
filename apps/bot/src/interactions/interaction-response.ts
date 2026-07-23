@@ -48,6 +48,26 @@ export function isBenignInteractionAckError(error: unknown): boolean {
   return isRecoverableInteractionResponseError(error);
 }
 
+/**
+ * Discord's interaction ack window is ~3s. A 10062/40060 with age well under that
+ * is almost always a second gateway consumer racing the ack (deploy overlap /
+ * accidental scale>1), not a slow handler — skip error-channel spam.
+ */
+export const UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS = 2_500;
+
+/** Age of an interaction since Discord created it (ms). */
+export function interactionCreatedAgeMs(
+  interaction: { createdTimestamp: number },
+  now = Date.now(),
+): number {
+  return now - interaction.createdTimestamp;
+}
+
+/** True when a benign 10062/40060 is worth error-channel noise (likely missed deadline). */
+export function shouldReportUnknownInteractionAck(ageMs: number): boolean {
+  return ageMs > UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS;
+}
+
 export async function withAcknowledgedFallback(
   attempts: Array<() => Promise<unknown>>,
 ): Promise<void> {

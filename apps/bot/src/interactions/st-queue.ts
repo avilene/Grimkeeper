@@ -27,6 +27,7 @@ import {
 
 import { canUseBot } from "../access.js";
 import { reportError } from "../error-reporter.js";
+import { log } from "../logger.js";
 import {
   getConfiguredQueueThreadId,
   parseStQueueButtonCustomId,
@@ -37,8 +38,10 @@ import {
   stQueueSelectCustomId,
 } from "../st-queue-board.js";
 import {
+  interactionCreatedAgeMs,
   isRecoverableInteractionResponseError,
   isUnknownInteractionError,
+  shouldReportUnknownInteractionAck,
 } from "./interaction-response.js";
 
 const FIELD_SCRIPT_NAME = "script_name";
@@ -76,11 +79,21 @@ async function safeEdit(
   } catch (error) {
     if (!isRecoverableInteractionResponseError(error)) throw error;
     if (isUnknownInteractionError(error)) {
+      const ageMs = interactionCreatedAgeMs(interaction);
+      if (!shouldReportUnknownInteractionAck(ageMs)) {
+        log("info", "stQueue.reply.unknown", {
+          customId: interaction.customId,
+          ageMs,
+          suppressed: true,
+        });
+        return;
+      }
       void reportError("stQueue.reply.unknown", error, {
         customId: interaction.customId,
         guildId: interaction.guildId,
         channelId: interaction.channelId,
         userId: interaction.user.id,
+        ageMs,
       });
     }
   }
