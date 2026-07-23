@@ -9,6 +9,7 @@ Discord -> Adapter -> Engine -> Events -> Projections -> Persistence
 ```
 
 - **apps/bot** — discordx adapter (slash commands)
+- **apps/admin** — optional Discord-OAuth admin UI for game projections (see `apps/admin/README.md`)
 - **packages/engine** — event-sourced game engine + character plugins
 - **packages/database** — Prisma + SQLite event store
 
