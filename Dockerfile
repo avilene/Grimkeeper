@@ -21,8 +21,9 @@ COPY apps apps/
 COPY packages packages/
 
 ENV DATABASE_URL=file:./packages/database/prisma/dev.db
-RUN pnpm --filter @grimkeeper/database build \
-  && pnpm --filter @grimkeeper/engine build \
+# Engine must build first — database imports `@grimkeeper/engine` types from dist/.
+RUN pnpm --filter @grimkeeper/engine build \
+  && pnpm --filter @grimkeeper/database build \
   && pnpm --filter bot build \
   && pnpm --filter admin build
 
