@@ -30,7 +30,9 @@ export function buildAliveDeadLines(engine: GameEngine): { alive: string; dead: 
       : "—";
 
   let daySummary = "Not in day phase.";
-  if (state.phase === "night") {
+  if (state.phase === "setup") {
+    daySummary = "**Setup** · Use `/st next-phase` for Night 1";
+  } else if (state.phase === "night") {
     daySummary = `Night **${state.nightNumber}** · Nominations: **closed**`;
   } else if (state.phase === "day" && state.day) {
     const openNominations = state.day.nominations.filter((nomination) => nomination.status === "open").length;

@@ -97,8 +97,12 @@ export async function postVoteThreadDayStart(
     .catch(() => undefined);
 }
 
-/** Kib thread banner when a new day or night begins. */
-export function formatKibPhaseHeader(phase: "day" | "night", phaseNumber: number): string {
+/** Kib thread banner when a new day, night, or setup begins. */
+export function formatKibPhaseHeader(
+  phase: "day" | "night" | "setup",
+  phaseNumber = 0,
+): string {
+  if (phase === "setup") return "## Setup";
   const label = phase === "day" ? "Day" : "Night";
   return `## ${label} ${phaseNumber}`;
 }
@@ -106,8 +110,8 @@ export function formatKibPhaseHeader(phase: "day" | "night", phaseNumber: number
 export async function postKibPhaseHeader(
   guild: Guild,
   game: TownGame,
-  phase: "day" | "night",
-  phaseNumber: number,
+  phase: "day" | "night" | "setup",
+  phaseNumber = 0,
 ): Promise<void> {
   const kib = await getKibThreadForGame(guild, game);
   if (!kib) return;
@@ -119,19 +123,21 @@ export async function postKibPhaseHeader(
     .catch(() => undefined);
 }
 
-/** Best-effort rename of the town channel to `{base}-{day|night}N`. Voting thread keeps Town Voting. */
+/** Best-effort rename of the town channel to `{base}-setup` / `{base}-{day|night}N`. Voting thread keeps Town Voting. */
 export async function renameTownPhaseSurfaces(
   guild: Guild,
   game: TownGame,
   voteThreadId: string | null,
-  phase: "day" | "night",
-  phaseNumber: number,
+  phase: "day" | "night" | "setup",
+  phaseNumber = 0,
 ): Promise<void> {
   const parent = await guild.channels.fetch(game.channelId).catch(() => null);
   if (isGameTextChannel(parent)) {
     const parentName = townPhaseParentChannelName(parent.name, phase, phaseNumber);
     if (parent.name !== parentName) {
-      await parent.setName(parentName, `Town ${phase} ${phaseNumber}`).catch(() => undefined);
+      const reason =
+        phase === "setup" ? "Town setup" : `Town ${phase} ${phaseNumber}`;
+      await parent.setName(parentName, reason).catch(() => undefined);
     }
   }
 
@@ -147,7 +153,7 @@ export async function renameTownPhaseSurfaces(
 }
 
 /**
- * Advance town phase: day → night (Night nightNumber+1), or night → day (Day dayNumber+1).
+ * Advance town phase: setup → night (Night 1), day → night, or night → day.
  * Keeps the Town Voting thread name; renames the parent channel when possible.
  */
 export async function advanceTownPhase(
@@ -159,6 +165,42 @@ export async function advanceTownPhase(
   const state = engine.getState();
   if (!state.townMode) {
     throw new Error("Phase advance is only for town-mode games.");
+  }
+
+  if (state.phase === "setup") {
+    const voteThreadId =
+      (await resolveVotingChannel(guild, game, engine))?.id ?? null;
+
+    const events = engine.handle({
+      kind: GameCommandKind.AdvancePhase,
+      gameId: game.id,
+      targetPhase: "night",
+    });
+    await persistEvents(engine, events);
+    await syncGameProjection(game.id, engine);
+
+    const nightNumber = engine.getState().nightNumber;
+    await renameTownPhaseSurfaces(guild, game, voteThreadId, "night", nightNumber);
+    await postKibPhaseHeader(guild, game, "night", nightNumber);
+
+    const voting = await resolveVotingChannel(guild, game, engine);
+    if (voting) {
+      await voting
+        .send(
+          `**Night ${nightNumber}** has begun — nominations open when the storyteller starts Day 1 (\`/st next-phase\`).`,
+        )
+        .catch(() => undefined);
+    }
+
+    await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
+    await refreshStVoteTrackerForGame(guild, game, engine);
+    await postGameLog(
+      guild,
+      game,
+      `<@${actorDiscordId}> started night **${nightNumber}** from setup.`,
+    );
+
+    return { phase: "night", phaseNumber: nightNumber };
   }
 
   if (state.phase === "day") {

@@ -23,6 +23,7 @@ export const GameEventType = {
   SeatPicked: "SeatPicked",
   GameEnded: "GameEnded",
   TownSetup: "TownSetup",
+  TownResetToSetup: "TownResetToSetup",
   PlayerAliveChanged: "PlayerAliveChanged",
   PlayerDisplayNameChanged: "PlayerDisplayNameChanged",
   NominationVotesLocked: "NominationVotesLocked",

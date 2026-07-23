@@ -13,12 +13,21 @@ export const ST_DO_ACTIONS: DoAction[] = [
   { name: "log", description: "Create or reopen the ST-only audit log thread" },
   {
     name: "recreate-threads",
-    description: "Recreate Whisper Declaration, Public Claims, and Rules threads",
+    description: "Recreate Town Voting, Whisper Declaration, Public Claims, and Rules",
+  },
+  {
+    name: "recreate-player-thread",
+    description: "Create or reopen one player's private ST thread",
+    needs: ["player"],
+  },
+  {
+    name: "reset-to-setup",
+    description: "ALLOWED_USER_IDS only: wipe day/night progress back to Setup (keeps roster)",
   },
   { name: "end", description: "End the game (strip roles, open kib)", needs: ["winner"] },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
   { name: "close-nominations", description: "Close nominations for the day (no new noms until next day)" },
-  { name: "next-phase", description: "Advance night ↔ day (Night 1 → Day 1 → Night 2 …); renames town channel to base-nightN / base-dayN" },
+  { name: "next-phase", description: "Advance Setup → Night 1 → Day 1 → Night 2 …; renames town channel" },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
   { name: "mark-dead", description: "Mark a player dead or alive", needs: ["player", "alive?"] },
   { name: "votes", description: "Refresh the ST vote tracker in kib" },
@@ -50,7 +59,7 @@ export const ST_SLASH_SHORTCUTS: DoAction[] = [
   { name: "say", description: "Broadcast to all player threads from kib", needs: ["message"] },
   { name: "log", description: "Create or reopen the ST-only audit log thread" },
   { name: "end", description: "End the game (strip roles, open kib)", needs: ["winner"] },
-  { name: "next-phase", description: "Advance night ↔ day (opens/closes nominations with the phase)" },
+  { name: "next-phase", description: "Advance Setup → Night 1 → Day 1 → …" },
   { name: "close-nominations", description: "Close nominations for the day" },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
@@ -76,7 +85,7 @@ export const ST_SETUP_ACTIONS: DoAction[] = [
   { name: "log", description: "Create or reopen the ST-only audit log thread" },
   {
     name: "recreate-threads",
-    description: "Recreate Whisper Declaration, Public Claims, and Rules threads",
+    description: "Recreate Town Voting, Whisper Declaration, Public Claims, and Rules",
   },
 ];
 

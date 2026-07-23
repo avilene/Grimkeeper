@@ -1136,6 +1136,64 @@ export async function syncStorytellersToPlayerThreads(
   return { threads: threads.filter((thread) => thread.isThread()).length };
 }
 
+/**
+ * Create or reopen one player's private ST thread and invite the player + storytellers.
+ */
+export async function ensurePlayerStThread(
+  interaction: CommandInteraction,
+  game: GameRoleIds & { id: string; channelId: string },
+  engine: GameEngine,
+  player: { discordUserId: string; displayName: string },
+  options?: {
+    threadIndex?: Map<string, AnyThreadChannel>;
+    /** Post the “Private ST thread…” intro (default true when newly created). */
+    announce?: boolean;
+  },
+): Promise<{ thread: AnyThreadChannel | null; created: boolean }> {
+  const guild = interaction.guild;
+  if (!guild) return { thread: null, created: false };
+  if (isFakePlayer(player.discordUserId)) return { thread: null, created: false };
+
+  const threadName = personalPlayerThreadName(game.id, player.displayName);
+  const threadIndex = options?.threadIndex ?? (await loadParentThreadIndex(guild, game.channelId));
+  let thread = threadIndex.get(threadName) ?? null;
+  let created = false;
+
+  if (!thread) {
+    thread = await createPersonalPlayerThread(
+      interaction,
+      game.id,
+      game.channelId,
+      player.discordUserId,
+      player.displayName,
+    );
+    created = Boolean(thread);
+    if (thread) threadIndex.set(threadName, thread);
+  }
+
+  if (!thread) return { thread: null, created: false };
+
+  if (thread.archived) {
+    await thread.setArchived(false, "Reopening player ST thread.").catch(() => undefined);
+  }
+  await ensureThreadAutoArchive(thread);
+
+  await thread.members.add(player.discordUserId).catch(() => undefined);
+  await addStorytellersToPlayerThread(guild, thread, engine, game.stRoleId);
+
+  const shouldAnnounce = options?.announce ?? created;
+  if (shouldAnnounce) {
+    await thread
+      .send({
+        content: `Private ST thread for <@${player.discordUserId}>. Only you, the storyteller, and server admins can access this thread.`,
+        allowedMentions: { users: [player.discordUserId] },
+      })
+      .catch(() => undefined);
+  }
+
+  return { thread, created };
+}
+
 export async function createPlayerStThreads(
   interaction: CommandInteraction,
   game: GameRoleIds & { id: string; channelId: string },
@@ -1151,42 +1209,12 @@ export async function createPlayerStThreads(
   for (const player of engine.getState().players) {
     if (isFakePlayer(player.discordUserId)) continue;
 
-    const threadName = personalPlayerThreadName(game.id, player.displayName);
-    let thread =
-      threadIndex.get(threadName) ??
-      (await createPersonalPlayerThread(
-        interaction,
-        game.id,
-        game.channelId,
-        player.discordUserId,
-        player.displayName,
-      ));
-
-    if (thread) {
-      threadIndex.set(threadName, thread);
-    }
-
-    if (!thread) {
-      failed++;
-      continue;
-    }
-
-    if (thread.archived) {
-      await thread.setArchived(false, "Game started; reopening player thread.").catch(() => undefined);
-    }
-    await ensureThreadAutoArchive(thread);
-
-    await thread.members.add(player.discordUserId).catch(() => undefined);
-    await addStorytellersToPlayerThread(guild, thread, engine, game.stRoleId);
-
-    await thread
-      .send({
-        content: `Private ST thread for <@${player.discordUserId}>. Only you, the storyteller, and server admins can access this thread.`,
-        allowedMentions: { users: [player.discordUserId] },
-      })
-      .catch(() => undefined);
-
-    created++;
+    const result = await ensurePlayerStThread(interaction, game, engine, player, {
+      threadIndex,
+      announce: true,
+    });
+    if (result.thread) created++;
+    else failed++;
   }
 
   return { created, failed };
@@ -1628,7 +1656,7 @@ export async function createTownVoteThread(
       );
       const introLines = [
         "**Town Voting** — nominations and votes happen here once Day begins.",
-        "After setup the game starts on **Night 1** (nominations closed). The storyteller runs `/st next-phase` for Day 1.",
+        "After setup-town the game is in **Setup**. The storyteller runs `/st next-phase` for Night 1, then again for Day 1.",
         "You can vote on **any open nomination** with the **Vote** button.",
         "Prefer a private ballot? Use `/privatevote` (ST sees it on the kib vote tracker).",
         "Players: `/nominate` / `/defend` / `/vote` / `/privatevote` / `/roster` / `/whisper`.",

@@ -143,6 +143,11 @@ export interface TownSetupEvent extends GameEventBase {
   }>;
 }
 
+/** Wipe day/night progress and return to town setup while keeping the roster. */
+export interface TownResetToSetupEvent extends GameEventBase {
+  type: typeof GameEventType.TownResetToSetup;
+}
+
 export interface PlayerAliveChangedEvent extends GameEventBase {
   type: typeof GameEventType.PlayerAliveChanged;
   playerId: string;
@@ -242,6 +247,7 @@ export type GameEvent =
   | SeatPickedEvent
   | GameEndedEvent
   | TownSetupEvent
+  | TownResetToSetupEvent
   | PlayerAliveChangedEvent
   | PlayerDisplayNameChangedEvent
   | NominationVotesLockedEvent
@@ -510,6 +516,12 @@ export interface SetupTownCommand {
   minPlayers?: number;
 }
 
+/** Allowlist-only: return an in-progress town game to Setup (keeps roster). */
+export interface ResetTownToSetupCommand {
+  kind: typeof GameCommandKind.ResetTownToSetup;
+  gameId: string;
+}
+
 export interface SetPlayerAliveCommand {
   kind: typeof GameCommandKind.SetPlayerAlive;
   gameId: string;
@@ -583,6 +595,7 @@ export type GameCommand =
   | EndGameCommand
   | PromoteStorytellerCommand
   | SetupTownCommand
+  | ResetTownToSetupCommand
   | SetPlayerAliveCommand
   | SetPlayerDisplayNameCommand
   | LockNominationVotesCommand
@@ -973,18 +986,24 @@ export class GameEngine {
         if (this.state.phase === "ended") {
           throw new GameEngineError("Game has already ended.");
         }
-        if (this.state.phase === "setup") {
+        // Legacy grimoire flow: stay in setup until DealRoles / BeginNight.
+        if (this.state.phase === "setup" && !this.state.townMode) {
           throw new GameEngineError("Finish grimoire setup before advancing phases.");
         }
-        if (command.targetPhase === "night" && this.state.phase !== "day" && this.state.phase !== "lobby") {
-          throw new GameEngineError("Can only enter night from lobby or day.");
-        }
-        if (command.targetPhase === "night" && this.state.townMode && this.state.phase === "day") {
-          const open = this.state.day?.nominations.some((nomination) => nomination.status === "open");
-          if (open) {
-            throw new GameEngineError(
-              "Resolve or clear open nominations before starting the next night.",
-            );
+        if (command.targetPhase === "night") {
+          const fromDay = this.state.phase === "day";
+          const fromLobby = this.state.phase === "lobby";
+          const fromTownSetup = this.state.townMode && this.state.phase === "setup";
+          if (!fromDay && !fromLobby && !fromTownSetup) {
+            throw new GameEngineError("Can only enter night from lobby, day, or town setup.");
+          }
+          if (fromDay && this.state.townMode) {
+            const open = this.state.day?.nominations.some((nomination) => nomination.status === "open");
+            if (open) {
+              throw new GameEngineError(
+                "Resolve or clear open nominations before starting the next night.",
+              );
+            }
           }
         }
         if (command.targetPhase === "day" && this.state.phase !== "night") {
@@ -1188,6 +1207,21 @@ export class GameEngine {
             throw new GameEngineError("Duplicate players in town setup.");
           }
           discordIds.add(player.discordUserId);
+        }
+        break;
+      }
+      case GameCommandKind.ResetTownToSetup: {
+        if (this.state.phase === "ended") {
+          throw new GameEngineError("Game has already ended.");
+        }
+        if (!this.state.townMode) {
+          throw new GameEngineError("Only town-mode games can reset to setup.");
+        }
+        if (this.state.players.length === 0) {
+          throw new GameEngineError("Town has no players to reset. Run setup-town first.");
+        }
+        if (this.state.phase === "lobby") {
+          throw new GameEngineError("Game is still in lobby. Run setup-town first.");
         }
         break;
       }
@@ -1632,6 +1666,14 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
+      case GameCommandKind.ResetTownToSetup:
+        return [
+          {
+            type: GameEventType.TownResetToSetup,
+            gameId: command.gameId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
       case GameCommandKind.SetPlayerAlive: {
         const player = this.getPlayerById(command.playerId)!;
         if (player.alive === command.alive) {
@@ -1960,13 +2002,27 @@ export class GameEngine {
           isFake: player.discordUserId.startsWith("dev:"),
           ghostVoteUsed: false,
         }));
-        // BotC starts on Night 1; next phase is Day 1 (nominations still closed until then).
-        this.state.phase = "night";
-        this.state.nightNumber = 1;
+        // Town starts in Setup; ST runs next-phase for Night 1, then Day 1, …
+        this.state.phase = "setup";
+        this.state.nightNumber = 0;
         this.state.dayNumber = 0;
         this.state.townMode = true;
         this.state.seatsOpen = false;
         this.state.day = null;
+        break;
+      case GameEventType.TownResetToSetup:
+        this.state.phase = "setup";
+        this.state.nightNumber = 0;
+        this.state.dayNumber = 0;
+        this.state.townMode = true;
+        this.state.seatsOpen = false;
+        this.state.day = null;
+        this.state.winner = null;
+        for (const player of this.state.players) {
+          player.alive = true;
+          player.ghostVoteUsed = false;
+          player.roleId = null;
+        }
         break;
       case GameEventType.PlayerAliveChanged: {
         const player = this.state.players.find((candidate) => candidate.id === event.playerId);

@@ -11,6 +11,7 @@ import { prisma } from "@grimkeeper/database";
 import { GameCommandKind } from "@grimkeeper/engine";
 
 import { minPlayersForMode } from "../bot-mode.js";
+import { isAllowedUserId } from "../access.js";
 import { formatVoteVisibility } from "../day-thread.js";
 import { ensureLogThread, postGameLog, postGameLogRoleChange } from "../game-log-thread.js";
 import { upsertPinnedGameStatus } from "../game-status.js";
@@ -18,7 +19,7 @@ import { runSetPlayerVote } from "../set-vote.js";
 import { upsertStControlPanel } from "../st-control-panel.js";
 import { upsertStVoteTracker } from "../st-vote-tracker.js";
 import { parseUserMentionsFromString } from "../town-setup.js";
-import { closeTownNominations, advanceTownPhase } from "../town-day.js";
+import { closeTownNominations, advanceTownPhase, renameTownPhaseSurfaces, postKibPhaseHeader } from "../town-day.js";
 import {
   ensureTownSurfaceThreads,
   markTownSurfaceThread,
@@ -33,6 +34,7 @@ import {
   broadcastToPlayerThreads,
   createPlayerStThreads,
   createTownVoteThread,
+  ensurePlayerStThread,
   finalizeMinimalGameEnd,
   getKibThreadForGame,
   listPersonalPlayerThreads,
@@ -241,6 +243,16 @@ export class StCommandsMinimal {
         return;
       case "recreate-threads":
         await this.recreateThreads(interaction);
+        return;
+      case "recreate-player-thread":
+        if (!player) {
+          await missingOption(interaction, "player", "recreate-player-thread");
+          return;
+        }
+        await this.recreatePlayerThread(player, interaction);
+        return;
+      case "reset-to-setup":
+        await this.resetToSetup(interaction);
         return;
       case "resolve-next":
         await this.resolveNext(interaction);
@@ -772,12 +784,14 @@ export class StCommandsMinimal {
       }
 
       await setInteractionProgress(interaction, "Recreating town threads…");
+      const voteThread = await createTownVoteThread(guild, game, engine);
       const surfaces = await ensureTownSurfaceThreads(guild, game, engine);
       const refreshed = (await reloadTownSurfaceGame(game.id)) ?? game;
       const dayNumber = engine.getState().dayNumber || 1;
       await postDayMarkersToTownSurfaces(guild, refreshed, dayNumber);
 
       const links = [
+        voteThread ? `Town Voting: <#${voteThread.id}>` : null,
         surfaces.whisperDecl ? `Whisper Declaration: <#${surfaces.whisperDecl.id}>` : null,
         surfaces.claims ? `Public Claims: <#${surfaces.claims.id}>` : null,
         surfaces.rules ? `Rules: <#${surfaces.rules.id}>` : null,
@@ -795,6 +809,69 @@ export class StCommandsMinimal {
           links.length > 0
             ? `Town threads ready:\n${links.join("\n")}`
             : "Could not create town threads. Check bot permissions (`Manage Threads`).",
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  /** Create or reopen a single player's private ST thread (and invite STs). */
+  async recreatePlayerThread(playerUser: User, interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      if (!engine.getState().townMode) {
+        await replyOrEditInteraction(interaction, {
+          content: "Player ST threads are for town-mode games. Run `/st setup-town` first.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const player = engine.getPlayerByDiscordId(playerUser.id);
+      if (!player) {
+        await replyOrEditInteraction(interaction, {
+          content: "That user is not on this game’s roster.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await setInteractionProgress(
+        interaction,
+        `Ensuring ST thread for ${player.displayName}…`,
+      );
+      const { thread, created } = await ensurePlayerStThread(
+        interaction,
+        game,
+        engine,
+        player,
+        { announce: true },
+      );
+
+      if (!thread) {
+        await replyOrEditInteraction(interaction, {
+          content: `Could not create an ST thread for **${player.displayName}**. Check bot permissions (\`Create Private Threads\`, \`Manage Threads\`).`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await postGameLog(
+        guild,
+        game,
+        `<@${interaction.user.id}> ${created ? "created" : "reopened"} player ST thread for <@${player.discordUserId}>: <#${thread.id}>.`,
+      );
+
+      await replyOrEditInteraction(interaction, {
+        content: created
+          ? `Created private ST thread for **${player.displayName}**: <#${thread.id}>.`
+          : `Reopened private ST thread for **${player.displayName}**: <#${thread.id}> (player + ST role invited).`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -1129,20 +1206,12 @@ export class StCommandsMinimal {
       const surfaces = await ensureTownSurfaceThreads(guild, game, engine);
 
       const { renameTownPhaseSurfaces, postKibPhaseHeader } = await import("../town-day.js");
-      const nightNumber = engine.getState().nightNumber || 1;
-      await renameTownPhaseSurfaces(
-        guild,
-        game,
-        voteThread?.id ?? null,
-        "night",
-        nightNumber,
-      );
-
-      await postKibPhaseHeader(guild, game, "night", nightNumber);
+      await renameTownPhaseSurfaces(guild, game, voteThread?.id ?? null, "setup");
+      await postKibPhaseHeader(guild, game, "setup");
       if (voteThread) {
         await voteThread
           .send(
-            `**Night ${nightNumber}** has begun — nominations open when the storyteller starts Day 1 (\`/st next-phase\`).`,
+            "**Setup** — roster and seats are locked. When ready, the storyteller runs `/st next-phase` to start **Night 1**.",
           )
           .catch(() => undefined);
       }
@@ -1165,7 +1234,7 @@ export class StCommandsMinimal {
         guild,
         game,
         `<@${interaction.user.id}> setup-town — **${players.length}** players (${playerNames}).` +
-          ` Night **${nightNumber}** (nominations closed).` +
+          ` **Setup** phase (use \`/st next-phase\` for Night 1).` +
           ` Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.` +
           (voteThread ? ` Voting: <#${voteThread.id}>.` : "") +
           (surfaceLinks.length > 0
@@ -1176,14 +1245,14 @@ export class StCommandsMinimal {
       await replyOrEditInteraction(interaction, {
         content: [
           `Town set up with **${players.length}** players in <#${game.channelId}>.`,
-          `**Night ${nightNumber}** — nominations are closed until Day 1.`,
+          "**Setup** — use `/st next-phase` when ready to start **Night 1**.",
           engine.getSeatingChart().join("\n"),
           threadSummary.created > 0 || threadSummary.failed > 0
             ? `Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.`
             : "",
           voteThread
-            ? `Voting thread: <#${voteThread.id}> — opens for nominations on Day 1 (\`/st next-phase\`).`
-            : "Use `/st next-phase` to start Day 1 and open nominations.",
+            ? `Voting thread: <#${voteThread.id}> — nominations open on Day 1.`
+            : "Use `/st next-phase` twice (Night 1 → Day 1) to open nominations.",
           surfaces.whisperDecl
             ? `Whisper Declaration: <#${surfaces.whisperDecl.id}>`
             : null,
@@ -1242,7 +1311,71 @@ export class StCommandsMinimal {
         content:
           phase === "day"
             ? `${label} **${phaseNumber}** started — nominations are open again.`
-            : `${label} **${phaseNumber}** started — nominations are closed until the next day.`,
+            : phaseNumber === 1
+              ? `${label} **${phaseNumber}** started — nominations open when you start Day 1 (\`/st next-phase\`).`
+              : `${label} **${phaseNumber}** started — nominations are closed until the next day.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  /** ALLOWED_USER_IDS only: wipe day/night progress back to Setup (keeps roster). */
+  async resetToSetup(interaction: CommandInteraction): Promise<void> {
+    if (!isAllowedUserId(interaction.user.id)) {
+      await replyOrEditInteraction(interaction, {
+        content:
+          "`reset-to-setup` is restricted to `ALLOWED_USER_IDS` (user IDs only — roles do not count).",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      await setInteractionProgress(interaction, "Resetting town to Setup…");
+      const events = engine.handle({
+        kind: GameCommandKind.ResetTownToSetup,
+        gameId: game.id,
+      });
+      await persistEvents(engine, events);
+      await syncGameProjection(game.id, engine);
+
+      const voteThreadId =
+        (await resolveVotingChannel(guild, game, engine))?.id ?? null;
+      await renameTownPhaseSurfaces(guild, game, voteThreadId, "setup");
+      await postKibPhaseHeader(guild, game, "setup");
+
+      if (voteThreadId) {
+        const voting = await guild.channels.fetch(voteThreadId).catch(() => null);
+        if (voting?.isTextBased() && "send" in voting) {
+          await voting
+            .send(
+              "**Setup** — day/night progress was reset. Roster kept. Use `/st next-phase` for Night 1.",
+            )
+            .catch(() => undefined);
+        }
+      }
+
+      await upsertPinnedGameStatus(guild, game.channelId, engine);
+      await upsertStVoteTracker(guild, game.channelId, engine, game.kibThreadId);
+      await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
+
+      await postGameLog(
+        guild,
+        game,
+        `<@${interaction.user.id}> reset town to **Setup** (roster kept; day/night wiped).`,
+      );
+
+      await replyOrEditInteraction(interaction, {
+        content:
+          "Town reset to **Setup**. Roster kept; day/night progress cleared. Use `/st next-phase` for Night 1.",
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

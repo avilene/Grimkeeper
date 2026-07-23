@@ -71,9 +71,9 @@ export function townVoteThreadName(gameId: string): string {
   return `Town Voting ${townVoteThreadNameSuffix(gameId)}`.slice(0, 100);
 }
 
-const TOWN_PHASE_CHANNEL_SUFFIX = /-(day|night)\d+$/i;
+const TOWN_PHASE_CHANNEL_SUFFIX = /-((day|night)\d+|setup)$/i;
 
-/** Strip a prior `-{day|night}N` suffix so renames keep the original base. */
+/** Strip a prior `-{day|night}N` or `-setup` suffix so renames keep the original base. */
 export function townPhaseBaseChannelName(currentName: string): string {
   const trimmed = currentName.trim();
   const base = trimmed.replace(TOWN_PHASE_CHANNEL_SUFFIX, "");
@@ -82,14 +82,15 @@ export function townPhaseBaseChannelName(currentName: string): string {
 
 /**
  * Discord guild channel names are lowercase / hyphenated.
- * Example: `trouble-brewing-day1`, `trouble-brewing-night2`.
+ * Example: `trouble-brewing-day1`, `trouble-brewing-night2`, `trouble-brewing-setup`.
  */
 export function townPhaseParentChannelName(
   baseOrCurrentName: string,
-  phase: "day" | "night",
-  phaseNumber: number,
+  phase: "day" | "night" | "setup",
+  phaseNumber = 0,
 ): string {
   const base = townPhaseBaseChannelName(baseOrCurrentName);
+  if (phase === "setup") return `${base}-setup`.slice(0, 100);
   return `${base}-${phase}${phaseNumber}`.slice(0, 100);
 }
 

@@ -89,6 +89,8 @@ function eventFields(event: GameEvent): Record<string, unknown> {
       return { playerId: event.playerId, seat: event.seat };
     case GameEventType.TownSetup:
       return { playerCount: event.players.length, channelId: event.channelId };
+    case GameEventType.TownResetToSetup:
+      return {};
     case GameEventType.PlayerAliveChanged:
       return { playerId: event.playerId, alive: event.alive };
     case GameEventType.PlayerDisplayNameChanged:

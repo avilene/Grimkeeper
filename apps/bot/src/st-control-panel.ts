@@ -86,9 +86,11 @@ export function buildStControlPanelEmbed(engine: GameEngine): EmbedBuilder {
   const visibility = day?.voteVisibility ?? "public";
   const nominationsOpen = day?.nominationsOpen ?? false;
   const phaseLabel =
-    state.phase === "night"
-      ? `Night **${state.nightNumber}**`
-      : `Day **${state.dayNumber}**`;
+    state.phase === "setup"
+      ? "**Setup**"
+      : state.phase === "night"
+        ? `Night **${state.nightNumber}**`
+        : `Day **${state.dayNumber}**`;
 
   return new EmbedBuilder()
     .setTitle("ST control panel")
@@ -111,7 +113,12 @@ export function buildStControlPanelComponents(
 ): ActionRowBuilder<ButtonBuilder>[] {
   const state = engine.getState();
   const gameId = state.gameId;
-  const nextPhaseLabel = state.phase === "night" ? "Start day" : "Start night";
+  const nextPhaseLabel =
+    state.phase === "setup"
+      ? "Start Night 1"
+      : state.phase === "night"
+        ? "Start day"
+        : "Start night";
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()

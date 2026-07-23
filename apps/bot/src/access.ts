@@ -13,6 +13,12 @@ export function parseList(value: string | undefined): Set<string> {
   );
 }
 
+/** True when the Discord user id is listed in `ALLOWED_USER_IDS` (roles do not count). */
+export function isAllowedUserId(userId: string | null | undefined): boolean {
+  if (!userId) return false;
+  return parseList(process.env.ALLOWED_USER_IDS).has(userId);
+}
+
 /**
  * Fetch one guild member with a hard timeout.
  * Prefer this over bare `guild.members.fetch(id)` on interaction paths — hangs leave

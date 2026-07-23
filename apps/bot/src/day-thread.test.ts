@@ -36,8 +36,15 @@ function baseEvents(): GameEvent[] {
   ];
 }
 
-/** TownSetup starts Night 1; day commands need Day 1. */
+/** TownSetup enters Setup; day commands need Day 1 after next-phase twice. */
 function advanceToDay1(engine: GameEngine): void {
+  for (const event of engine.handle({
+    kind: GameCommandKind.AdvancePhase,
+    gameId,
+    targetPhase: "night",
+  })) {
+    engine.apply(event);
+  }
   for (const event of engine.handle({
     kind: GameCommandKind.AdvancePhase,
     gameId,
@@ -396,16 +403,20 @@ describe("town phase channel naming", () => {
     expect(townVoteThreadName("abcdef12-3456")).toBe("Town Voting · abcdef");
   });
 
-  it("builds base-dayN / base-nightN parent names and strips prior suffixes", () => {
+  it("builds base-dayN / base-nightN / setup parent names and strips prior suffixes", () => {
     expect(townPhaseBaseChannelName("trouble-brewing")).toBe("trouble-brewing");
     expect(townPhaseBaseChannelName("trouble-brewing-day1")).toBe("trouble-brewing");
     expect(townPhaseBaseChannelName("trouble-brewing-night2")).toBe("trouble-brewing");
+    expect(townPhaseBaseChannelName("trouble-brewing-setup")).toBe("trouble-brewing");
     expect(townPhaseParentChannelName("trouble-brewing", "day", 1)).toBe("trouble-brewing-day1");
     expect(townPhaseParentChannelName("trouble-brewing-day1", "night", 2)).toBe(
       "trouble-brewing-night2",
     );
     expect(townPhaseParentChannelName("trouble-brewing-night2", "day", 2)).toBe(
       "trouble-brewing-day2",
+    );
+    expect(townPhaseParentChannelName("trouble-brewing-night1", "setup")).toBe(
+      "trouble-brewing-setup",
     );
   });
 });
