@@ -187,7 +187,7 @@ export async function advanceTownPhase(
     if (voting) {
       await voting
         .send(
-          `**Night ${nightNumber}** has begun — nominations open when the storyteller starts Day 1 (\`/st next-phase\`).`,
+          `**Night ${nightNumber}** has begun — nominations open when Day 1 starts.`,
         )
         .catch(() => undefined);
     }

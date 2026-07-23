@@ -254,9 +254,7 @@ export function buildDayIntroEmbed(engine: GameEngine): EmbedBuilder {
     "Nominees may `/defend`.",
     "Vote with the **Vote** button, `/vote` (public), or `/privatevote`.",
   ];
-  const stLines = [
-    "Storyteller: kib **control panel**, or `/st do` (`resolve-next`, `close-nominations`, `next-phase`, `execute`, `vote-visibility`, `nominate`, …).",
-  ];
+  const stLines = ["Storyteller: use the kib **control panel**."];
   const devLines = isDevMode()
     ? [
         "",

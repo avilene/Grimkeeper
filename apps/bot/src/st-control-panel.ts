@@ -191,7 +191,7 @@ async function findStControlPanelMessages(channel: KibVenue): Promise<Message[]>
   return found;
 }
 
-/** Strip buttons from prior panels so STs cannot keep clicking stale customIds. */
+/** Delete prior panels so STs cannot keep clicking stale customIds. */
 async function retireStControlPanels(
   channel: KibVenue,
   options?: { exceptMessageId?: string },
@@ -201,14 +201,7 @@ async function retireStControlPanels(
   await Promise.all(
     all.map(async (message) => {
       if (options?.exceptMessageId && message.id === options.exceptMessageId) return;
-      await message.unpin().catch(() => undefined);
-      await message
-        .edit({
-          embeds: message.embeds,
-          components: [],
-          content: "_Superseded — use the latest ST control panel below (or `/st panel`)._",
-        })
-        .catch(() => undefined);
+      await message.delete().catch(() => undefined);
       retired += 1;
     }),
   );
@@ -217,7 +210,7 @@ async function retireStControlPanels(
 
 /**
  * Always post a **new** control panel message with fresh button customIds.
- * Older panels in kib are unpinned and have their buttons stripped.
+ * Older panels in kib are deleted.
  */
 export async function upsertStControlPanel(
   guild: Guild,

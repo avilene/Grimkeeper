@@ -143,7 +143,7 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       const message = await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
       await interaction.editReply({
         content: message
-          ? "Posted a **new** control panel in kib (old panels’ buttons were disabled)."
+          ? "Posted a **new** control panel in kib (old panels deleted)."
           : "Could not post a new control panel (is kib available?).",
       });
       return true;

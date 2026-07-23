@@ -181,7 +181,7 @@ export async function syncGameProjection(gameId: string, engine: GameEngine): Pr
   await syncGameProjectionFromEngine(gameId, engine);
 }
 
-async function resolveParentChannelId(interaction: {
+export async function resolveParentChannelId(interaction: {
   channelId: string | null;
   channel?: CommandInteraction["channel"] | null;
   guild?: Guild | null;
@@ -201,7 +201,11 @@ async function resolveParentChannelId(interaction: {
   return interaction.channelId;
 }
 
-/** Active game for this interaction’s channel; only falls back to guild when exactly one is active. */
+/**
+ * Active game for this interaction’s channel / parent venue only.
+ * Does not fall back to “the only active game in the guild” — that caused leftover
+ * games to steal ST commands from unrelated channels (and made `/game list` look wrong).
+ */
 export async function resolveActiveGameForInteraction(interaction: {
   guildId: string | null;
   channelId: string | null;
@@ -211,7 +215,7 @@ export async function resolveActiveGameForInteraction(interaction: {
 }) {
   if (!interaction.guildId) return null;
 
-  // Match town, kib venue (channel or thread), or log thread by the interaction channel itself.
+  // Match town, kib venue (channel or thread), log, or voting thread by the interaction channel itself.
   if (interaction.channelId) {
     const forVenue = await getActiveGameForVenue(interaction.guildId, interaction.channelId);
     if (forVenue) return forVenue;
@@ -224,13 +228,26 @@ export async function resolveActiveGameForInteraction(interaction: {
     if (forParent) return forParent;
   }
 
-  const active = await listActiveGamesForGuild(interaction.guildId);
-  if (active.length === 1) return active[0]!;
   return null;
 }
 
 export function multipleActiveGamesHint(): string {
   return "Multiple active games in this server — run this from that game’s channel, kib, or Town Voting thread.";
+}
+
+/** Ephemeral hint when this channel isn’t a venue for any active game. */
+export async function noActiveGameHereMessage(guildId: string): Promise<string> {
+  const active = await listActiveGamesForGuild(guildId);
+  if (active.length > 1) return multipleActiveGamesHint();
+  if (active.length === 1) {
+    const game = active[0]!;
+    const kib = game.kibThreadId ? ` · kib <#${game.kibThreadId}>` : "";
+    return (
+      `No active game in **this** channel. Leftover: \`${game.id.slice(0, 8)}\` in <#${game.channelId}>${kib} ` +
+      `(phase **${game.phase}**). Run commands there, or \`/st end\` there to clear it. Use \`/game list\` for all.`
+    );
+  }
+  return "No active game found for this channel.";
 }
 
 export type GamePlayerAutocompleteOptions = {
@@ -360,12 +377,8 @@ export async function requireStorytellerGame(interaction: CommandInteraction) {
 
   const game = await resolveActiveGameForInteraction(interaction);
   if (!game) {
-    const activeCount = (await listActiveGamesForGuild(interaction.guildId)).length;
     await replyOrEditInteraction(interaction, {
-      content:
-        activeCount > 1
-          ? multipleActiveGamesHint()
-          : "No active game found for this channel.",
+      content: await noActiveGameHereMessage(interaction.guildId),
       flags: MessageFlags.Ephemeral,
     });
     return null;
@@ -557,12 +570,8 @@ export async function requireActivePlayerGame(interaction: CommandInteraction) {
 
   const game = await resolveActiveGameForInteraction(interaction);
   if (!game) {
-    const activeCount = (await listActiveGamesForGuild(interaction.guildId)).length;
     await interaction.reply({
-      content:
-        activeCount > 1
-          ? multipleActiveGamesHint()
-          : "No active game found for this channel.",
+      content: await noActiveGameHereMessage(interaction.guildId),
       flags: MessageFlags.Ephemeral,
     });
     return null;
@@ -1842,11 +1851,11 @@ export async function createTownVoteThread(
       );
       const introLines = [
         "**Town Voting** — nominations and votes happen here once Day begins.",
-        "After setup-town the game is in **Setup**. The storyteller runs `/st next-phase` to start **Night 1**.",
+        "After setup-town the game is in **Setup**. Night 1 starts when the storyteller advances the phase.",
         "You can vote on **any open nomination** with the **Vote** button.",
         "Prefer a private ballot? Use `/privatevote` (ST sees it on the kib vote tracker).",
         "Players: `/nominate` / `/defend` / `/vote` / `/privatevote` / `/roster` / `/whisper`.",
-        "Storyteller: kib **control panel**, or `/st do` (`resolve-next`, `close-nominations`, `next-phase`, `execute`, `nominate`, `vote-visibility`, …).",
+        "Storyteller: use the kib **control panel**.",
       ];
       if (roleIds.length > 0) {
         introLines.unshift(roleIds.map((id) => `<@&${id}>`).join(" "));
@@ -1946,7 +1955,7 @@ export async function requireTownVotingChannel(
     await replyOrEditInteraction(interaction, {
       content:
         state.phase === "night"
-          ? `It is **Night ${state.nightNumber}**. Nominations are closed until the storyteller starts the next day (\`/st next-phase\`).`
+          ? `It is **Night ${state.nightNumber}**. Nominations are closed until the next day.`
           : "Town voting is not open yet. The storyteller must run `/st setup-town`.",
       flags: MessageFlags.Ephemeral,
     });

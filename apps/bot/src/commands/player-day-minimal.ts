@@ -6,14 +6,13 @@ import {
   MessageFlags,
 } from "discord.js";
 import { Discord, Slash, SlashChoice, SlashOption } from "discordx";
-import { listActiveGamesForGuild } from "@grimkeeper/database";
 import { GameCommandKind } from "@grimkeeper/engine";
 
 import { castVoteFromSlash } from "../interactions/day-vote.js";
 import { postGameLogVoteCast } from "../game-log-thread.js";
 import {
   loadEngine,
-  multipleActiveGamesHint,
+  noActiveGameHereMessage,
   persistEvents,
   postNominationEverywhere,
   refreshNominationEverywhere,
@@ -363,11 +362,8 @@ export class PlayerDayCommandsMinimal {
 
     const game = await resolveActiveGameForInteraction(interaction);
     if (!game) {
-      const activeCount = interaction.guildId
-        ? (await listActiveGamesForGuild(interaction.guildId)).length
-        : 0;
       await replyOrEditInteraction(interaction, {
-        content: activeCount > 1 ? multipleActiveGamesHint() : "No active game found.",
+        content: await noActiveGameHereMessage(interaction.guildId),
         flags: MessageFlags.Ephemeral,
       });
       return;

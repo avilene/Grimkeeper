@@ -425,7 +425,7 @@ export class StCommandsMinimal {
       const thread = await getKibThreadForGame(interaction.guild, game);
       await replyOrEditInteraction(interaction, {
         content: message
-          ? `Posted a **new** ST control panel in ${thread ? `<#${thread.id}>` : "kib"} (old panels’ buttons disabled).`
+          ? `Posted a **new** ST control panel in ${thread ? `<#${thread.id}>` : "kib"} (old panels deleted).`
           : "Could not post the control panel (is kib available?).",
         flags: MessageFlags.Ephemeral,
       });
@@ -1271,7 +1271,7 @@ export class StCommandsMinimal {
       if (voteThread) {
         await voteThread
           .send(
-            "**Setup** — roster and seats are locked. When ready, the storyteller runs `/st next-phase` to start **Night 1**.",
+            "**Setup** — roster and seats are locked. Night 1 starts when the storyteller advances the phase.",
           )
           .catch(() => undefined);
       }
@@ -1294,7 +1294,7 @@ export class StCommandsMinimal {
         guild,
         game,
         `<@${interaction.user.id}> setup-town — **${players.length}** players (${playerNames}).` +
-          ` **Setup** phase (use \`/st next-phase\` for Night 1).` +
+          ` **Setup** phase.` +
           ` Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.` +
           (voteThread ? ` Voting: <#${voteThread.id}>.` : "") +
           (surfaceLinks.length > 0
@@ -1305,14 +1305,14 @@ export class StCommandsMinimal {
       await replyOrEditInteraction(interaction, {
         content: [
           `Town set up with **${players.length}** players in <#${game.channelId}>.`,
-          "**Setup** — use `/st next-phase` when ready to start **Night 1**.",
+          "**Setup** — advance the phase when ready for **Night 1** (kib control panel).",
           engine.getSeatingChart().join("\n"),
           threadSummary.created > 0 || threadSummary.failed > 0
             ? `Player threads: ${threadSummary.created} created${threadSummary.failed > 0 ? `, ${threadSummary.failed} failed` : ""}.`
             : "",
           voteThread
             ? `Voting thread: <#${voteThread.id}> — nominations open on Day 1.`
-            : "Use `/st next-phase` twice (Night 1 → Day 1) to open nominations.",
+            : "Advance Setup → Night 1 → Day 1 to open nominations.",
           surfaces.whisperDecl
             ? `Whisper Declaration: <#${surfaces.whisperDecl.id}>`
             : null,
@@ -1345,7 +1345,7 @@ export class StCommandsMinimal {
         interaction.user.id,
       );
       await replyOrEditInteraction(interaction, {
-        content: `Nominations closed for day **${dayNumber}**. Use \`/st next-phase\` to start night.`,
+        content: `Nominations closed for day **${dayNumber}**. Advance the phase to start night.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -1372,7 +1372,7 @@ export class StCommandsMinimal {
           phase === "day"
             ? `${label} **${phaseNumber}** started — nominations are open again.`
             : phaseNumber === 1
-              ? `${label} **${phaseNumber}** started — nominations open when you start Day 1 (\`/st next-phase\`).`
+              ? `${label} **${phaseNumber}** started — nominations open when Day 1 starts.`
               : `${label} **${phaseNumber}** started — nominations are closed until the next day.`,
         flags: MessageFlags.Ephemeral,
       });
@@ -1417,7 +1417,7 @@ export class StCommandsMinimal {
         if (voting?.isTextBased() && "send" in voting) {
           await voting
             .send(
-              "**Setup** — day/night progress was reset. Roster kept. Use `/st next-phase` for Night 1.",
+              "**Setup** — day/night progress was reset. Roster kept. Advance the phase for Night 1.",
             )
             .catch(() => undefined);
         }
@@ -1435,7 +1435,7 @@ export class StCommandsMinimal {
 
       await replyOrEditInteraction(interaction, {
         content:
-          "Town reset to **Setup**. Roster kept; day/night progress cleared. Use `/st next-phase` for Night 1.",
+          "Town reset to **Setup**. Roster kept; day/night progress cleared. Advance the phase for Night 1.",
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -1495,7 +1495,7 @@ export class StCommandsMinimal {
       await replyOrEditInteraction(interaction, {
         content:
           `${nom} ${passed ? "passed" : "failed"}. ${tally}` +
-          (passed ? " Use `/st execute` (or the control panel) if needed." : ""),
+          (passed ? " Use **Execute…** on the control panel if needed." : ""),
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

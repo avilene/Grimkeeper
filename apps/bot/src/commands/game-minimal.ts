@@ -22,7 +22,7 @@ import {
   isGameTextChannel,
   isKibChannelVenue,
   loadEngine,
-  multipleActiveGamesHint,
+  noActiveGameHereMessage,
   persistEvents,
   removeRoleFromUser,
   replyEngineError,
@@ -30,6 +30,7 @@ import {
   requireCommandAccess,
   resolveActiveGameForInteraction,
   resolveGameRoles,
+  resolveParentChannelId,
   setInteractionProgress,
 } from "./command-context.js";
 
@@ -371,14 +372,8 @@ export class GameCommandsMinimal {
 
     const game = await resolveActiveGameForInteraction(interaction);
     if (!game) {
-      const activeCount = interaction.guildId
-        ? (await listActiveGamesForGuild(interaction.guildId)).length
-        : 0;
       await replyOrEditInteraction(interaction, {
-        content:
-          activeCount > 1
-            ? multipleActiveGamesHint()
-            : "No active game found. Create one with `/game setup`.",
+        content: await noActiveGameHereMessage(interaction.guildId),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -438,12 +433,8 @@ export class GameCommandsMinimal {
 
     const game = await resolveActiveGameForInteraction(interaction);
     if (!game) {
-      const activeCount = interaction.guildId
-        ? (await listActiveGamesForGuild(interaction.guildId)).length
-        : 0;
       await replyOrEditInteraction(interaction, {
-        content:
-          activeCount > 1 ? multipleActiveGamesHint() : "No active game found.",
+        content: await noActiveGameHereMessage(interaction.guildId),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -506,14 +497,7 @@ export class GameCommandsMinimal {
       return;
     }
 
-    const games = await prisma.game.findMany({
-      where: {
-        guildId: interaction.guildId,
-        phase: { not: "ended" },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 25,
-    });
+    const games = await listActiveGamesForGuild(interaction.guildId);
 
     if (games.length === 0) {
       await replyOrEditInteraction(interaction, {
@@ -523,15 +507,41 @@ export class GameCommandsMinimal {
       return;
     }
 
-    const lines = games.map(
-      (game) => `- \`${game.id}\` in <#${game.channelId}> — phase: **${game.phase}**`,
+    const parentId = await resolveParentChannelId(interaction);
+    const hereIds = new Set(
+      [interaction.channelId, parentId].filter((id): id is string => Boolean(id)),
     );
+
+    const lines = games.map((game) => {
+      const venues = [game.channelId, game.kibThreadId, game.logThreadId, game.votingThreadId].filter(
+        (id): id is string => Boolean(id),
+      );
+      const matchesHere = venues.some((id) => hereIds.has(id));
+      const kib = game.kibThreadId ? ` · kib <#${game.kibThreadId}>` : "";
+      const players = game.players.length;
+      const marker = matchesHere ? " ← **here**" : "";
+      return (
+        `- \`${game.id.slice(0, 8)}\` · <#${game.channelId}>${kib} · **${game.phase}** · ${players} player${players === 1 ? "" : "s"}${marker}\n` +
+        `  full id: \`${game.id}\``
+      );
+    });
+
+    const anyHere = games.some((game) => {
+      const venues = [game.channelId, game.kibThreadId, game.logThreadId, game.votingThreadId].filter(
+        (id): id is string => Boolean(id),
+      );
+      return venues.some((id) => hereIds.has(id));
+    });
+
+    const footer = anyHere
+      ? ""
+      : "\n\n_None of these match this channel. End leftovers from their town/kib with `/st end`, then set up here._";
 
     await replyOrEditInteraction(interaction, {
       embeds: [
         new EmbedBuilder()
           .setTitle("Active Grimkeeper games")
-          .setDescription(lines.join("\n")),
+          .setDescription(`${lines.join("\n")}${footer}`),
       ],
       flags: MessageFlags.Ephemeral,
     });

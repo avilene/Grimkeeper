@@ -112,7 +112,7 @@ export async function getActiveGameForChannel(guildId: string, channelId: string
 }
 
 /**
- * Active game whose town channel, kib venue (thread or channel), or log thread matches.
+ * Active game whose town channel, kib venue (thread or channel), log, or voting thread matches.
  * Used when ST commands run from kib or the audit log instead of town.
  */
 export async function getActiveGameForVenue(guildId: string, channelId: string) {
@@ -120,7 +120,12 @@ export async function getActiveGameForVenue(guildId: string, channelId: string) 
     where: {
       guildId,
       phase: { not: "ended" },
-      OR: [{ channelId }, { kibThreadId: channelId }, { logThreadId: channelId }],
+      OR: [
+        { channelId },
+        { kibThreadId: channelId },
+        { logThreadId: channelId },
+        { votingThreadId: channelId },
+      ],
     },
     orderBy: { createdAt: "desc" },
     include: { players: true },
