@@ -347,8 +347,20 @@ export async function requireStorytellerGame(interaction: CommandInteraction) {
   // Accept Discord ST role for the linked game (same as reminders) — not only engine storyteller ids.
   // Running from a kib channel/thread resolves the game via kibThreadId first.
   if (!isEngineSt && !hasStRole && !isAllowlistOverride) {
+    const detail = !game.stRoleId
+      ? " This game has no ST role linked in the DB — re-run `/game setup` with `st:`, or ask an allowlisted ST to `/st do add-st` you."
+      : " Need this game’s ST Discord role, engine storyteller status (`/st do add-st`), or `ALLOWED_USER_IDS`.";
+    log("info", "st.access.denied", {
+      userId: interaction.user.id,
+      gameId: game.id,
+      channelId: interaction.channelId,
+      stRoleId: game.stRoleId ?? null,
+      isEngineSt,
+      hasStRole,
+      isAllowlistOverride,
+    });
     await replyOrEditInteraction(interaction, {
-      content: "Only storytellers can run this command.",
+      content: `Only storytellers can run this command.${detail}`,
       flags: MessageFlags.Ephemeral,
     });
     return null;
@@ -562,6 +574,12 @@ export async function requireCommandAccess(interaction: CommandInteraction): Pro
  * Role IDs from the slash/button interaction payload (no REST fetch).
  * Prefer this over guild.members.fetch — we do not request GuildMembers intent, so
  * fetches often time out and falsely deny ST-role users.
+ *
+ * Returns:
+ * - `true` / `false` when the interaction payload lists roles as a string[] (authoritative)
+ * - `true` when a GuildMember role cache hits
+ * - `null` when there is no member, or a GuildMember cache miss (cache is often incomplete
+ *   without Guild Members intent — callers should REST-fetch rather than deny)
  */
 export function interactionMemberHasRole(
   interaction: Pick<CommandInteraction, "member">,
@@ -571,13 +589,14 @@ export function interactionMemberHasRole(
   if (!member) return null;
 
   const roles = member.roles;
-  // APIInteractionGuildMember: roles is string[]
+  // APIInteractionGuildMember: roles is string[] from the interaction payload — complete.
   if (Array.isArray(roles)) {
     return roles.includes(roleId);
   }
-  // GuildMember: RoleManager with cache
+  // GuildMember: RoleManager cache. A hit is trustworthy; a miss is not (incomplete cache).
   if (roles && typeof roles === "object" && "cache" in roles) {
-    return roles.cache.has(roleId);
+    if (roles.cache.has(roleId)) return true;
+    return null;
   }
   return null;
 }
@@ -592,6 +611,7 @@ export async function memberHasGameStRole(
   const fromPayload = interactionMemberHasRole(interaction, game.stRoleId);
   if (fromPayload !== null) return fromPayload;
 
+  // REST member fetch (does not require Guild Members gateway intent).
   const member = await fetchGuildMemberWithTimeout(interaction.guild, interaction.user.id);
   return member?.roles.cache.has(game.stRoleId) ?? false;
 }

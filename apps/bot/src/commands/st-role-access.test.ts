@@ -11,14 +11,23 @@ describe("interactionMemberHasRole", () => {
     expect(interactionMemberHasRole(interaction as never, "missing")).toBe(false);
   });
 
-  it("reads roles from GuildMember RoleManager cache", () => {
+  it("reads roles from GuildMember RoleManager cache (hit only; miss is unknown)", () => {
     const interaction = {
       member: {
         roles: { cache: { has: (id: string) => id === "st-role" } },
       },
     };
     expect(interactionMemberHasRole(interaction as never, "st-role")).toBe(true);
-    expect(interactionMemberHasRole(interaction as never, "missing")).toBe(false);
+    expect(interactionMemberHasRole(interaction as never, "missing")).toBeNull();
+  });
+
+  it("treats GuildMember role-cache miss as unknown (incomplete without Guild Members intent)", () => {
+    const interaction = {
+      member: {
+        roles: { cache: { has: () => false } },
+      },
+    };
+    expect(interactionMemberHasRole(interaction as never, "st-role")).toBeNull();
   });
 
   it("returns null when member is missing", () => {
@@ -59,6 +68,32 @@ describe("memberHasGameStRole", () => {
       }),
     ).resolves.toBe(false);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("REST-fetches when GuildMember cache misses the ST role", async () => {
+    const fetch = vi.fn(async () => ({
+      roles: { cache: { has: (id: string) => id === "game-st" } },
+    }));
+    const interaction = {
+      guild: {
+        members: {
+          fetch,
+          cache: { get: () => undefined },
+        },
+      },
+      member: {
+        roles: { cache: { has: () => false } },
+      },
+      user: { id: "u1" },
+    };
+
+    await expect(
+      memberHasGameStRole(interaction as never, {
+        channelId: "town",
+        stRoleId: "game-st",
+      }),
+    ).resolves.toBe(true);
+    expect(fetch).toHaveBeenCalledWith("u1");
   });
 
   it("falls back to timed member fetch when interaction has no member", async () => {
