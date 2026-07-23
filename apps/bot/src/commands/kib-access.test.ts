@@ -57,6 +57,24 @@ describe("addRoleMembersToThread", () => {
     expect(threadAdd).toHaveBeenCalledTimes(1);
     expect(threadAdd).toHaveBeenCalledWith("with-role");
   });
+
+  it("returns how many cached role members were invited", async () => {
+    const threadAdd = vi.fn(async () => "ok");
+    const guild = {
+      members: {
+        fetch: vi.fn(),
+        cache: new Map([
+          ["a", { id: "a", roles: { cache: { has: (id: string) => id === "st-role" } } }],
+          ["b", { id: "b", roles: { cache: { has: (id: string) => id === "st-role" } } }],
+          ["c", { id: "c", roles: { cache: { has: () => false } } }],
+        ]),
+      },
+    };
+    const thread = { members: { add: threadAdd } };
+
+    const added = await addRoleMembersToThread(guild as never, thread as never, "st-role");
+    expect(added).toBe(2);
+  });
 });
 
 describe("fetchGuildMemberWithTimeout", () => {

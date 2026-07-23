@@ -46,7 +46,6 @@ import {
   townVoteThreadNameSuffix,
   postNominationToChannel,
   updateNominationMessagesInChannels,
-  addDayThreadMembers,
   type DayDiscussionChannel,
 } from "../day-thread.js";
 import { getBotClient } from "../discord-client.js";
@@ -1087,23 +1086,64 @@ export async function addRoleMembersToThread(
   guild: Guild,
   thread: AnyThreadChannel,
   roleId: string,
-): Promise<void> {
+): Promise<number> {
+  let added = 0;
   for (const member of guild.members.cache.values()) {
     if (member.roles.cache.has(roleId)) {
-      await thread.members.add(member.id).catch(() => undefined);
+      const ok = await thread.members.add(member.id).then(() => true).catch(() => false);
+      if (ok) added++;
     }
   }
+  return added;
+}
+
+/** Invite engine storytellers + anyone cached with the game ST role into one player ST thread. */
+export async function addStorytellersToPlayerThread(
+  guild: Guild,
+  thread: AnyThreadChannel,
+  engine: GameEngine,
+  stRoleId?: string | null,
+): Promise<void> {
+  for (const stId of engine.getStorytellerDiscordIds()) {
+    await thread.members.add(stId).catch(() => undefined);
+  }
+  if (stRoleId) {
+    await addRoleMembersToThread(guild, thread, stRoleId);
+  }
+}
+
+/**
+ * Retroactively invite engine STs + ST-role holders into every personal player ST thread.
+ * Returns how many threads were updated.
+ */
+export async function syncStorytellersToPlayerThreads(
+  guild: Guild,
+  game: GameRoleIds & { id: string; channelId: string },
+  engine: GameEngine,
+): Promise<{ threads: number }> {
+  const threads = await listPersonalPlayerThreads(guild, game, engine, {
+    includeArchived: true,
+  });
+  for (const thread of threads) {
+    if (!thread.isThread()) continue;
+    if (thread.archived) {
+      await thread.setArchived(false, "Syncing storytellers into player ST threads.").catch(
+        () => undefined,
+      );
+    }
+    await addStorytellersToPlayerThread(guild, thread, engine, game.stRoleId);
+  }
+  return { threads: threads.filter((thread) => thread.isThread()).length };
 }
 
 export async function createPlayerStThreads(
   interaction: CommandInteraction,
-  game: { id: string; channelId: string },
+  game: GameRoleIds & { id: string; channelId: string },
   engine: GameEngine,
 ): Promise<{ created: number; failed: number }> {
   const guild = interaction.guild;
   if (!guild) return { created: 0, failed: 0 };
 
-  const storytellerIds = engine.getStorytellerDiscordIds();
   let created = 0;
   let failed = 0;
   const threadIndex = await loadParentThreadIndex(guild, game.channelId);
@@ -1137,9 +1177,7 @@ export async function createPlayerStThreads(
     await ensureThreadAutoArchive(thread);
 
     await thread.members.add(player.discordUserId).catch(() => undefined);
-    for (const stId of storytellerIds) {
-      await thread.members.add(stId).catch(() => undefined);
-    }
+    await addStorytellersToPlayerThread(guild, thread, engine, game.stRoleId);
 
     await thread
       .send({
@@ -1559,10 +1597,14 @@ export async function refreshStVoteTrackerForGame(
   await upsertStVoteTracker(guild, game.channelId, engine, game.kibThreadId);
 }
 
+/**
+ * Ensure Town Voting exists. Same pattern as Whisper Declaration / Claims / Rules:
+ * public thread + @mention ST / player / kib roles (no per-player member adds).
+ */
 export async function createTownVoteThread(
   guild: Guild,
-  game: { id: string; channelId: string },
-  engine: GameEngine,
+  game: GameRoleIds & { id: string; channelId: string },
+  _engine: GameEngine,
 ): Promise<AnyThreadChannel | null> {
   const parent = await guild.channels.fetch(game.channelId).catch(() => null);
   if (!isGameTextChannel(parent)) return null;
@@ -1578,20 +1620,27 @@ export async function createTownVoteThread(
         autoArchiveDuration: DEFAULT_THREAD_AUTO_ARCHIVE,
         reason: `Town voting thread for game ${game.id}`,
         ...( {
-          type: ChannelType.PrivateThread,
-          invitable: false,
+          type: ChannelType.PublicThread,
         } as Record<string, unknown>),
       });
+      const roleIds = [game.stRoleId, game.playerRoleId, game.kibRoleId].filter(
+        (id): id is string => Boolean(id),
+      );
+      const introLines = [
+        "**Town Voting** — nominations and votes happen here once Day begins.",
+        "After setup the game starts on **Night 1** (nominations closed). The storyteller runs `/st next-phase` for Day 1.",
+        "You can vote on **any open nomination** with the **Vote** button.",
+        "Prefer a private ballot? Use `/privatevote` (ST sees it on the kib vote tracker).",
+        "Players: `/nominate` / `/defend` / `/vote` / `/privatevote` / `/roster` / `/whisper`.",
+        "Storyteller: kib **control panel**, or `/st do` (`resolve-next`, `close-nominations`, `next-phase`, `execute`, `nominate`, `vote-visibility`, …).",
+      ];
+      if (roleIds.length > 0) {
+        introLines.unshift(roleIds.map((id) => `<@&${id}>`).join(" "));
+      }
       await thread
         .send({
-          content: [
-            "**Town Voting** — nominations and votes happen here once Day begins.",
-            "After setup the game starts on **Night 1** (nominations closed). The storyteller runs `/st next-phase` for Day 1.",
-            "You can vote on **any open nomination** with the **Vote** button.",
-            "Prefer a private ballot? Use `/privatevote` (ST sees it on the kib vote tracker).",
-            "Players: `/nominate` / `/defend` / `/vote` / `/privatevote` / `/roster` / `/whisper`.",
-            "Storyteller: kib **control panel**, or `/st do` (`resolve-next`, `close-nominations`, `next-phase`, `execute`, `nominate`, `vote-visibility`, …).",
-          ].join("\n"),
+          content: introLines.join("\n"),
+          allowedMentions: { roles: roleIds },
         })
         .catch(() => undefined);
     } catch {
@@ -1606,7 +1655,6 @@ export async function createTownVoteThread(
   }
   await ensureThreadAutoArchive(thread);
 
-  await addDayThreadMembers(guild, thread.id, engine);
   return thread;
 }
 
@@ -1627,8 +1675,14 @@ export async function findTownVoteThread(
 
   const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
   if (!isGameTextChannel(parent)) return null;
-  const archived = await parent.threads.fetchArchived({ type: "private" }).catch(() => null);
-  return archived?.threads.find((candidate) => matchesGame(candidate.name)) ?? null;
+
+  // Prefer public (current); still find legacy private Town Voting threads.
+  for (const type of ["public", "private"] as const) {
+    const archived = await parent.threads.fetchArchived({ type }).catch(() => null);
+    const match = archived?.threads.find((candidate) => matchesGame(candidate.name));
+    if (match) return match;
+  }
+  return null;
 }
 
 export async function requireTownVotingChannel(

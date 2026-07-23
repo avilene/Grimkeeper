@@ -26,7 +26,12 @@ export type TownSurfaceGame = {
   rulesThreadId?: string | null;
 };
 
-function formatRolePingLine(game: TownSurfaceGame): { content: string; roleIds: string[] } {
+/** @mention ST / player / kib roles (same line used on all public town threads). */
+export function formatRolePingLine(game: {
+  stRoleId?: string | null;
+  playerRoleId?: string | null;
+  kibRoleId?: string | null;
+}): { content: string; roleIds: string[] } {
   const roleIds = [game.stRoleId, game.playerRoleId, game.kibRoleId].filter(
     (id): id is string => Boolean(id),
   );

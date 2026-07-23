@@ -35,6 +35,7 @@ import {
   createTownVoteThread,
   finalizeMinimalGameEnd,
   getKibThreadForGame,
+  listPersonalPlayerThreads,
   loadEngine,
   persistEvents,
   postNominationEverywhere,
@@ -50,6 +51,7 @@ import {
   resolveVotingChannel,
   setInteractionProgress,
   syncGameProjection,
+  syncStorytellersToPlayerThreads,
 } from "./command-context.js";
 
 @Discord()
@@ -216,6 +218,9 @@ export class StCommandsMinimal {
           return;
         }
         await this.addSt(user, interaction);
+        return;
+      case "sync-st-threads":
+        await this.syncStThreads(interaction);
         return;
       case "setup-town":
         if (!players?.trim()) {
@@ -955,6 +960,17 @@ export class StCommandsMinimal {
         }
       }
 
+      const playerThreads = await listPersonalPlayerThreads(guild, game, engine, {
+        includeArchived: true,
+      });
+      for (const thread of playerThreads) {
+        if (!thread.isThread()) continue;
+        if (thread.archived) {
+          await thread.setArchived(false, "Adding co-ST to player ST thread.").catch(() => undefined);
+        }
+        await thread.members.add(user.id).catch(() => undefined);
+      }
+
       await postGameLog(
         guild,
         game,
@@ -965,10 +981,51 @@ export class StCommandsMinimal {
         gameRoles ? "ST role assigned" : "ST role missing — run `/game setup` with roles",
         kib ? `added to <#${kib.id}>` : null,
         game.logThreadId ? `added to <#${game.logThreadId}>` : null,
+        playerThreads.length > 0
+          ? `added to ${playerThreads.length} player ST thread${playerThreads.length === 1 ? "" : "s"}`
+          : null,
       ].filter(Boolean);
 
       await replyOrEditInteraction(interaction, {
         content: `Promoted <@${user.id}> to storyteller (${accessHints.join("; ")}). No personal player thread was created.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  /** Invite everyone with the ST role (plus engine STs) into existing player ST threads. */
+  async syncStThreads(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      if (!game.stRoleId) {
+        await replyOrEditInteraction(interaction, {
+          content: "This game has no ST role linked. Run `/game setup` with an `st:` role first.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await setInteractionProgress(interaction, "Adding ST role holders to player threads…");
+      const engine = await loadEngine(game.id);
+      const { threads } = await syncStorytellersToPlayerThreads(guild, game, engine);
+
+      await postGameLog(
+        guild,
+        game,
+        `<@${interaction.user.id}> synced ST role holders into **${threads}** player ST thread${threads === 1 ? "" : "s"}.`,
+      );
+
+      await replyOrEditInteraction(interaction, {
+        content:
+          threads > 0
+            ? `Added ST role holders (and engine storytellers) to **${threads}** player ST thread${threads === 1 ? "" : "s"}.`
+            : "No player ST threads found. Run `/st setup-town` first.",
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

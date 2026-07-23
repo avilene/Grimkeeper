@@ -33,6 +33,10 @@ export const ST_DO_ACTIONS: DoAction[] = [
   { name: "add-spectator", description: "Assign kib role + thread access (or use /st add-kib)", needs: ["user"] },
   { name: "remove-spectator", description: "Remove kib role (or use /st remove-kib)", needs: ["user"] },
   { name: "add-st", description: "Promote a co-storyteller (ST role only; no new player thread)", needs: ["user"] },
+  {
+    name: "sync-st-threads",
+    description: "Add everyone with the ST role to all player ST threads",
+  },
   { name: "start", description: "Legacy start (prefer setup-town)" },
 ];
 
