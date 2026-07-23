@@ -1,4 +1,5 @@
 import { EmbedBuilder, type APIEmbed, type Client, type TextChannel } from "discord.js";
+import * as Sentry from "@sentry/node";
 
 import { getBotClient } from "./discord-client.js";
 import { log, logError, serializeError } from "./logger.js";
@@ -335,12 +336,37 @@ export async function notifyLifecycle(
   await sendToErrorChannel(resolvedClient, buildLifecycleLogEmbed(source, context).toJSON());
 }
 
+function captureInSentry(
+  source: string,
+  error: unknown,
+  context: Record<string, unknown>,
+): void {
+  if (!Sentry.getClient()) return;
+
+  Sentry.withScope((scope) => {
+    scope.setTag("source", source);
+    scope.setLevel("error");
+    for (const [key, value] of Object.entries(context)) {
+      if (value === undefined) continue;
+      scope.setExtra(key, value);
+    }
+    if (error instanceof Error) {
+      Sentry.captureException(error);
+      return;
+    }
+    Sentry.captureException(new Error(typeof error === "string" ? error : source), {
+      extra: { original: error },
+    });
+  });
+}
+
 export async function reportError(
   source: string,
   error: unknown,
   context: Record<string, unknown> = {},
 ): Promise<void> {
   logError("error", source, error, context);
+  captureInSentry(source, error, context);
   queueDiscordReport({ source, error, context });
   await flushDiscordReports();
 }
