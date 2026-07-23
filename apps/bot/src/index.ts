@@ -11,7 +11,7 @@ if (existsSync(envPath)) {
 import "./bootstrap-logs.js";
 
 import "reflect-metadata";
-import { Events, IntentsBitField } from "discord.js";
+import { Events, IntentsBitField, MessageFlags } from "discord.js";
 import { Client } from "discordx";
 
 import { setBotClient } from "./discord-client.js";
@@ -32,6 +32,8 @@ import {
 import { tryMarkInteractionOnce } from "./interactions/interaction-dedup.js";
 import { logCommandInvoked } from "./action-log.js";
 import { startReminderScheduler } from "./reminder-scheduler.js";
+import { tryStCommandFallback } from "./st-command-fallback.js";
+import { replyOrEditInteraction } from "./commands/command-context.js";
 
 await loadCommandModules();
 
@@ -150,7 +152,28 @@ client.on("interactionCreate", (interaction) => {
         if (handled) return;
       }
     }
-    await client.executeInteraction(interaction);
+
+    const executed = await client.executeInteraction(interaction);
+    // discordx returns null when it cannot resolve the command (logs "interaction not found").
+    // Early defer already showed "Working…" — finish the interaction so it does not hang.
+    if (executed === null && interaction.isChatInputCommand()) {
+      const fellBack = await tryStCommandFallback(interaction);
+      if (fellBack) return;
+
+      log("warn", "interaction.unhandled", {
+        command: interaction.commandName,
+        subcommandGroup: interaction.options.getSubcommandGroup(false) ?? undefined,
+        subcommand: interaction.options.getSubcommand(false) ?? undefined,
+        guildId: interaction.guildId,
+        channelId: interaction.channelId,
+        userId: interaction.user.id,
+      });
+      await replyOrEditInteraction(interaction, {
+        content:
+          "That slash command is not available on this bot instance (often a stale deploy or a second bot still running). Try `/st do` or redeploy with a single bot replica.",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
   })().catch((error: unknown) => {
     const recoverable = isRecoverableInteractionResponseError(error);
     const ageMs = interactionCreatedAgeMs(interaction);

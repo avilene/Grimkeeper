@@ -1199,11 +1199,17 @@ export async function ensurePlayerStThread(
   if (isFakePlayer(player.discordUserId)) return { thread: null, created: false };
 
   const threadName = personalPlayerThreadName(game.id, player.displayName);
-  const threadIndex = options?.threadIndex ?? (await loadParentThreadIndex(guild, game.channelId));
-  let thread = threadIndex.get(threadName) ?? null;
+  let thread =
+    options?.threadIndex?.get(threadName) ??
+    (await findPersonalPlayerThread(guild, game.channelId, game.id, player.displayName));
   let created = false;
 
   if (!thread) {
+    log("info", "st.player-thread.create", {
+      gameId: game.id,
+      playerId: player.discordUserId,
+      threadName,
+    });
     thread = await createPersonalPlayerThread(
       interaction,
       game.id,
@@ -1212,7 +1218,7 @@ export async function ensurePlayerStThread(
       player.displayName,
     );
     created = Boolean(thread);
-    if (thread) threadIndex.set(threadName, thread);
+    if (thread && options?.threadIndex) options.threadIndex.set(threadName, thread);
   }
 
   if (!thread) return { thread: null, created: false };
@@ -1223,6 +1229,8 @@ export async function ensurePlayerStThread(
   await ensureThreadAutoArchive(thread);
 
   await thread.members.add(player.discordUserId).catch(() => undefined);
+  // Always invite the acting ST (role cache is often empty without Guild Members intent).
+  await thread.members.add(interaction.user.id).catch(() => undefined);
   await addStorytellersToPlayerThread(guild, thread, engine, game.stRoleId);
 
   const shouldAnnounce = options?.announce ?? created;

@@ -15,6 +15,7 @@ import { isAllowedUserId } from "../access.js";
 import { formatVoteVisibility } from "../day-thread.js";
 import { ensureLogThread, postGameLog, postGameLogRoleChange } from "../game-log-thread.js";
 import { upsertPinnedGameStatus } from "../game-status.js";
+import { log } from "../logger.js";
 import { runSetPlayerVote } from "../set-vote.js";
 import { upsertStControlPanel } from "../st-control-panel.js";
 import { upsertStVoteTracker } from "../st-vote-tracker.js";
@@ -871,6 +872,11 @@ export class StCommandsMinimal {
     if (!guild) return;
 
     try {
+      log("info", "st.recreate-player-thread.start", {
+        gameId: game.id,
+        playerId: playerUser.id,
+        channelId: interaction.channelId,
+      });
       const engine = await loadEngine(game.id);
       if (!engine.getState().townMode) {
         await replyOrEditInteraction(interaction, {
@@ -903,11 +909,18 @@ export class StCommandsMinimal {
 
       if (!thread) {
         await replyOrEditInteraction(interaction, {
-          content: `Could not create an ST thread for **${player.displayName}**. Check bot permissions (\`Create Private Threads\`, \`Manage Threads\`).`,
+          content: `Could not create an ST thread for **${player.displayName}**. Check bot permissions (\`Create Private Threads\`, \`Manage Threads\`) on the **town** channel.`,
           flags: MessageFlags.Ephemeral,
         });
         return;
       }
+
+      log("info", "st.recreate-player-thread.done", {
+        gameId: game.id,
+        playerId: playerUser.id,
+        threadId: thread.id,
+        created,
+      });
 
       await postGameLog(
         guild,
