@@ -350,9 +350,10 @@ export async function requireStorytellerGame(interaction: CommandInteraction) {
 
   const engine = await loadEngine(game.id);
   if (!(await canActAsStoryteller(interaction, game, engine))) {
+    const roleHint = game.stRoleId ? ` <@&${game.stRoleId}>` : "";
     const detail = !game.stRoleId
-      ? " This game has no ST role linked in the DB — re-run `/game setup` with `st:`, or ask an allowlisted ST to `/st do add-st` you."
-      : " Need this game’s ST Discord role, engine storyteller status (`/st do add-st`), or `ALLOWED_USER_IDS`.";
+      ? " This game has no ST role linked in the DB — re-run `/game setup` with `st:`."
+      : ` Need this game’s ST Discord role${roleHint} (or \`ALLOWED_USER_IDS\`).`;
     log("info", "st.access.denied", {
       userId: interaction.user.id,
       gameId: game.id,
@@ -360,7 +361,7 @@ export async function requireStorytellerGame(interaction: CommandInteraction) {
       stRoleId: game.stRoleId ?? null,
     });
     await replyOrEditInteraction(interaction, {
-      content: `Only storytellers can run this command.${detail}`,
+      content: `Only holders of this game’s storyteller role can run this command.${detail}`,
       flags: MessageFlags.Ephemeral,
     });
     return null;
@@ -609,19 +610,32 @@ export async function memberHasGameStRole(
   },
   game: GameRoleIds,
 ): Promise<boolean> {
-  if (!game.stRoleId || !interaction.guild) return false;
+  if (!interaction.guild) return false;
+
+  let stRoleId = game.stRoleId ?? null;
+  // Older games / partial rows: resolve st-<town-slug> when DB id is missing.
+  if (!stRoleId) {
+    const roles = await resolveGameRoles(interaction.guild, game);
+    stRoleId = roles?.stRole.id ?? null;
+  }
+  if (!stRoleId) return false;
 
   // Interaction payload already includes role IDs for guild commands — authoritative and fast.
-  const fromPayload = interactionMemberHasRole(interaction, game.stRoleId);
+  const fromPayload = interactionMemberHasRole(interaction, stRoleId);
   if (fromPayload !== null) return fromPayload;
 
-  // REST member fetch (does not require Guild Members gateway intent).
-  const member = await fetchGuildMemberWithTimeout(interaction.guild, interaction.user.id);
-  return member?.roles.cache.has(game.stRoleId) ?? false;
+  // Force REST — cached GuildMember roles are often incomplete without Guild Members intent.
+  const member = await fetchGuildMemberWithTimeout(
+    interaction.guild,
+    interaction.user.id,
+    undefined,
+    { force: true },
+  );
+  return member?.roles.cache.has(stRoleId) ?? false;
 }
 
 /**
- * Same access as `/st` commands: engine storyteller, game ST Discord role, or allowlist.
+ * `/st` access: game Discord ST role is the source of truth; engine ST + allowlist still count.
  * Use for buttons/selects (control panel, vote tracker) as well as slash commands.
  */
 export async function canActAsStoryteller(
@@ -634,8 +648,8 @@ export async function canActAsStoryteller(
   game: GameRoleIds,
   engine: { isStoryteller: (userId: string) => boolean },
 ): Promise<boolean> {
-  if (engine.isStoryteller(interaction.user.id)) return true;
   if (await memberHasGameStRole(interaction, game)) return true;
+  if (engine.isStoryteller(interaction.user.id)) return true;
   if (await isInExplicitAllowlist(interaction)) return true;
   return false;
 }

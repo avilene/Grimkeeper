@@ -93,6 +93,22 @@ describe("fetchGuildMemberWithTimeout", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("force-fetches even when a non-partial member is cached", async () => {
+    const cached = { id: "u1", partial: false, displayName: "A" };
+    const fresh = { id: "u1", partial: false, displayName: "B" };
+    const fetch = vi.fn(async () => fresh);
+    const guild = {
+      members: {
+        cache: { get: (id: string) => (id === "u1" ? cached : undefined) },
+        fetch,
+      },
+    };
+
+    const member = await fetchGuildMemberWithTimeout(guild as never, "u1", 2_000, { force: true });
+    expect(member).toBe(fresh);
+    expect(fetch).toHaveBeenCalledWith({ user: "u1", force: true });
+  });
+
   it("times out hung member fetches", async () => {
     const guild = {
       members: {

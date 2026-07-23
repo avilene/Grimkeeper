@@ -31,17 +31,23 @@ export function isAllowedUserId(userId: string | null | undefined): boolean {
  * Fetch one guild member with a hard timeout.
  * Prefer this over bare `guild.members.fetch(id)` on interaction paths — hangs leave
  * ephemeral "Working…" replies stuck forever.
+ *
+ * Pass `force: true` when checking Discord roles: without Guild Members intent the
+ * member cache is often present but missing roles, and returning it skips REST.
  */
 export async function fetchGuildMemberWithTimeout(
   guild: Guild,
   userId: string,
   timeoutMs = MEMBER_FETCH_TIMEOUT_MS,
+  options?: { force?: boolean },
 ): Promise<GuildMember | null> {
-  const cached = guild.members.cache?.get(userId);
-  if (cached && !cached.partial) return cached;
+  if (!options?.force) {
+    const cached = guild.members.cache?.get(userId);
+    if (cached && !cached.partial) return cached;
+  }
 
   return Promise.race([
-    guild.members.fetch(userId).catch(() => null),
+    guild.members.fetch({ user: userId, force: Boolean(options?.force) }).catch(() => null),
     new Promise<null>((resolve) => {
       setTimeout(() => resolve(null), timeoutMs);
     }),
