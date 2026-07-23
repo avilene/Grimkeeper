@@ -1,15 +1,11 @@
 import "./load-env.js";
 
 import { randomBytes } from "node:crypto";
+import * as Sentry from "@sentry/node";
 import express, { type NextFunction, type Request, type Response } from "express";
 import session from "express-session";
 
-import {
-  listAppLogs,
-  listDistinctGameEventTypes,
-  listGameEvents,
-  prisma,
-} from "@grimkeeper/database";
+import { prisma } from "@grimkeeper/database";
 
 import {
   discordAuthorizeUrl,
@@ -25,18 +21,6 @@ const ACTIVE_PHASES = ["lobby", "setup", "night", "day"] as const;
 function param(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
   return value ?? "";
-}
-
-function queryString(value: unknown): string {
-  if (typeof value === "string") return value.trim();
-  if (Array.isArray(value) && typeof value[0] === "string") return value[0].trim();
-  return "";
-}
-
-function parseDateInput(value: string): Date | undefined {
-  if (!value) return undefined;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
 function emptyToNull(value: unknown): string | null {
@@ -91,14 +75,6 @@ function field(
   return `<label>${escapeHtml(label)} ${hint}
     <input type="${type}" name="${escapeHtml(name)}" value="${escapeHtml(value ?? "")}" />
   </label>`;
-}
-
-function jsonPreview(value: unknown): string {
-  try {
-    return escapeHtml(JSON.stringify(value, null, 2));
-  } catch {
-    return escapeHtml(String(value));
-  }
 }
 
 const app = express();
@@ -218,7 +194,6 @@ app.get("/", requireUser, async (req, res) => {
     <div class="meta">
       <span><a href="/">Active only</a></span>
       <span><a href="/?show=all">Include ended</a></span>
-      <span><a href="/logs">Game events</a> · <a href="/logs/app">App logs</a></span>
       <span>${games.length} shown</span>
     </div>
     <table>
@@ -275,8 +250,6 @@ app.get("/games/:id", requireUser, async (req, res) => {
     <div class="meta">
       <span>ID <code>${escapeHtml(game.id)}</code></span>
       <span>Created ${escapeHtml(game.createdAt.toISOString())}</span>
-      <span><a href="/logs?gameId=${escapeHtml(game.id)}">Game events</a></span>
-      <span><a href="/logs/app?gameId=${escapeHtml(game.id)}">App logs</a></span>
     </div>
     <h2>Game fields</h2>
     <form class="edit" method="post" action="/games/${escapeHtml(game.id)}">
@@ -353,143 +326,12 @@ app.post("/games/:id/players/:playerId", requireUser, async (req, res) => {
   res.redirect(`/games/${id}`);
 });
 
-app.get("/logs", requireUser, async (req, res) => {
-  const user = req.session.user as SessionUser;
-  const gameId = queryString(req.query.gameId);
-  const type = queryString(req.query.type);
-  const sinceRaw = queryString(req.query.since);
-  const untilRaw = queryString(req.query.until);
-  const since = parseDateInput(sinceRaw);
-  const until = parseDateInput(untilRaw);
-
-  const [events, types] = await Promise.all([
-    listGameEvents({ gameId: gameId || undefined, type: type || undefined, since, until, take: 200 }),
-    listDistinctGameEventTypes(),
-  ]);
-
-  const typeOptions = [`<option value="">Any type</option>`]
-    .concat(
-      types.map(
-        (t) =>
-          `<option value="${escapeHtml(t)}" ${t === type ? "selected" : ""}>${escapeHtml(t)}</option>`,
-      ),
-    )
-    .join("");
-
-  const rows = events
-    .map((event) => {
-      const payload = event.payload;
-      return `<tr>
-        <td class="mono">${escapeHtml(event.createdAt.toISOString())}</td>
-        <td><a href="/games/${escapeHtml(event.gameId)}"><code>${escapeHtml(event.gameId.slice(0, 8))}…</code></a></td>
-        <td><span class="badge">${escapeHtml(event.type)}</span></td>
-        <td>${event.seq}</td>
-        <td>
-          <details>
-            <summary>Payload</summary>
-            <pre class="payload">${jsonPreview(payload)}</pre>
-          </details>
-        </td>
-      </tr>`;
-    })
-    .join("");
-
-  const body = `
-    <p>Engine event store (<code>GameEvent</code>) — the authoritative “what happened in this game” timeline. Discord audit-thread messages are not mirrored here.</p>
-    <form class="filters" method="get" action="/logs">
-      <label>Game ID
-        <input type="text" name="gameId" value="${escapeHtml(gameId)}" placeholder="cuid…" />
-      </label>
-      <label>Type
-        <select name="type">${typeOptions}</select>
-      </label>
-      <label>Since (ISO)
-        <input type="text" name="since" value="${escapeHtml(sinceRaw)}" placeholder="2026-07-01T00:00:00Z" />
-      </label>
-      <label>Until (ISO)
-        <input type="text" name="until" value="${escapeHtml(untilRaw)}" placeholder="2026-07-23T23:59:59Z" />
-      </label>
-      <div class="actions"><button type="submit">Filter</button> <a class="btn secondary" href="/logs">Clear</a></div>
-    </form>
-    <div class="meta"><span>${events.length} events (max 200)</span></div>
-    <table>
-      <thead><tr><th>Time</th><th>Game</th><th>Type</th><th>Seq</th><th>Payload</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="5">No events matched.</td></tr>`}</tbody>
-    </table>`;
-
-  res.type("html").send(layout({ title: "Game events", user, flash: flash(req), body }));
-});
-
-app.get("/logs/app", requireUser, async (req, res) => {
-  const user = req.session.user as SessionUser;
-  const gameId = queryString(req.query.gameId);
-  const level = queryString(req.query.level);
-  const sinceRaw = queryString(req.query.since);
-  const untilRaw = queryString(req.query.until);
-  const since = parseDateInput(sinceRaw);
-  const until = parseDateInput(untilRaw);
-
-  const logs = await listAppLogs({
-    gameId: gameId || undefined,
-    level: level || undefined,
-    since,
-    until,
-    take: 200,
-  });
-
-  const levelOptions = ["", "warn", "error"]
-    .map(
-      (l) =>
-        `<option value="${escapeHtml(l)}" ${l === level ? "selected" : ""}>${l ? escapeHtml(l) : "Any level"}</option>`,
-    )
-    .join("");
-
-  const rows = logs
-    .map((row) => {
-      return `<tr>
-        <td class="mono">${escapeHtml(row.createdAt.toISOString())}</td>
-        <td><span class="badge">${escapeHtml(row.level)}</span></td>
-        <td>${row.gameId ? `<a href="/games/${escapeHtml(row.gameId)}"><code>${escapeHtml(row.gameId.slice(0, 8))}…</code></a>` : "—"}</td>
-        <td class="mono">${escapeHtml(row.message)}</td>
-        <td>
-          <details>
-            <summary>Context</summary>
-            <pre class="payload">${jsonPreview(row.context)}</pre>
-          </details>
-        </td>
-      </tr>`;
-    })
-    .join("");
-
-  const body = `
-    <p>DB-backed operational sink (<code>AppLog</code>) for bot <code>warn</code>/<code>error</code> lines when <code>APP_LOG_TO_DB</code> is not disabled. Info/debug stay on stdout (and Grafana if enabled). Discord ST audit threads are Discord-only.</p>
-    <form class="filters" method="get" action="/logs/app">
-      <label>Game ID
-        <input type="text" name="gameId" value="${escapeHtml(gameId)}" />
-      </label>
-      <label>Level
-        <select name="level">${levelOptions}</select>
-      </label>
-      <label>Since (ISO)
-        <input type="text" name="since" value="${escapeHtml(sinceRaw)}" />
-      </label>
-      <label>Until (ISO)
-        <input type="text" name="until" value="${escapeHtml(untilRaw)}" />
-      </label>
-      <div class="actions"><button type="submit">Filter</button> <a class="btn secondary" href="/logs/app">Clear</a></div>
-    </form>
-    <div class="meta"><span>${logs.length} rows (max 200)</span></div>
-    <table>
-      <thead><tr><th>Time</th><th>Level</th><th>Game</th><th>Message</th><th>Context</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="5">No app logs matched.</td></tr>`}</tbody>
-    </table>`;
-
-  res.type("html").send(layout({ title: "App logs", user, flash: flash(req), body }));
-});
-
 app.get("/healthz", (_req, res) => {
   res.type("text").send("ok");
 });
+
+// Capture unhandled Express errors (must be after all routes).
+Sentry.setupExpressErrorHandler(app);
 
 const port = adminConfig.port;
 app.listen(port, () => {

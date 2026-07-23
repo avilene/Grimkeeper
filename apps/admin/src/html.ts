@@ -18,8 +18,6 @@ function layout(opts: {
   const nav = opts.user
     ? `<nav class="nav">
         <a href="/">Games</a>
-        <a href="/logs">Game events</a>
-        <a href="/logs/app">App logs</a>
         <span class="spacer"></span>
         <span class="user">${escapeHtml(opts.user.globalName ?? opts.user.username)} · ${escapeHtml(opts.user.id)}</span>
         <a href="/logout">Logout</a>
