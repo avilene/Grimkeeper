@@ -9,6 +9,7 @@ import {
   refreshNominationEverywhere,
   refreshAllNominationEverywhere,
   replyEngineError,
+  resolveActiveGameForInteraction,
   resolveVotingChannel,
   getStorytellerThread,
 } from "../commands/command-context.js";
@@ -52,23 +53,32 @@ export async function handleLockVotesButton(interaction: ButtonInteraction): Pro
     return true;
   }
 
-  const game = await getGameById(parsed.gameId);
-  if (!game || game.guildId !== interaction.guildId) {
-    await interaction
-      .editReply({ content: "No matching game for this nomination (it may be from an older game)." })
-      .catch(() => undefined);
-    return true;
-  }
-  if (game.phase === "ended") {
-    await interaction.editReply({ content: "That game has ended." }).catch(() => undefined);
-    return true;
+  let game = await getGameById(parsed.gameId);
+  const gameOk =
+    Boolean(game) && game!.guildId === interaction.guildId && game!.phase !== "ended";
+  if (!gameOk) {
+    const recovered = await resolveActiveGameForInteraction(interaction);
+    if (recovered && recovered.guildId === interaction.guildId && recovered.phase !== "ended") {
+      game = recovered;
+    } else if (game?.phase === "ended" && game.guildId === interaction.guildId) {
+      await interaction.editReply({ content: "That game has ended." }).catch(() => undefined);
+      return true;
+    } else {
+      await interaction
+        .editReply({
+          content:
+            "No matching game for this nomination (it may be from an older game). Refresh the vote tracker with `/st do votes`.",
+        })
+        .catch(() => undefined);
+      return true;
+    }
   }
 
   try {
-    const engine = await loadEngine(game.id);
-    if (!(await canActAsStoryteller(interaction, game, engine))) {
+    const engine = await loadEngine(game!.id);
+    if (!(await canActAsStoryteller(interaction, game!, engine))) {
       await interaction.editReply({
-        content: !game.stRoleId
+        content: !game!.stRoleId
           ? "Only storytellers can use the vote tracker. This game has no ST role linked — ask an ST to `/st do add-st` you."
           : "Only storytellers can use the vote tracker. Need this game’s ST Discord role, `/st do add-st`, or `ALLOWED_USER_IDS`.",
       });
@@ -77,7 +87,7 @@ export async function handleLockVotesButton(interaction: ButtonInteraction): Pro
 
     const reply = await runVoteTrackerAction(
       interaction.guild,
-      game,
+      game!,
       engine,
       parsed.nominationId,
       parsed.action,

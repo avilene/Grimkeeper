@@ -170,26 +170,54 @@ export function buildStControlPanelComponents(
   ];
 }
 
+async function findStControlPanelMessages(channel: KibVenue): Promise<Message[]> {
+  const found: Message[] = [];
+  const seen = new Set<string>();
+  const consider = (message: Message) => {
+    if (seen.has(message.id)) return;
+    if (!parseStPanelFooter(message.embeds[0]?.footer?.text)) return;
+    seen.add(message.id);
+    found.push(message);
+  };
+
+  const pinned = await channel.messages.fetchPinned().catch(() => null);
+  if (pinned) {
+    for (const message of pinned.values()) consider(message);
+  }
+  const recent = await channel.messages.fetch({ limit: 30 }).catch(() => null);
+  if (recent) {
+    for (const message of recent.values()) consider(message);
+  }
+  return found;
+}
+
 async function findStControlPanelMessage(
   channel: KibVenue,
   gameId: string,
 ): Promise<Message | null> {
-  const pinned = await channel.messages.fetchPinned().catch(() => null);
-  if (pinned) {
-    for (const message of pinned.values()) {
-      if (parseStPanelFooter(message.embeds[0]?.footer?.text) === gameId) {
-        return message;
-      }
-    }
-  }
-  const recent = await channel.messages.fetch({ limit: 30 }).catch(() => null);
-  if (!recent) return null;
-  for (const message of recent.values()) {
-    if (parseStPanelFooter(message.embeds[0]?.footer?.text) === gameId) {
-      return message;
-    }
-  }
-  return null;
+  const all = await findStControlPanelMessages(channel);
+  return all.find((message) => parseStPanelFooter(message.embeds[0]?.footer?.text) === gameId) ?? null;
+}
+
+/** Disable buttons on panels for other/ended games so STs stop clicking stale customIds. */
+async function retireStaleStControlPanels(
+  channel: KibVenue,
+  currentGameId: string,
+): Promise<void> {
+  const all = await findStControlPanelMessages(channel);
+  await Promise.all(
+    all.map(async (message) => {
+      const footerGameId = parseStPanelFooter(message.embeds[0]?.footer?.text);
+      if (!footerGameId || footerGameId === currentGameId) return;
+      await message
+        .edit({
+          embeds: message.embeds,
+          components: [],
+          content: "_This panel is from an older game — use the current ST control panel (or `/st panel`)._",
+        })
+        .catch(() => undefined);
+    }),
+  );
 }
 
 export async function upsertStControlPanel(
@@ -204,12 +232,14 @@ export async function upsertStControlPanel(
   });
   if (!thread?.isTextBased()) return null;
 
+  const gameId = engine.getState().gameId;
   const embed = buildStControlPanelEmbed(engine);
   const components = buildStControlPanelComponents(engine);
-  const existing = await findStControlPanelMessage(thread, engine.getState().gameId);
+  await retireStaleStControlPanels(thread, gameId);
+  const existing = await findStControlPanelMessage(thread, gameId);
 
   if (existing) {
-    await existing.edit({ embeds: [embed], components }).catch(() => undefined);
+    await existing.edit({ content: null, embeds: [embed], components }).catch(() => undefined);
     return existing;
   }
 

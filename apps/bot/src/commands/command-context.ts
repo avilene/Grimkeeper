@@ -158,15 +158,20 @@ export async function syncGameProjection(gameId: string, engine: GameEngine): Pr
   await syncGameProjectionFromEngine(gameId, engine);
 }
 
-async function resolveParentChannelId(
-  interaction: CommandInteraction | AutocompleteInteraction,
-): Promise<string | null> {
+async function resolveParentChannelId(interaction: {
+  channelId: string | null;
+  channel?: CommandInteraction["channel"] | null;
+  guild?: Guild | null;
+  inGuild?: () => boolean;
+}): Promise<string | null> {
   if (!interaction.channelId) return null;
   const cached = interaction.channel;
   if (cached?.isThread()) return cached.parentId ?? interaction.channelId;
   if (cached) return interaction.channelId;
-  if (interaction.inGuild()) {
-    const fetched = await interaction.guild!.channels.fetch(interaction.channelId).catch(() => null);
+  const inGuild =
+    typeof interaction.inGuild === "function" ? interaction.inGuild() : Boolean(interaction.guild);
+  if (inGuild && interaction.guild) {
+    const fetched = await interaction.guild.channels.fetch(interaction.channelId).catch(() => null);
     if (fetched?.isThread()) return fetched.parentId ?? interaction.channelId;
     if (fetched) return interaction.channelId;
   }
@@ -174,9 +179,13 @@ async function resolveParentChannelId(
 }
 
 /** Active game for this interaction’s channel; only falls back to guild when exactly one is active. */
-export async function resolveActiveGameForInteraction(
-  interaction: CommandInteraction | AutocompleteInteraction,
-) {
+export async function resolveActiveGameForInteraction(interaction: {
+  guildId: string | null;
+  channelId: string | null;
+  channel?: CommandInteraction["channel"] | null;
+  guild?: Guild | null;
+  inGuild?: () => boolean;
+}) {
   if (!interaction.guildId) return null;
 
   // Match town, kib venue (channel or thread), or log thread by the interaction channel itself.

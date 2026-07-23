@@ -16,6 +16,7 @@ import {
   refreshNominationEverywhere,
   refreshAllNominationEverywhere,
   replyEngineError,
+  resolveActiveGameForInteraction,
   resolveVotingChannel,
   syncGameProjection,
 } from "../commands/command-context.js";
@@ -46,29 +47,37 @@ async function loadPanelStorytellerContext(
     return { ok: false, error: "This must be used in a server." };
   }
 
-  const game = await getGameById(gameId);
-  if (!game || game.guildId !== interaction.guildId) {
-    return {
-      ok: false,
-      error:
-        "No matching game for this panel (it may be from an older game). Run `/st setup-town` or refresh the panel from kib.",
-    };
-  }
-  if (game.phase === "ended") {
-    return { ok: false, error: "That game has ended." };
+  let game = await getGameById(gameId);
+  const gameOk =
+    Boolean(game) && game!.guildId === interaction.guildId && game!.phase !== "ended";
+
+  // Stale panel buttons keep an old/missing gameId — recover from kib/town venue.
+  if (!gameOk) {
+    const recovered = await resolveActiveGameForInteraction(interaction);
+    if (recovered && recovered.guildId === interaction.guildId && recovered.phase !== "ended") {
+      game = recovered;
+    } else if (game?.phase === "ended" && game.guildId === interaction.guildId) {
+      return { ok: false, error: "That game has ended. Run `/st panel` from the current game’s kib." };
+    } else {
+      return {
+        ok: false,
+        error:
+          "No matching game for this panel (it may be from an older game). Run `/st panel` from kib to post a fresh one.",
+      };
+    }
   }
 
-  const engine = await loadEngine(game.id);
-  if (!(await canActAsStoryteller(interaction, game, engine))) {
+  const engine = await loadEngine(game!.id);
+  if (!(await canActAsStoryteller(interaction, game!, engine))) {
     return {
       ok: false,
-      error: !game.stRoleId
+      error: !game!.stRoleId
         ? "Only storytellers can use the control panel. This game has no ST role linked — ask an ST to `/st do add-st` you, or re-run `/game setup` with `st:`."
         : "Only storytellers can use the control panel. Need this game’s ST Discord role, `/st do add-st`, or `ALLOWED_USER_IDS`.",
     };
   }
 
-  return { ok: true, game, engine, guild: interaction.guild };
+  return { ok: true, game: game!, engine, guild: interaction.guild };
 }
 
 async function requirePanelStoryteller(
@@ -132,7 +141,12 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
 
     if (action === "refresh") {
       await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
-      await interaction.editReply({ content: "Control panel refreshed." });
+      await interaction.editReply({
+        content:
+          game.id === gameId
+            ? "Control panel refreshed."
+            : "Control panel refreshed for the **current** game (this button was from an older panel).",
+      });
       return true;
     }
 
