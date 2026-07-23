@@ -1833,7 +1833,9 @@ export async function createTownVoteThread(
         name: threadName,
         autoArchiveDuration: DEFAULT_THREAD_AUTO_ARCHIVE,
         reason: `Town voting thread for game ${game.id}`,
-        type: ChannelType.PublicThread,
+        ...( {
+          type: ChannelType.PublicThread,
+        } as Record<string, unknown>),
       });
       const roleIds = [game.stRoleId, game.playerRoleId, game.kibRoleId].filter(
         (id): id is string => Boolean(id),
