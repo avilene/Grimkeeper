@@ -1594,7 +1594,11 @@ export async function resolveVotingChannel(
 
   if (votingThreadId) {
     const byId = await guild.channels.fetch(votingThreadId).catch(() => null);
-    if (byId?.isThread() && byId.parentId === game.channelId) {
+    if (
+      byId?.isThread() &&
+      byId.parentId === game.channelId &&
+      isTownVotingThreadName(byId.name, game.id)
+    ) {
       return byId as DayDiscussionChannel;
     }
   }
@@ -1796,8 +1800,32 @@ export async function createTownVoteThread(
   if (!isGameTextChannel(parent)) return null;
 
   const threadName = townVoteThreadName();
-  const existing = await findTownVoteThread(guild, game.channelId, game.id, game.votingThreadId);
-  let thread = existing;
+  const playerStThreadIds = new Set(
+    (
+      await prisma.player.findMany({
+        where: { gameId: game.id, stThreadId: { not: null } },
+        select: { stThreadId: true },
+      })
+    )
+      .map((row) => row.stThreadId)
+      .filter((id): id is string => Boolean(id)),
+  );
+
+  let thread = await findTownVoteThread(guild, game.channelId, game.id, game.votingThreadId);
+
+  // Never reuse / rename a personal ST thread as Town Voting (that ate the last
+  // player thread when a stale votingThreadId or loose lookup pointed at it).
+  if (thread && (playerStThreadIds.has(thread.id) || !isTownVotingThreadName(thread.name, game.id))) {
+    if (game.votingThreadId === thread.id || playerStThreadIds.has(thread.id)) {
+      await prisma.game
+        .update({
+          where: { id: game.id },
+          data: { votingThreadId: null },
+        })
+        .catch(() => undefined);
+    }
+    thread = null;
+  }
 
   if (!thread) {
     try {
@@ -1805,16 +1833,14 @@ export async function createTownVoteThread(
         name: threadName,
         autoArchiveDuration: DEFAULT_THREAD_AUTO_ARCHIVE,
         reason: `Town voting thread for game ${game.id}`,
-        ...( {
-          type: ChannelType.PublicThread,
-        } as Record<string, unknown>),
+        type: ChannelType.PublicThread,
       });
       const roleIds = [game.stRoleId, game.playerRoleId, game.kibRoleId].filter(
         (id): id is string => Boolean(id),
       );
       const introLines = [
         "**Town Voting** — nominations and votes happen here once Day begins.",
-        "After setup-town the game is in **Setup**. The storyteller runs `/st next-phase` for Night 1, then again for Day 1.",
+        "After setup-town the game is in **Setup**. The storyteller runs `/st next-phase` to start **Night 1**.",
         "You can vote on **any open nomination** with the **Vote** button.",
         "Prefer a private ballot? Use `/privatevote` (ST sees it on the kib vote tracker).",
         "Players: `/nominate` / `/defend` / `/vote` / `/privatevote` / `/roster` / `/whisper`.",
@@ -1832,7 +1858,8 @@ export async function createTownVoteThread(
     } catch {
       return null;
     }
-  } else if (thread.name !== threadName && !isTownVotingThreadName(thread.name, game.id)) {
+  } else if (thread.name !== threadName) {
+    // Only rename threads that are already Town Voting (legacy `· shortId` names).
     await thread.setName(threadName, "Restore Town Voting thread name").catch(() => undefined);
   }
 
@@ -1850,9 +1877,10 @@ export async function createTownVoteThread(
 }
 
 export function isTownVotingThreadName(name: string, gameId: string): boolean {
-  if (!name.includes("Town Voting")) return false;
   if (name === townVoteThreadName()) return true;
-  return name.includes(legacyGameNameSuffix(gameId)) || name === legacyTownVoteThreadName(gameId);
+  if (name === legacyTownVoteThreadName(gameId)) return true;
+  // Legacy / slightly edited names must still say Town Voting and carry this game’s suffix.
+  return name.includes("Town Voting") && name.includes(legacyGameNameSuffix(gameId));
 }
 
 export async function findTownVoteThread(
@@ -1872,7 +1900,11 @@ export async function findTownVoteThread(
 
   if (votingThreadId) {
     const byId = await guild.channels.fetch(votingThreadId).catch(() => null);
-    if (byId?.isThread() && byId.parentId === parentChannelId) {
+    if (
+      byId?.isThread() &&
+      byId.parentId === parentChannelId &&
+      isTownVotingThreadName(byId.name, gameId)
+    ) {
       return byId;
     }
   }
