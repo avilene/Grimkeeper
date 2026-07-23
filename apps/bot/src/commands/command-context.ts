@@ -1537,13 +1537,7 @@ export async function resolveVotingChannel(
 
   if (state.townMode) {
     const byName = await findTownVoteThread(guild, game.channelId, game.id);
-    if (byName) return byName as DayDiscussionChannel;
-
-    const channel = await guild.channels.fetch(game.channelId).catch(() => null);
-    if (channel?.isTextBased() && !channel.isDMBased()) {
-      return channel as DayDiscussionChannel;
-    }
-    return null;
+    return (byName as DayDiscussionChannel) ?? null;
   }
 
   return null;
@@ -1761,13 +1755,16 @@ export async function findTownVoteThread(
   parentChannelId: string,
   gameId: string,
 ): Promise<AnyThreadChannel | null> {
+  const expectedName = townVoteThreadName(gameId);
   const suffix = townVoteThreadNameSuffix(gameId);
-  const matchesGame = (name: string) =>
-    name.endsWith(suffix) || name.includes(suffix);
+  // Must be Town Voting — Whisper Declaration / Claims / Rules / ST threads share the same
+  // `· <shortId>` suffix and must not be mistaken for the vote channel.
+  const matchesVoteThread = (name: string) =>
+    name.includes("Town Voting") && (name === expectedName || name.includes(suffix));
 
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
   const activeThread = active?.threads.find(
-    (candidate) => candidate.parentId === parentChannelId && matchesGame(candidate.name),
+    (candidate) => candidate.parentId === parentChannelId && matchesVoteThread(candidate.name),
   );
   if (activeThread) return activeThread;
 
@@ -1777,7 +1774,7 @@ export async function findTownVoteThread(
   // Prefer public (current); still find legacy private Town Voting threads.
   for (const type of ["public", "private"] as const) {
     const archived = await parent.threads.fetchArchived({ type }).catch(() => null);
-    const match = archived?.threads.find((candidate) => matchesGame(candidate.name));
+    const match = archived?.threads.find((candidate) => matchesVoteThread(candidate.name));
     if (match) return match;
   }
   return null;
