@@ -193,11 +193,8 @@ client.on("interactionCreate", (interaction) => {
     };
 
     if (recoverable) {
-      // Fast 10062/40060 → twin consumer race. Late → missed ~3s ack window.
-      if (!shouldReportUnknownInteractionAck(ageMs)) {
-        log("info", "interaction.recoverable", { ...context, suppressed: true });
-        return;
-      }
+      // Fast 10062/40060 → twin consumer race. Stay silent; the winning handler answered.
+      if (!shouldReportUnknownInteractionAck(ageMs)) return;
       void reportError("interaction.recoverable", error, context);
       return;
     }

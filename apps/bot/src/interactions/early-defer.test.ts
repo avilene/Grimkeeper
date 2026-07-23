@@ -4,15 +4,21 @@ vi.mock("../error-reporter.js", () => ({
   reportError: vi.fn(),
 }));
 
+vi.mock("../logger.js", () => ({
+  log: vi.fn(),
+}));
+
 import { reportError } from "../error-reporter.js";
 import {
   isHelpOrGuideCommand,
   shouldDeferSlashCommand,
   shouldDeferStReminderCommand,
-  shouldReportUnknownInteractionAck,
   startEarlyDefer,
-  UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS,
 } from "./early-defer.js";
+import {
+  shouldReportUnknownInteractionAck,
+  UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS,
+} from "./interaction-response.js";
 
 function chatCommand(
   commandName: string,
@@ -148,7 +154,7 @@ describe("startEarlyDefer", () => {
     await expect(startEarlyDefer(interaction as never)).resolves.toBe("failed");
   });
 
-  it("does not error-channel spam fast 10062 (duplicate consumer race)", async () => {
+  it("stays silent on early-ack 10062 (duplicate consumer / expired token)", async () => {
     const interaction = chatCommand("st", "add-kib", null, {
       createdTimestamp: Date.now() - 191,
       reply: vi.fn().mockRejectedValue({ code: 10062 }),
@@ -157,17 +163,13 @@ describe("startEarlyDefer", () => {
     expect(reportError).not.toHaveBeenCalled();
   });
 
-  it("reports late 10062 (likely missed ack deadline)", async () => {
+  it("stays silent even on late early-ack 10062 (winner may still have answered)", async () => {
     const interaction = chatCommand("st", "add-kib", null, {
       createdTimestamp: Date.now() - 2_800,
       reply: vi.fn().mockRejectedValue({ code: 10062 }),
     });
     await expect(startEarlyDefer(interaction as never)).resolves.toBe("failed");
-    expect(reportError).toHaveBeenCalledWith(
-      "interaction.ack.unknown",
-      expect.objectContaining({ code: 10062 }),
-      expect.objectContaining({ ageMs: expect.any(Number), subcommand: "add-kib" }),
-    );
+    expect(reportError).not.toHaveBeenCalled();
   });
 
   it("returns failed on already-acknowledged without throwing", async () => {

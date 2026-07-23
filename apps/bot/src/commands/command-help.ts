@@ -13,7 +13,6 @@ import {
   isUnknownInteractionError,
   shouldReportUnknownInteractionAck,
 } from "../interactions/interaction-response.js";
-import { log } from "../logger.js";
 import {
   buildDevHelpEmbeds,
   buildGameHelpEmbeds,
@@ -85,15 +84,7 @@ async function replyHelpEmbeds(
     // Includes 40060 — local deferred/replied flags stay false after a failed defer race.
     if (isRecoverableInteractionResponseError(error)) {
       const context = helpReplyContext(interaction);
-      if (!shouldReportUnknownInteractionAck(context.ageMs)) {
-        log("info", "help.reply.recoverable", {
-          ...context,
-          code:
-            error && typeof error === "object" && "code" in error ? error.code : undefined,
-          suppressed: true,
-        });
-        return;
-      }
+      if (!shouldReportUnknownInteractionAck(context.ageMs)) return;
       void reportError(
         isUnknownInteractionError(error) ? "help.reply.expired" : "help.reply.skipped",
         error,

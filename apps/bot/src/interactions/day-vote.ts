@@ -139,14 +139,7 @@ export async function handleVoteButton(interaction: ButtonInteraction): Promise<
     }
     if (isUnknownInteractionError(error)) {
       const ageMs = interactionCreatedAgeMs(interaction);
-      if (!shouldReportUnknownInteractionAck(ageMs)) {
-        log("info", "vote.modal.open.unknown", {
-          customId: interaction.customId,
-          ageMs,
-          suppressed: true,
-        });
-        return true;
-      }
+      if (!shouldReportUnknownInteractionAck(ageMs)) return true;
       void reportError("vote.modal.open.unknown", error, {
         customId: interaction.customId,
         guildId: interaction.guildId,

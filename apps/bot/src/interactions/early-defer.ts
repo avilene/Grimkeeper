@@ -4,15 +4,8 @@ import { reportError } from "../error-reporter.js";
 import {
   INTERACTION_PENDING_CONTENT,
   isBenignInteractionAckError,
-  isUnknownInteractionError,
-  shouldReportUnknownInteractionAck,
 } from "./interaction-response.js";
 import { log } from "../logger.js";
-
-export {
-  UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS,
-  shouldReportUnknownInteractionAck,
-} from "./interaction-response.js";
 
 const FAST_SUBCOMMANDS = new Set(["help", "guide"]);
 /** Nested `/st guide setup|day|night` — ack with public defer, not ephemeral "Working…". */
@@ -134,24 +127,10 @@ function handleAckFailure(
     error && typeof error === "object" && "code" in error ? error.code : undefined;
   const context = { ...interactionAckContext(command, ageMs), code };
 
-  if (isUnknownInteractionError(error)) {
-    // Fast 10062 → twin consumer already acked. Slow 10062 → missed ~3s window.
-    // reportError already logs; avoid a second identical log line for the same event.
-    if (!shouldReportUnknownInteractionAck(ageMs)) {
-      log("info", "interaction.ack.unknown", { ...context, likelyDuplicateConsumer: true });
-      return;
-    }
-    void reportError("interaction.ack.unknown", error, context);
-    return;
-  }
-
   if (isBenignInteractionAckError(error)) {
-    // 40060 — already acknowledged; same race pattern when age is low.
-    if (!shouldReportUnknownInteractionAck(ageMs)) {
-      log("info", "interaction.ack.skipped", { ...context, likelyDuplicateConsumer: true });
-      return;
-    }
-    void reportError("interaction.ack.skipped", error, context);
+    // 10062/40060 on early ack = another consumer already owns this token (or it
+    // expired). We abort the handler; the winner answers the user. Never log or
+    // error-channel these — age gating still left plenty of race noise.
     return;
   }
 
@@ -180,13 +159,13 @@ export function startEarlyDefer(interaction: Interaction): Promise<EarlyDeferRes
   const command = interaction as ChatInputCommandInteraction;
   if (command.deferred || command.replied) return Promise.resolve("acked");
 
-  const ageMs = Date.now() - command.createdTimestamp;
+  const ageAtStartMs = Date.now() - command.createdTimestamp;
   const helpOrGuide = isHelpOrGuideCommand(command);
   if (!helpOrGuide && !shouldDeferSlashCommand(command)) {
     return Promise.resolve("skipped");
   }
 
-  warnIfAckLate(command, ageMs);
+  warnIfAckLate(command, ageAtStartMs);
 
   const ack = helpOrGuide
     ? command.deferReply()
@@ -195,6 +174,7 @@ export function startEarlyDefer(interaction: Interaction): Promise<EarlyDeferRes
   return ack.then(
     () => "acked" as const,
     (error: unknown) => {
+      const ageMs = Date.now() - command.createdTimestamp;
       handleAckFailure(command, ageMs, error);
       // Only abort the handler when Discord says the interaction is already
       // owned/dead. Other defer failures leave the token usable for a retry.
