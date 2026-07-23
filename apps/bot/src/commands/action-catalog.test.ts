@@ -7,6 +7,14 @@ import {
   ST_SLASH_SHORTCUTS,
 } from "./action-catalog.js";
 
+function filterDoActions(query: string) {
+  const q = query.trim().toLowerCase();
+  return ST_DO_ACTIONS.filter(
+    (action) =>
+      action.name.includes(q) || action.description.toLowerCase().includes(q),
+  );
+}
+
 describe("normalizeDoActionInput", () => {
   it("strips autocomplete label after an em dash", () => {
     expect(
@@ -56,11 +64,24 @@ describe("ST_SLASH_SHORTCUTS", () => {
         "log",
         "end",
         "next-phase",
+        "reset-to-setup",
         "close-nominations",
         "resolve-next",
         "execute",
         "mark-dead",
       ]),
     );
+  });
+});
+
+describe("reset-to-setup discoverability", () => {
+  it("is in the /st do catalog and mobile shortcuts", () => {
+    expect(ST_DO_ACTIONS.some((a) => a.name === "reset-to-setup")).toBe(true);
+    expect(ST_SLASH_SHORTCUTS.some((a) => a.name === "reset-to-setup")).toBe(true);
+  });
+
+  it("matches typing reset in /st do autocomplete filters", () => {
+    const names = filterDoActions("reset").map((a) => a.name);
+    expect(names).toContain("reset-to-setup");
   });
 });

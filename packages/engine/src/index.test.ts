@@ -708,6 +708,40 @@ describe("GameEngine", () => {
     expect(engine.getState().day?.discordThreadId).toBe("thread-123");
   });
 
+  it("allows retargeting the day thread overnight when day state remains", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+    engine.apply({
+      type: GameEventType.DayOpened,
+      gameId,
+      dayNumber: 1,
+      discordThreadId: "old-vote",
+      timestamp: new Date().toISOString(),
+    });
+    engine.apply({
+      type: GameEventType.NightStarted,
+      gameId,
+      nightNumber: 2,
+      timestamp: new Date().toISOString(),
+    });
+    expect(engine.getState().phase).toBe("night");
+    expect(engine.getState().day?.discordThreadId).toBe("old-vote");
+
+    const events = engine.handle({
+      kind: GameCommandKind.OpenDay,
+      gameId,
+      discordThreadId: "new-vote",
+    });
+    for (const event of events) engine.apply(event);
+
+    expect(engine.getState().day?.discordThreadId).toBe("new-vote");
+  });
+
   it("records defense text on a nomination", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(5));
     engine.apply({

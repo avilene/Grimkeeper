@@ -22,7 +22,7 @@ export const ST_DO_ACTIONS: DoAction[] = [
   },
   {
     name: "reset-to-setup",
-    description: "ALLOWED_USER_IDS only: wipe day/night progress back to Setup (keeps roster)",
+    description: "Wipe day/night back to Setup (ALLOWED_USER_IDS only; keeps roster)",
   },
   { name: "end", description: "End the game (strip roles, open kib)", needs: ["winner"] },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
@@ -60,6 +60,10 @@ export const ST_SLASH_SHORTCUTS: DoAction[] = [
   { name: "log", description: "Create or reopen the ST-only audit log thread" },
   { name: "end", description: "End the game (strip roles, open kib)", needs: ["winner"] },
   { name: "next-phase", description: "Advance Setup → Night 1 → Day 1 → …" },
+  {
+    name: "reset-to-setup",
+    description: "Wipe day/night back to Setup (ALLOWED_USER_IDS only)",
+  },
   { name: "close-nominations", description: "Close nominations for the day" },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
@@ -152,6 +156,15 @@ export function resolveDoActionName(raw: string, actions: DoAction[]): string | 
   return prefixMatches[0]?.name ?? null;
 }
 
+function rankDoActionMatch(action: DoAction, query: string): number {
+  if (!query) return 0;
+  if (action.name === query) return 0;
+  if (action.name.startsWith(query)) return 1;
+  if (action.name.includes(query)) return 2;
+  if (action.description.toLowerCase().includes(query)) return 3;
+  return 4;
+}
+
 export async function respondDoAutocomplete(
   interaction: AutocompleteInteraction,
   actions: DoAction[],
@@ -170,7 +183,14 @@ export async function respondDoAutocomplete(
           action.description.toLowerCase().includes(query),
       )
     : actions
-  ).slice(0, 25);
+  )
+    .slice()
+    .sort((a, b) => {
+      const rankDiff = rankDoActionMatch(a, query) - rankDoActionMatch(b, query);
+      if (rankDiff !== 0) return rankDiff;
+      return a.name.localeCompare(b.name);
+    })
+    .slice(0, 25);
 
   await interaction.respond(
     matches.map((action) => ({

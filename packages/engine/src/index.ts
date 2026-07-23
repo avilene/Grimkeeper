@@ -1052,7 +1052,7 @@ export class GameEngine {
         }
         break;
       case GameCommandKind.OpenDay:
-        this.assertPhase("day", "Day can only be opened during the day phase.");
+        // Retarget Town Voting whenever day state exists (incl. overnight leftovers).
         if (!this.state.day) {
           throw new GameEngineError("Day state is not initialized.");
         }

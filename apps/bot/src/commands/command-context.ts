@@ -1478,8 +1478,12 @@ export async function resolveVotingChannel(
     const thread = await guild.channels.fetch(dayThreadId).catch(() => null);
     if (thread?.isThread() && thread.parentId === game.channelId) {
       const short = shortGameId(game.id);
-      // Ignore a stored Town Voting ID that clearly belongs to another game.
-      if (!thread.name.includes(" · ") || thread.name.includes(short)) {
+      if (state.townMode) {
+        // After `/st mark` remaps a former vote thread to Rules/Claims/etc., ignore the stale ID.
+        if (thread.name.includes("Town Voting") && thread.name.includes(short)) {
+          return thread as DayDiscussionChannel;
+        }
+      } else if (!thread.name.includes(" · ") || thread.name.includes(short)) {
         return thread as DayDiscussionChannel;
       }
     }
