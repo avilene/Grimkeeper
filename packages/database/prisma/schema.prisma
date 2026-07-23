@@ -157,6 +157,25 @@ model GameEvent {
 
   @@unique([gameId, seq])
   @@index([gameId])
+  @@index([type, createdAt])
+  @@index([createdAt])
+}
+
+/**
+ * Optional operational log sink for the admin UI (warn/error from the bot logger).
+ * Not a full log pipeline — stdout / Grafana remain the primary ops store.
+ */
+model AppLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  level     String
+  message   String
+  gameId    String?
+  context   Json?
+
+  @@index([createdAt])
+  @@index([level, createdAt])
+  @@index([gameId, createdAt])
 }
 
 /** Per-guild ST queue board (usually a dedicated Discord thread). */

@@ -65,6 +65,15 @@ export {
   type StQueueEntryStatus,
   type StQueueEntryWithMembers,
 } from "./st-queue.js";
+export {
+  writeAppLog,
+  listAppLogs,
+  listGameEvents,
+  listDistinctGameEventTypes,
+  type WriteAppLogInput,
+  type ListAppLogsFilter,
+  type ListGameEventsFilter,
+} from "./app-log.js";
 
 export type StoredGameEvent = GameEvent;
 

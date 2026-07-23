@@ -4,6 +4,8 @@ import pino, { type Logger } from "pino";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
+const PERSIST_LEVELS = new Set<LogLevel>(["warn", "error"]);
+
 export function serializeError(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
     const fields: Record<string, unknown> = {
@@ -75,8 +77,35 @@ function createLogger(): Logger {
 
 export const logger = createLogger();
 
+function shouldPersistToDb(): boolean {
+  const raw = process.env.APP_LOG_TO_DB?.trim().toLowerCase();
+  if (raw === "0" || raw === "false" || raw === "off") return false;
+  return true;
+}
+
+function persistAppLog(level: LogLevel, msg: string, fields: Record<string, unknown>): void {
+  if (!shouldPersistToDb() || !PERSIST_LEVELS.has(level)) return;
+
+  const gameId =
+    typeof fields.gameId === "string" && fields.gameId.trim() ? fields.gameId.trim() : null;
+
+  void import("@grimkeeper/database")
+    .then(({ writeAppLog }) =>
+      writeAppLog({
+        level,
+        message: msg,
+        gameId,
+        context: fields,
+      }),
+    )
+    .catch(() => {
+      // Never break the bot on log sink failures.
+    });
+}
+
 export function log(level: LogLevel, msg: string, fields: Record<string, unknown> = {}): void {
   logger[level](fields, msg);
+  persistAppLog(level, msg, fields);
 }
 
 export function logError(
@@ -85,7 +114,9 @@ export function logError(
   error: unknown,
   fields: Record<string, unknown> = {},
 ): void {
-  logger[level]({ ...fields, ...serializeError(error) }, msg);
+  const merged = { ...fields, ...serializeError(error) };
+  logger[level](merged, msg);
+  persistAppLog(level, msg, merged);
 }
 
 let logCaptureInstalled = false;
@@ -105,11 +136,14 @@ export function installLogCapture(): void {
       }
 
       if (formatted.error instanceof Error) {
-        logger[level]({ stream, ...formatted.fields, ...serializeError(formatted.error) }, "external");
+        const merged = { stream, ...formatted.fields, ...serializeError(formatted.error) };
+        logger[level](merged, "external");
+        persistAppLog(level, "external", merged);
         return;
       }
 
       logger[level]({ stream, ...formatted.fields }, "external");
+      persistAppLog(level, "external", { stream, ...formatted.fields });
     };
 
   console.log = wrap("log", "info");
