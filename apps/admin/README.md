@@ -10,7 +10,7 @@ Next.js (App Router) + shadcn/ui admin for inspecting/editing live game projecti
 - Access limited to `ALLOWED_USER_IDS` (deny-by-default if empty)
 - Games + players edit forms
 - ST queue boards / entries / members moderation
-- shadcn/ui (zinc) layout
+- shadcn/ui (zinc dark) layout
 - Sentry (`@sentry/nextjs`) via dedicated `ADMIN_SENTRY_DSN` / admin project
 
 ## Local setup
