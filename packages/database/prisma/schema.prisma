@@ -58,7 +58,10 @@ model Player {
   discordUserId String
   displayName   String
   seat          Int?
+  /** Character id on the script (e.g. washerwoman, imp). */
   roleId        String?
+  /** Final alignment for stats: good | evil | traveler. Stored separately because BotC alignment can diverge from character. */
+  team          String?
   alive         Boolean @default(true)
   ghostVoteUsed Boolean @default(false)
   /** Private player ST Discord thread id. */

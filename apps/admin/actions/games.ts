@@ -45,6 +45,17 @@ export async function saveGame(gameId: string, formData: FormData) {
   redirect(`/games/${gameId}`);
 }
 
+const PLAYER_TEAMS = new Set(["good", "evil", "traveler"]);
+
+function parsePlayerTeam(value: FormDataEntryValue | null): string | null {
+  const team = String(value ?? "").trim().toLowerCase();
+  if (!team) return null;
+  if (!PLAYER_TEAMS.has(team)) {
+    throw new Error(`Invalid team "${team}". Use good, evil, or traveler.`);
+  }
+  return team;
+}
+
 export async function savePlayer(gameId: string, playerId: string, formData: FormData) {
   await requireSession();
   try {
@@ -55,6 +66,7 @@ export async function savePlayer(gameId: string, playerId: string, formData: For
         discordUserId: String(formData.get("discordUserId") ?? "").trim(),
         seat: parseOptionalInt(formData.get("seat")),
         roleId: emptyToNull(formData.get("roleId")),
+        team: parsePlayerTeam(formData.get("team")),
         alive: formData.get("alive") === "on",
         ghostVoteUsed: formData.get("ghostVoteUsed") === "on",
       },

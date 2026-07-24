@@ -1,16 +1,40 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { formatBotcEdition, listBotcRoles } from "@grimkeeper/engine";
 
 import { saveGame, savePlayer } from "@/actions/games";
 import { FlashBanner, WarnBanner } from "@/components/banners";
+import { RoleCombobox, type RoleOption } from "@/components/role-combobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { prisma } from "@/lib/db";
 import { consumeFlash } from "@/lib/flash";
-import { shortId } from "@/lib/utils";
+import { cn, shortId } from "@/lib/utils";
 
 const ACTIVE_PHASES = ["lobby", "setup", "night", "day"] as const;
+const PLAYER_TEAMS = [
+  { value: "", label: "—" },
+  { value: "good", label: "Good" },
+  { value: "evil", label: "Evil" },
+  { value: "traveler", label: "Traveler" },
+] as const;
+
+const selectClassName = cn(
+  "flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm",
+  "outline-none focus-visible:ring-2 focus-visible:ring-ring",
+);
+
+function catalogRoleOptions(): RoleOption[] {
+  return listBotcRoles()
+    .map((role) => ({
+      id: role.id,
+      name: role.name,
+      type: role.team,
+      edition: formatBotcEdition(role.edition),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
 function Field({
   name,
@@ -46,6 +70,15 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
     },
   });
   if (!game) notFound();
+
+  const roleOptions = catalogRoleOptions();
+  const knownIds = new Set(roleOptions.map((role) => role.id));
+  for (const player of game.players) {
+    const roleId = player.roleId?.trim();
+    if (!roleId || knownIds.has(roleId)) continue;
+    roleOptions.push({ id: roleId, name: roleId, type: "custom", edition: "in game" });
+    knownIds.add(roleId);
+  }
 
   return (
     <div className="space-y-6">
@@ -108,6 +141,16 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
               <h3 className="font-medium">
                 {player.displayName}{" "}
                 <span className="font-mono text-sm text-muted-foreground">· {shortId(player.id)}</span>
+                {player.roleId ? (
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">
+                    {player.roleId}
+                  </span>
+                ) : null}
+                {player.team ? (
+                  <span className="ml-2 text-sm font-normal capitalize text-muted-foreground">
+                    · {player.team}
+                  </span>
+                ) : null}
               </h3>
               <form
                 action={savePlayer.bind(null, game.id, player.id)}
@@ -116,7 +159,27 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
                 <Field name="displayName" label="Display name" defaultValue={player.displayName} />
                 <Field name="discordUserId" label="Discord user ID" defaultValue={player.discordUserId} />
                 <Field name="seat" label="Seat" type="number" defaultValue={player.seat} />
-                <Field name="roleId" label="Role ID" defaultValue={player.roleId} />
+                <RoleCombobox
+                  id={`role-${player.id}`}
+                  defaultValue={player.roleId}
+                  roles={roleOptions}
+                  teamSelectId={`team-${player.id}`}
+                />
+                <div className="space-y-1.5">
+                  <Label htmlFor={`team-${player.id}`}>Team</Label>
+                  <select
+                    id={`team-${player.id}`}
+                    name="team"
+                    defaultValue={player.team ?? ""}
+                    className={selectClassName}
+                  >
+                    {PLAYER_TEAMS.map((team) => (
+                      <option key={team.value || "none"} value={team.value}>
+                        {team.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <label className="flex items-center gap-2 text-sm text-muted-foreground">
                   <input
                     type="checkbox"

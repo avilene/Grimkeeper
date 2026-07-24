@@ -13,6 +13,9 @@ importers:
       '@grimkeeper/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@grimkeeper/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
       '@radix-ui/react-checkbox':
         specifier: ^1.3.2
         version: 1.3.9(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
