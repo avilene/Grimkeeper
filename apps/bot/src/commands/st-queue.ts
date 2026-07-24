@@ -29,7 +29,10 @@ import {
 })
 @SlashGroup("queue", "st")
 export class StQueueCommands {
-  @Slash({ name: "show", description: "Show the current ST queue (works from any channel)" })
+  @Slash({
+    name: "show",
+    description: "Show the current ST queue (DM if used in the queue channel)",
+  })
   async show(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     if (!interaction.guildId) {
@@ -40,6 +43,25 @@ export class StQueueCommands {
       return;
     }
     const text = await listQueueStatusText(interaction.guildId);
+    const queueThreadId = getConfiguredQueueThreadId();
+    const inQueueChannel = Boolean(queueThreadId && interaction.channelId === queueThreadId);
+
+    if (inQueueChannel) {
+      try {
+        await interaction.user.send({ content: text });
+        await replyOrEditInteraction(interaction, {
+          content: "Sent the queue status to your DMs.",
+          flags: MessageFlags.Ephemeral,
+        });
+      } catch {
+        await replyOrEditInteraction(interaction, {
+          content: `Couldn't DM you (check privacy settings). Here's the queue:\n\n${text}`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      return;
+    }
+
     await replyOrEditInteraction(interaction, {
       content: text,
       flags: MessageFlags.Ephemeral,
@@ -150,8 +172,9 @@ export class StQueueCommands {
     }
     try {
       const result = await refreshQueuePanel(interaction.guild);
+      const bumpNote = result.reposted ? " (moved to latest message)" : "";
       await replyOrEditInteraction(interaction, {
-        content: `Queue panel refreshed in <#${result.boardThreadId}> (${result.entryCount} open).`,
+        content: `Queue panel refreshed in <#${result.boardThreadId}> (${result.entryCount} open)${bumpNote}.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

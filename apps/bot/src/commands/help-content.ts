@@ -110,7 +110,8 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
   },
   {
     command: "/st queue show",
-    description: "Show the current ST queue from any channel.",
+    description:
+      "Show the current ST queue from any channel (DMs you if used in the queue board channel).",
   },
   {
     command: "/st queue join",

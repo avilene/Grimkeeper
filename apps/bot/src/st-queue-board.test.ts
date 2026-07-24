@@ -9,6 +9,7 @@ import {
   stQueueSelectCustomId,
   formatQueueEntryBlock,
   buildQueueStatusContent,
+  shouldRepostQueuePanel,
 } from "./st-queue-board.js";
 
 describe("st queue custom ids", () => {
@@ -34,6 +35,29 @@ describe("st queue custom ids", () => {
       kind: "co_st",
       entryId: "e1",
     });
+  });
+});
+
+describe("shouldRepostQueuePanel", () => {
+  const panel = { id: "panel", author: { bot: true } };
+  const human = (id: string) => ({ id, author: { bot: false } });
+  const bot = (id: string) => ({ id, author: { bot: true } });
+
+  it("keeps the panel when it is newest among humans", () => {
+    // newest-first: other bots, then panel, then older humans
+    expect(shouldRepostQueuePanel([bot("b2"), panel, human("h1")], "panel")).toBe(false);
+  });
+
+  it("reposts when a human message is newer than the panel", () => {
+    expect(shouldRepostQueuePanel([human("h2"), panel, human("h1")], "panel")).toBe(true);
+  });
+
+  it("ignores newer bot messages when deciding", () => {
+    expect(shouldRepostQueuePanel([bot("b3"), bot("b2"), panel], "panel")).toBe(false);
+  });
+
+  it("reposts when the panel is missing from the recent window", () => {
+    expect(shouldRepostQueuePanel([human("h1"), bot("b1")], "panel")).toBe(true);
   });
 });
 

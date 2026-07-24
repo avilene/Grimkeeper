@@ -222,10 +222,32 @@ export function buildQueueBoardComponents(entries: StQueueEntryWithMembers[]) {
   return rows.slice(0, 5);
 }
 
+/**
+ * Decide whether the live panel should be deleted + resent at the channel bottom.
+ * `recentMessages` must be newest-first. Bot messages after the panel are ignored;
+ * any human message after it (or the panel missing from the window) means bump.
+ */
+export function shouldRepostQueuePanel(
+  recentMessages: ReadonlyArray<{ id: string; author: { bot: boolean | null } }>,
+  panelMessageId: string,
+): boolean {
+  for (const msg of recentMessages) {
+    if (msg.id === panelMessageId) return false;
+    if (!msg.author.bot) return true;
+  }
+  return true;
+}
+
+async function ensurePanelPinned(message: Message): Promise<void> {
+  if (message.pinned) return;
+  await message.pin().catch(() => undefined);
+}
+
 export async function refreshQueuePanel(guild: Guild): Promise<{
   boardThreadId: string;
   entryCount: number;
   message: Message | null;
+  reposted: boolean;
 }> {
   const threadId = getConfiguredQueueThreadId();
   if (!threadId) {
@@ -243,22 +265,48 @@ export async function refreshQueuePanel(guild: Guild): Promise<{
   }
 
   let message: Message | null = null;
+  let reposted = false;
 
   if (board.panelMessageId) {
     message = await channel.messages.fetch(board.panelMessageId).catch(() => null);
-    if (message) {
-      await message.edit({ embeds, components }).catch(() => undefined);
+  }
+
+  if (message) {
+    const recent = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+    const needsRepost = recent
+      ? shouldRepostQueuePanel(
+          // Discord returns newest-first; sort defensively by snowflake.
+          [...recent.values()].sort((a, b) => (a.id < b.id ? 1 : -1)),
+          message.id,
+        )
+      : false;
+
+    if (needsRepost) {
+      await message.delete().catch(() => undefined);
+      message = null;
+      reposted = true;
+    } else {
+      const edited = await message.edit({ embeds, components }).catch(() => null);
+      if (edited) {
+        message = edited;
+        await ensurePanelPinned(message);
+      } else {
+        await message.delete().catch(() => undefined);
+        message = null;
+        reposted = true;
+      }
     }
   }
 
   if (!message) {
     const sent = await channel.send({ embeds, components });
-    await sent.pin().catch(() => undefined);
+    await ensurePanelPinned(sent);
     await setQueuePanelMessageId(board.id, sent.id);
     message = sent;
+    reposted = true;
   }
 
-  return { boardThreadId: board.threadId, entryCount: entries.length, message };
+  return { boardThreadId: board.threadId, entryCount: entries.length, message, reposted };
 }
 
 export function buildQueueStatusContent(entries: StQueueEntryWithMembers[], threadId: string): string {
