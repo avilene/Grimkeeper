@@ -90,11 +90,12 @@ Mount a volume at `/app/data` for SQLite persistence (configured in `docker-comp
 
 ### Admin UI on the droplet
 
-Enable the `admin` compose profile (same image + SQLite volume as the bot). Full steps: [`apps/admin/README.md`](apps/admin/README.md#production-droplet).
+Enable the `admin` compose profile (separate `Grimkeeper-admin` image + shared SQLite volume). Full steps: [`apps/admin/README.md`](apps/admin/README.md#production-droplet).
 
 ```bash
 # In .env on the droplet:
 # COMPOSE_PROFILES=admin
+# ADMIN_IMAGE=ghcr.io/YOUR_GITHUB_USER/Grimkeeper-admin:latest  # optional; derived from GRIMKEEPER_IMAGE
 # DISCORD_CLIENT_SECRET=...
 # ADMIN_SESSION_SECRET=...
 # ADMIN_OAUTH_CALLBACK_URL=https://admin.example.com/api/auth/callback/discord

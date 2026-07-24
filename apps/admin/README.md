@@ -45,7 +45,7 @@ Open http://localhost:3847
 
 ## Production (droplet)
 
-Admin shares the bot Docker image and the SQLite volume. Enable the compose profile:
+Admin has its own Docker image (`apps/admin/Dockerfile` → `ghcr.io/…/Grimkeeper-admin`) and shares the bot SQLite volume. Enable the compose profile:
 
 1. **Discord Developer Portal** → OAuth2 → Redirects, add your public callback, e.g.
    - `https://admin.example.com/api/auth/callback/discord` (recommended, behind Caddy/nginx), or
@@ -54,6 +54,8 @@ Admin shares the bot Docker image and the SQLite volume. Enable the compose prof
 
 ```bash
 COMPOSE_PROFILES=admin
+# Optional — defaults to GRIMKEEPER_IMAGE with -admin before the tag:
+# ADMIN_IMAGE=ghcr.io/YOUR_GITHUB_USER/Grimkeeper-admin:latest
 
 DISCORD_CLIENT_ID=...              # already required by the bot
 DISCORD_CLIENT_SECRET=...          # Discord OAuth2 → Client Secret
@@ -70,7 +72,7 @@ ADMIN_SENTRY_DSN=...                   # Sentry → Projects → admin → Clien
 # ADMIN_BIND=0.0.0.0
 ```
 
-3. Redeploy (pulls the image and recreates **bot + admin**):
+3. Redeploy (pulls bot + admin images and recreates both):
 
 ```bash
 pnpm docker:redeploy
@@ -82,6 +84,7 @@ pnpm docker:redeploy
 **Notes**
 
 - Keep **exactly one** bot replica (`docker compose ps` — scale must stay 1).
+- CI rebuilds the admin image when `apps/admin/**` or shared packages change (same path-filter pattern as deploy-hook).
 - OAuth callback path is **`/api/auth/callback/discord`** (Auth.js). Update Discord portal redirects if you used the old Express `/auth/callback`.
 - Set `ADMIN_OAUTH_CALLBACK_URL` to the **public** URL (your domain or `http://DROPLET_IP:3847/api/auth/callback/discord`). The container binds to `0.0.0.0`; without this, Auth.js may redirect to `http://0.0.0.0:3847/...`.
 - Prefer HTTPS + reverse proxy.

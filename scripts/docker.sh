@@ -6,10 +6,12 @@ cd "$(dirname "$0")/.."
 LOCKFILE=pnpm-lock.yaml
 HASH_FILE=.deploy/lockfile-hash
 
-# Load GRIMKEEPER_IMAGE from .env if set (pull deploy — no pnpm install on droplet).
+# Load image tags from .env if set (pull deploy — no pnpm install on droplet).
 if [ -f .env ]; then
   GRIMKEEPER_IMAGE=$(grep -E '^GRIMKEEPER_IMAGE=' .env | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
   export GRIMKEEPER_IMAGE
+  ADMIN_IMAGE=$(grep -E '^ADMIN_IMAGE=' .env | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+  export ADMIN_IMAGE
 fi
 
 lockfile_hash() {
@@ -44,16 +46,18 @@ Commands:
   fresh      Force local rebuild including pnpm install (slow on droplet)
 
 Droplet setup (recommended — skips pnpm install on server):
-  1. Push to main → GitHub Actions builds the image
+  1. Push to main → GitHub Actions builds the bot image (and admin when apps/admin or packages change)
   2. In .env: GRIMKEEPER_IMAGE=ghcr.io/YOUR_USER/Grimkeeper:latest
   3. docker login ghcr.io -u YOUR_USER
   4. pnpm docker:redeploy
 
-Admin UI on the droplet (optional compose profile):
-  1. Discord OAuth2 redirect: https://YOUR_HOST/auth/callback (or http://IP:3847/auth/callback)
+Admin UI on the droplet (optional compose profile — separate image):
+  1. Discord OAuth2 redirect: https://YOUR_HOST/api/auth/callback/discord (or http://IP:3847/...)
   2. In .env: COMPOSE_PROFILES=admin (and OAuth / ALLOWED_USER_IDS — see apps/admin/README.md)
-  3. pnpm docker:redeploy   # recreates bot + admin from the same image
-  4. Open http://YOUR_DROPLET:3847 (or put Caddy/nginx + TLS in front)
+  3. Optional: ADMIN_IMAGE=ghcr.io/YOUR_USER/Grimkeeper-admin:latest
+     (defaults to GRIMKEEPER_IMAGE with -admin before the tag)
+  4. pnpm docker:redeploy   # recreates bot + admin from their images
+  5. Open http://YOUR_DROPLET:3847 (or put Caddy/nginx + TLS in front)
 
 Build notifications:
   - GitHub repo secret: DISCORD_BUILD_WEBHOOK_URL (Discord channel webhook)
