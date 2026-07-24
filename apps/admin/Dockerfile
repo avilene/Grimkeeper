@@ -41,12 +41,17 @@ COPY --from=build /app/apps/admin/.next/static ./apps/admin/.next/static
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/database/dist ./packages/database/dist
 COPY --from=build /app/packages/database/package.json ./packages/database/package.json
-COPY --from=build /app/packages/database/node_modules ./packages/database/node_modules
 COPY --from=build /app/packages/engine/dist ./packages/engine/dist
 COPY --from=build /app/packages/engine/package.json ./packages/engine/package.json
-COPY --from=build /app/packages/engine/node_modules ./packages/engine/node_modules
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+
+# Standalone file tracing may leave real directories under packages/*/node_modules
+# (e.g. better-sqlite3). pnpm's copies are symlinks — Docker cannot replace a
+# directory with a file, so clear traced dirs before overlaying.
+RUN rm -rf ./packages/database/node_modules ./packages/engine/node_modules
+COPY --from=build /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=build /app/packages/engine/node_modules ./packages/engine/node_modules
 
 # Ensure Node can resolve workspace packages + better-sqlite3 from apps/admin/server.js
 # (pnpm does not hoist native deps to the root; Next may also look under .next when bundled).
