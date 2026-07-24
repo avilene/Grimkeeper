@@ -53,19 +53,33 @@ RUN rm -rf ./packages/database/node_modules ./packages/engine/node_modules
 COPY --from=build /app/packages/database/node_modules ./packages/database/node_modules
 COPY --from=build /app/packages/engine/node_modules ./packages/engine/node_modules
 
-# Ensure Node can resolve workspace packages + better-sqlite3 from apps/admin/server.js
-# (pnpm does not hoist native deps to the root; Next may also look under .next when bundled).
-RUN mkdir -p ./node_modules/@grimkeeper ./apps/admin/node_modules ./apps/admin/.next/build/Release \
+# Ensure Node can resolve workspace packages + Prisma SQLite deps from apps/admin/server.js
+# (pnpm does not hoist them to the root; Next externalizes these and resolves from admin cwd).
+RUN mkdir -p ./node_modules/@grimkeeper ./node_modules/@prisma \
+    ./apps/admin/node_modules ./apps/admin/node_modules/@prisma \
+    ./apps/admin/.next/build/Release \
   && ln -sfn ../../packages/database ./node_modules/@grimkeeper/database \
   && ln -sfn ../../packages/engine ./node_modules/@grimkeeper/engine \
   && ln -sfn ../../../packages/database/node_modules/better-sqlite3 ./apps/admin/node_modules/better-sqlite3 \
   && ln -sfn ../packages/database/node_modules/better-sqlite3 ./node_modules/better-sqlite3 \
+  && ln -sfn ../../../../packages/database/node_modules/@prisma/adapter-better-sqlite3 \
+    ./apps/admin/node_modules/@prisma/adapter-better-sqlite3 \
+  && ln -sfn ../../packages/database/node_modules/@prisma/adapter-better-sqlite3 \
+    ./node_modules/@prisma/adapter-better-sqlite3 \
+  && ln -sfn ../../../../packages/database/node_modules/@prisma/client \
+    ./apps/admin/node_modules/@prisma/client \
+  && ln -sfn ../../packages/database/node_modules/@prisma/client \
+    ./node_modules/@prisma/client \
   && test -f ./packages/database/node_modules/better-sqlite3/package.json \
   && test -e ./packages/database/node_modules/better-sqlite3/build/Release/better_sqlite3.node \
+  && test -f ./packages/database/node_modules/@prisma/adapter-better-sqlite3/package.json \
+  && test -f ./packages/database/node_modules/@prisma/client/package.json \
   && cp -L ./packages/database/node_modules/better-sqlite3/build/Release/better_sqlite3.node \
     ./apps/admin/.next/build/Release/better_sqlite3.node \
   && test -e ./apps/admin/node_modules/better-sqlite3/build/Release/better_sqlite3.node \
-  && test -e ./apps/admin/.next/build/Release/better_sqlite3.node
+  && test -e ./apps/admin/.next/build/Release/better_sqlite3.node \
+  && test -e ./apps/admin/node_modules/@prisma/adapter-better-sqlite3/package.json \
+  && test -e ./node_modules/@prisma/adapter-better-sqlite3/package.json
 
 COPY scripts/admin-entrypoint.sh ./scripts/admin-entrypoint.sh
 RUN chmod +x ./scripts/admin-entrypoint.sh

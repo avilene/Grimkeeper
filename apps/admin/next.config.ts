@@ -51,9 +51,12 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/**": [
       "../../node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/**/*",
+      "../../node_modules/.pnpm/@prisma+adapter-better-sqlite3@*/node_modules/@prisma/adapter-better-sqlite3/**/*",
       "../../packages/database/dist/**/*",
       "../../packages/database/package.json",
       "../../packages/database/node_modules/better-sqlite3/**/*",
+      "../../packages/database/node_modules/@prisma/adapter-better-sqlite3/**/*",
+      "../../packages/database/node_modules/@prisma/client/**/*",
     ],
   },
   // Sentry / monorepo tracing can still inline native deps into server chunks; when that
