@@ -40,6 +40,9 @@ services:
       ADMIN_PORT: "3847"
       ADMIN_HOSTNAME: "0.0.0.0"
       AUTH_TRUST_HOST: "true"
+      # Public site URL for Auth.js (derived from ADMIN_OAUTH_CALLBACK_URL in entrypoint if unset).
+      AUTH_URL: ${AUTH_URL:-}
+      ADMIN_OAUTH_CALLBACK_URL: ${ADMIN_OAUTH_CALLBACK_URL:-}
       # Prefer ADMIN_SENTRY_DSN (admin project). Do not point this at the bot DSN.
       ADMIN_SENTRY_DSN: ${ADMIN_SENTRY_DSN:-}
       NODE_ENV: production

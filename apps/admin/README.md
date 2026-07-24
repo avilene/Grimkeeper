@@ -59,6 +59,10 @@ DISCORD_CLIENT_ID=...              # already required by the bot
 DISCORD_CLIENT_SECRET=...          # Discord OAuth2 → Client Secret
 ADMIN_SESSION_SECRET=...           # openssl rand -hex 32
 ADMIN_OAUTH_CALLBACK_URL=https://admin.example.com/api/auth/callback/discord
+# Or by droplet IP (include port if you expose 3847 directly):
+# ADMIN_OAUTH_CALLBACK_URL=http://46.101.182.124:3847/api/auth/callback/discord
+# Optional explicit Auth.js origin (defaults to origin of ADMIN_OAUTH_CALLBACK_URL):
+# AUTH_URL=http://46.101.182.124:3847
 ALLOWED_USER_IDS=YOUR_DISCORD_USER_ID
 ADMIN_SENTRY_DSN=...                   # Sentry → Projects → admin → Client Keys
 # Optional host bind / port (container always listens on 3847)
@@ -79,6 +83,7 @@ pnpm docker:redeploy
 
 - Keep **exactly one** bot replica (`docker compose ps` — scale must stay 1).
 - OAuth callback path is **`/api/auth/callback/discord`** (Auth.js). Update Discord portal redirects if you used the old Express `/auth/callback`.
+- Set `ADMIN_OAUTH_CALLBACK_URL` to the **public** URL (your domain or `http://DROPLET_IP:3847/api/auth/callback/discord`). The container binds to `0.0.0.0`; without this, Auth.js may redirect to `http://0.0.0.0:3847/...`.
 - Prefer HTTPS + reverse proxy.
 - To bind admin to localhost only (proxy on the host): `ADMIN_BIND=127.0.0.1`
 
