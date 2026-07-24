@@ -1208,7 +1208,7 @@ export async function addRoleMembersToThread(
   return added;
 }
 
-/** Invite engine storytellers + anyone cached with the game ST role into one player ST thread. */
+/** Invite engine storytellers + anyone cached with the game ST role into a private thread. */
 export async function addStorytellersToPlayerThread(
   guild: Guild,
   thread: AnyThreadChannel,
@@ -2043,6 +2043,7 @@ export async function createDayThread(
   gameId: string,
   dayNumber: number,
   engine: GameEngine,
+  stRoleId?: string | null,
 ): Promise<AnyThreadChannel | null> {
   const parent = await guild.channels.fetch(parentChannelId).catch(() => null);
   if (!isGameTextChannel(parent)) return null;
@@ -2065,6 +2066,9 @@ export async function createDayThread(
     }
     for (const userId of memberIds) {
       await thread.members.add(userId).catch(() => undefined);
+    }
+    if (stRoleId) {
+      await addRoleMembersToThread(guild, thread, stRoleId);
     }
 
     return thread;

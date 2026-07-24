@@ -3,6 +3,7 @@ export const GameEventType = {
   PlayerAdded: "PlayerAdded",
   PlayerRemoved: "PlayerRemoved",
   StorytellerPromoted: "StorytellerPromoted",
+  StorytellerDemoted: "StorytellerDemoted",
   GameStarted: "GameStarted",
   RoleAssigned: "RoleAssigned",
   RolesDealt: "RolesDealt",

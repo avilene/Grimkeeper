@@ -222,11 +222,17 @@ export interface StorytellerPromotedEvent extends GameEventBase {
   discordUserId: string;
 }
 
+export interface StorytellerDemotedEvent extends GameEventBase {
+  type: typeof GameEventType.StorytellerDemoted;
+  discordUserId: string;
+}
+
 export type GameEvent =
   | GameCreatedEvent
   | PlayerAddedEvent
   | PlayerRemovedEvent
   | StorytellerPromotedEvent
+  | StorytellerDemotedEvent
   | GameStartedEvent
   | RoleAssignedEvent
   | RolesDealtEvent
@@ -502,6 +508,12 @@ export interface PromoteStorytellerCommand {
   discordUserId: string;
 }
 
+export interface DemoteStorytellerCommand {
+  kind: typeof GameCommandKind.DemoteStoryteller;
+  gameId: string;
+  discordUserId: string;
+}
+
 export interface SetupTownPlayerInput {
   playerId: string;
   discordUserId: string;
@@ -594,6 +606,7 @@ export type GameCommand =
   | PickSeatCommand
   | EndGameCommand
   | PromoteStorytellerCommand
+  | DemoteStorytellerCommand
   | SetupTownCommand
   | ResetTownToSetupCommand
   | SetPlayerAliveCommand
@@ -1021,6 +1034,17 @@ export class GameEngine {
         }
         if (isStoryteller(this.state, command.discordUserId)) {
           throw new GameEngineError("That user is already a storyteller.");
+        }
+        break;
+      case GameCommandKind.DemoteStoryteller:
+        if (this.state.phase === "ended") {
+          throw new GameEngineError("Cannot demote storytellers after the game has ended.");
+        }
+        if (this.state.storytellerId === command.discordUserId) {
+          throw new GameEngineError("Cannot demote the primary storyteller.");
+        }
+        if (!this.state.promotedStorytellerIds.includes(command.discordUserId)) {
+          throw new GameEngineError("That user is not a promoted storyteller.");
         }
         break;
       case GameCommandKind.MakeNomination:
@@ -1485,6 +1509,15 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
+      case GameCommandKind.DemoteStoryteller:
+        return [
+          {
+            type: GameEventType.StorytellerDemoted,
+            gameId: command.gameId,
+            discordUserId: command.discordUserId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
       case GameCommandKind.MakeNomination: {
         const order = (this.state.day?.nominations.length ?? 0) + 1;
         const nominationId = randomUUID();
@@ -1844,6 +1877,11 @@ export class GameEngine {
         if (!this.state.promotedStorytellerIds.includes(event.discordUserId)) {
           this.state.promotedStorytellerIds.push(event.discordUserId);
         }
+        break;
+      case GameEventType.StorytellerDemoted:
+        this.state.promotedStorytellerIds = this.state.promotedStorytellerIds.filter(
+          (id) => id !== event.discordUserId,
+        );
         break;
       case GameEventType.GameStarted:
         this.state.phase = "setup";

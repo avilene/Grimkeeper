@@ -24,6 +24,7 @@ type ActiveWhisperContext = {
   game: {
     id: string;
     channelId: string;
+    stRoleId?: string | null;
     kibThreadId?: string | null;
     logThreadId?: string | null;
     whisperDeclThreadId?: string | null;
