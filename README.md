@@ -9,7 +9,7 @@ Discord -> Adapter -> Engine -> Events -> Projections -> Persistence
 ```
 
 - **apps/bot** — discordx adapter (slash commands)
-- **apps/admin** — optional Discord-OAuth admin UI for game projections (see `apps/admin/README.md`)
+- **apps/admin** — optional Next.js + Discord-OAuth admin UI for game/queue projections (see `apps/admin/README.md`)
 - **packages/engine** — event-sourced game engine + character plugins
 - **packages/database** — Prisma + SQLite event store
 
@@ -97,7 +97,7 @@ Enable the `admin` compose profile (same image + SQLite volume as the bot). Full
 # COMPOSE_PROFILES=admin
 # DISCORD_CLIENT_SECRET=...
 # ADMIN_SESSION_SECRET=...
-# ADMIN_OAUTH_CALLBACK_URL=https://admin.example.com/auth/callback
+# ADMIN_OAUTH_CALLBACK_URL=https://admin.example.com/api/auth/callback/discord
 # ALLOWED_USER_IDS=your_discord_user_id
 
 pnpm docker:redeploy

@@ -15,8 +15,12 @@ fi
 
 case "$service" in
   admin)
-    echo "Starting Grimkeeper admin..."
-    exec node --import /app/apps/admin/dist/instrument.js /app/apps/admin/dist/index.js
+    echo "Starting Grimkeeper admin (Next.js)..."
+    cd /app/admin-standalone
+    export PORT="${ADMIN_PORT:-3847}"
+    export HOSTNAME="${ADMIN_HOSTNAME:-0.0.0.0}"
+    export AUTH_TRUST_HOST=true
+    exec node apps/admin/server.js
     ;;
   bot|*)
     echo "Starting Grimkeeper bot..."

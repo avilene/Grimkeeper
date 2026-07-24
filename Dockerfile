@@ -34,15 +34,13 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
+# Bot runtime (discordx)
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/bot/node_modules ./apps/bot/node_modules
-COPY --from=build /app/apps/admin/node_modules ./apps/admin/node_modules
 COPY --from=build /app/packages/database/node_modules ./packages/database/node_modules
 COPY --from=build /app/packages/engine/node_modules ./packages/engine/node_modules
 COPY --from=build /app/apps/bot/dist ./apps/bot/dist
 COPY --from=build /app/apps/bot/package.json ./apps/bot/package.json
-COPY --from=build /app/apps/admin/dist ./apps/admin/dist
-COPY --from=build /app/apps/admin/package.json ./apps/admin/package.json
 COPY --from=build /app/packages/database/dist ./packages/database/dist
 COPY --from=build /app/packages/database/package.json ./packages/database/package.json
 COPY --from=build /app/packages/database/prisma.config.ts ./packages/database/prisma.config.ts
@@ -50,6 +48,16 @@ COPY --from=build /app/packages/database/prisma ./packages/database/prisma
 COPY --from=build /app/packages/engine/dist ./packages/engine/dist
 COPY --from=build /app/packages/engine/package.json ./packages/engine/package.json
 COPY --from=build /app/package.json ./package.json
+
+# Admin Next.js standalone (+ static assets + native SQLite deps)
+COPY --from=build /app/apps/admin/.next/standalone ./admin-standalone
+COPY --from=build /app/apps/admin/.next/static ./admin-standalone/apps/admin/.next/static
+COPY --from=build /app/packages/database/dist ./admin-standalone/packages/database/dist
+COPY --from=build /app/packages/database/package.json ./admin-standalone/packages/database/package.json
+COPY --from=build /app/packages/database/node_modules ./admin-standalone/packages/database/node_modules
+COPY --from=build /app/packages/engine/dist ./admin-standalone/packages/engine/dist
+COPY --from=build /app/packages/engine/package.json ./admin-standalone/packages/engine/package.json
+COPY --from=build /app/packages/engine/node_modules ./admin-standalone/packages/engine/node_modules
 
 COPY scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 COPY scripts/wipe-db.sh ./scripts/wipe-db.sh

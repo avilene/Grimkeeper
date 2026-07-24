@@ -38,6 +38,8 @@ services:
       DATABASE_URL: file:/app/data/grimkeeper.db
       # Container always listens on 3847; map a host port via ADMIN_HOST_PORT.
       ADMIN_PORT: "3847"
+      ADMIN_HOSTNAME: "0.0.0.0"
+      AUTH_TRUST_HOST: "true"
       NODE_ENV: production
     volumes:
       - grimkeeper-data:/app/data
