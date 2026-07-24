@@ -16,6 +16,7 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
+      admin: ${{ steps.filter.outputs.admin }}
       deploy-hook: ${{ steps.filter.outputs.deploy-hook }}
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +24,16 @@ jobs:
         id: filter
         with:
           filters: |
+            admin:
+              - 'apps/admin/**'
+              - 'packages/database/**'
+              - 'packages/engine/**'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - 'tsconfig.base.json'
+              - 'ops/docker.npmrc'
+              - 'scripts/admin-entrypoint.sh'
             deploy-hook:
               - 'ops/deploy-hook/**'
 
@@ -48,6 +59,35 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  build-and-push-admin:
+    needs: changes
+    if: needs.changes.outputs.admin == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-admin
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/admin/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -81,7 +121,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   trigger-deploy:
-    needs: build-and-push
+    needs: [build-and-push, build-and-push-admin]
+    # Redeploy when bot and/or admin image jobs finish (admin may be skipped).
+    if: always() && needs.build-and-push.result == 'success' && (needs.build-and-push-admin.result == 'success' || needs.build-and-push-admin.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -131,7 +173,7 @@ jobs:
             "run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
   notify-failure:
-    needs: [changes, build-and-push, build-and-push-deploy-hook, trigger-deploy]
+    needs: [changes, build-and-push, build-and-push-admin, build-and-push-deploy-hook, trigger-deploy]
     if: failure()
     runs-on: ubuntu-latest
     steps:

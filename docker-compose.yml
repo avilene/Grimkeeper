@@ -9,7 +9,6 @@ services:
     env_file:
       - .env
     environment:
-      GRIMKEEPER_SERVICE: bot
       DATABASE_URL: file:/app/data/grimkeeper.db
       DEV_MODE: ${DEV_MODE:-false}
       DEPLOY_TRIGGER: ${DEPLOY_TRIGGER:-unknown}
@@ -26,15 +25,16 @@ services:
   # See apps/admin/README.md (Production).
   admin:
     profiles: ["admin"]
-    image: ${GRIMKEEPER_IMAGE:-grimkeeper-bot:local}
-    build: .
+    image: ${ADMIN_IMAGE:-grimkeeper-admin:local}
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
     restart: unless-stopped
     depends_on:
       - bot
     env_file:
       - .env
     environment:
-      GRIMKEEPER_SERVICE: admin
       DATABASE_URL: file:/app/data/grimkeeper.db
       # Container always listens on 3847; map a host port via ADMIN_HOST_PORT.
       ADMIN_PORT: "3847"

@@ -10,22 +10,20 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY ops/docker.npmrc .npmrc
 COPY apps/bot/package.json apps/bot/
-COPY apps/admin/package.json apps/admin/
 COPY packages/database/package.json packages/database/
 COPY packages/engine/package.json packages/engine/
-RUN echo "pnpm install (bot + admin workspace)..." \
-  && pnpm install --frozen-lockfile --filter bot... --filter admin... --reporter=append-only
+RUN echo "pnpm install (bot workspace)..." \
+  && pnpm install --frozen-lockfile --filter bot... --reporter=append-only
 
 COPY tsconfig.base.json ./
-COPY apps apps/
+COPY apps/bot apps/bot/
 COPY packages packages/
 
 ENV DATABASE_URL=file:./packages/database/prisma/dev.db
 # Engine must build first — database imports `@grimkeeper/engine` types from dist/.
 RUN pnpm --filter @grimkeeper/engine build \
   && pnpm --filter @grimkeeper/database build \
-  && pnpm --filter bot build \
-  && pnpm --filter admin build
+  && pnpm --filter bot build
 
 FROM node:24-bookworm-slim AS runner
 ENV NODE_ENV=production
@@ -34,7 +32,6 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-# Bot runtime (discordx)
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/bot/node_modules ./apps/bot/node_modules
 COPY --from=build /app/packages/database/node_modules ./packages/database/node_modules
@@ -49,22 +46,11 @@ COPY --from=build /app/packages/engine/dist ./packages/engine/dist
 COPY --from=build /app/packages/engine/package.json ./packages/engine/package.json
 COPY --from=build /app/package.json ./package.json
 
-# Admin Next.js standalone (+ static assets + native SQLite deps)
-COPY --from=build /app/apps/admin/.next/standalone ./admin-standalone
-COPY --from=build /app/apps/admin/.next/static ./admin-standalone/apps/admin/.next/static
-COPY --from=build /app/packages/database/dist ./admin-standalone/packages/database/dist
-COPY --from=build /app/packages/database/package.json ./admin-standalone/packages/database/package.json
-COPY --from=build /app/packages/database/node_modules ./admin-standalone/packages/database/node_modules
-COPY --from=build /app/packages/engine/dist ./admin-standalone/packages/engine/dist
-COPY --from=build /app/packages/engine/package.json ./admin-standalone/packages/engine/package.json
-COPY --from=build /app/packages/engine/node_modules ./admin-standalone/packages/engine/node_modules
-
 COPY scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 COPY scripts/wipe-db.sh ./scripts/wipe-db.sh
 RUN chmod +x ./scripts/docker-entrypoint.sh ./scripts/wipe-db.sh
 
 VOLUME ["/app/data"]
 ENV DATABASE_URL=file:/app/data/grimkeeper.db
-ENV GRIMKEEPER_SERVICE=bot
 
 CMD ["./scripts/docker-entrypoint.sh"]

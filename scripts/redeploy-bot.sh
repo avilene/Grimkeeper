@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Pull GRIMKEEPER_IMAGE and restart bot (+ admin when the admin compose profile is on).
+# Pull GRIMKEEPER_IMAGE (+ ADMIN_IMAGE when the admin compose profile is on) and restart.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -16,9 +16,26 @@ notify_failure() {
   fi
 }
 
+# Derive ghcr.io/.../Grimkeeper-admin:tag from ghcr.io/.../Grimkeeper:tag when unset.
+derive_admin_image() {
+  image="$1"
+  case "$image" in
+    *:*)
+      base="${image%:*}"
+      tag="${image##*:}"
+      printf '%s-admin:%s\n' "$base" "$tag"
+      ;;
+    *)
+      printf '%s-admin\n' "$image"
+      ;;
+  esac
+}
+
 if [ -f .env ]; then
   GRIMKEEPER_IMAGE=$(grep -E '^GRIMKEEPER_IMAGE=' .env | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
   export GRIMKEEPER_IMAGE
+  ADMIN_IMAGE=$(grep -E '^ADMIN_IMAGE=' .env | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+  export ADMIN_IMAGE
 fi
 
 if [ -z "${GRIMKEEPER_IMAGE:-}" ]; then
@@ -27,13 +44,21 @@ if [ -z "${GRIMKEEPER_IMAGE:-}" ]; then
   exit 1
 fi
 
-printf '[%s] [redeploy] Pulling %s (trigger=%s)\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GRIMKEEPER_IMAGE" "$trigger"
-
 # Compose loads COMPOSE_PROFILES from .env — include admin when that profile is enabled.
 services="bot"
 if docker compose config --services 2>/dev/null | grep -qx admin; then
   services="bot admin"
+  if [ -z "${ADMIN_IMAGE:-}" ]; then
+    ADMIN_IMAGE="$(derive_admin_image "$GRIMKEEPER_IMAGE")"
+    export ADMIN_IMAGE
+  fi
 fi
+
+printf '[%s] [redeploy] Pulling bot=%s' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GRIMKEEPER_IMAGE"
+if [ "$services" = "bot admin" ]; then
+  printf ' admin=%s' "$ADMIN_IMAGE"
+fi
+printf ' (trigger=%s)\n' "$trigger"
 
 # shellcheck disable=SC2086
 if ! docker compose pull $services; then

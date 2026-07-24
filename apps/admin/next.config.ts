@@ -39,8 +39,22 @@ if (!process.env.NEXT_PUBLIC_ADMIN_SENTRY_DSN && process.env.ADMIN_SENTRY_DSN) {
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: monorepoRoot,
-  transpilePackages: ["@grimkeeper/database", "@grimkeeper/engine"],
-  serverExternalPackages: ["better-sqlite3", "@prisma/client", "@prisma/adapter-better-sqlite3"],
+  // Keep engine transpile for workspace resolution; database must stay external so
+  // better-sqlite3's native .node binary is required from node_modules (not bundled).
+  transpilePackages: ["@grimkeeper/engine"],
+  serverExternalPackages: [
+    "@grimkeeper/database",
+    "better-sqlite3",
+    "@prisma/client",
+    "@prisma/adapter-better-sqlite3",
+  ],
+  outputFileTracingIncludes: {
+    "/**": [
+      "../../node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/**/*",
+      "../../packages/database/dist/**/*",
+      "../../packages/database/package.json",
+    ],
+  },
 };
 
 export default withSentryConfig(nextConfig, {
