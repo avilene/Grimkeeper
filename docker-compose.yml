@@ -40,6 +40,8 @@ services:
       ADMIN_PORT: "3847"
       ADMIN_HOSTNAME: "0.0.0.0"
       AUTH_TRUST_HOST: "true"
+      # Prefer ADMIN_SENTRY_DSN (admin project). Do not point this at the bot DSN.
+      ADMIN_SENTRY_DSN: ${ADMIN_SENTRY_DSN:-}
       NODE_ENV: production
     volumes:
       - grimkeeper-data:/app/data

@@ -11,6 +11,7 @@ Next.js (App Router) + shadcn/ui admin for inspecting/editing live game projecti
 - Games + players edit forms
 - ST queue boards / entries / members moderation
 - shadcn/ui (zinc) layout
+- Sentry (`@sentry/nextjs`) via dedicated `ADMIN_SENTRY_DSN` / admin project
 
 ## Local setup
 
@@ -27,6 +28,7 @@ ADMIN_SESSION_SECRET=...       # long random string (also used as Auth.js secret
 ADMIN_OAUTH_CALLBACK_URL=http://localhost:3847/api/auth/callback/discord
 ALLOWED_USER_IDS=123,456
 DATABASE_URL=file:./packages/database/prisma/dev.db
+ADMIN_SENTRY_DSN=https://...@....ingest.sentry.io/...   # admin project DSN (not bot)
 # ADMIN_PORT=3847
 ```
 
@@ -58,6 +60,7 @@ DISCORD_CLIENT_SECRET=...          # Discord OAuth2 → Client Secret
 ADMIN_SESSION_SECRET=...           # openssl rand -hex 32
 ADMIN_OAUTH_CALLBACK_URL=https://admin.example.com/api/auth/callback/discord
 ALLOWED_USER_IDS=YOUR_DISCORD_USER_ID
+ADMIN_SENTRY_DSN=...                   # Sentry → Projects → admin → Client Keys
 # Optional host bind / port (container always listens on 3847)
 # ADMIN_HOST_PORT=3847
 # ADMIN_BIND=0.0.0.0
