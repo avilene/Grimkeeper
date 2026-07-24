@@ -163,7 +163,7 @@ export class StCommandsMinimal {
     reason: string | undefined,
     @SlashOption({
       name: "message",
-      description: "For say: text to broadcast to all player threads",
+      description: "For broadcast/say: text to send to all player threads",
       type: ApplicationCommandOptionType.String,
       required: false,
     })
@@ -233,12 +233,13 @@ export class StCommandsMinimal {
         }
         await this.setupTown(players, interaction);
         return;
+      case "broadcast":
       case "say":
         if (!message?.trim()) {
-          await missingOption(interaction, "message", "say");
+          await missingOption(interaction, "message", normalized);
           return;
         }
-        await this.say(message, interaction);
+        await this.broadcast(message, interaction);
         return;
       case "log":
         await this.log(interaction);
@@ -489,10 +490,10 @@ export class StCommandsMinimal {
   }
 
   @Slash({
-    name: "say",
-    description: "Broadcast to all player ST threads from kib (same as /st do say)",
+    name: "broadcast",
+    description: "Broadcast to all player ST threads from kib",
   })
-  async saySlash(
+  async broadcastSlash(
     @SlashOption({
       name: "message",
       description: "Text to send to every player ST thread",
@@ -503,7 +504,7 @@ export class StCommandsMinimal {
     interaction: CommandInteraction,
   ): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
-    await this.say(message, interaction);
+    await this.broadcast(message, interaction);
   }
 
   @Slash({
@@ -693,7 +694,7 @@ export class StCommandsMinimal {
     }
   }
 
-  async say(message: string, interaction: CommandInteraction): Promise<void> {
+  async broadcast(message: string, interaction: CommandInteraction): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
     if (!interaction.guild) return;

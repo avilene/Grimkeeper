@@ -19,6 +19,9 @@ function cmd(name: string, description: string): string {
 
 const ST_SHORTCUT_NAMES = new Set(ST_SLASH_SHORTCUTS.map((action) => action.name));
 
+/** Hide legacy aliases (e.g. `say`) from help embeds / search; they still work via `/st do`. */
+const ST_DO_ACTIONS_FOR_HELP = ST_DO_ACTIONS.filter((action) => action.name !== "say");
+
 /** Prefer `/st <name>` when a first-class shortcut exists; otherwise `/st do <name>`. */
 function stCommandPrefix(actionName: string): string {
   return ST_SHORTCUT_NAMES.has(actionName) ? "/st" : "/st do";
@@ -87,7 +90,7 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
     command: "/st remove-kib",
     description: "Remove kib role. Same as `/st do remove-spectator`.",
   },
-  ...entriesFromActions(ST_DO_ACTIONS, "/st do"),
+  ...entriesFromActions(ST_DO_ACTIONS_FOR_HELP, "/st do"),
   {
     command: "/st guide setup",
     description: "Checklist: lobby → town setup.",
@@ -98,7 +101,7 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
   },
   {
     command: "/st guide night",
-    description: "Checklist: running a night (say, mark-dead, next-phase).",
+    description: "Checklist: running a night (broadcast, mark-dead, next-phase).",
   },
   {
     command: "/st mark",
@@ -347,12 +350,12 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           "**Quick start**",
           "1. `/game setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles (optional `kib_thread:` channel/thread + `log_thread:`)",
           "2. `/st setup-town` with `players:` @mentions in **seat order** (any player count)",
-          "3. `/st say` from kib to broadcast to all player threads",
+          "3. `/st broadcast` from kib to send the same message to all player threads",
           "4. `/st remind` / `/st set-reminders` for scheduled pings (ST role or allowlist)",
           "5. `/st end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
           "",
           "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/st log` to recreate it mid-game.",
-          "On mobile, prefer **`/st next-phase`**, **`/st resolve-next`**, **`/st execute`**, etc. from the slash menu — no autocomplete. Full catalog still on **`/st do`**. Mid-game buttons: **`/st panel`**.",
+          "On mobile, prefer **`/st broadcast`**, **`/st next-phase`**, **`/st resolve-next`**, **`/st execute`**, etc. from the slash menu — no autocomplete. Full catalog still on **`/st do`**. Mid-game buttons: **`/st panel`**.",
           "Phase checklists: **`/st guide setup`**, **`/st guide day`**, **`/st guide night`**.",
         ].join("\n"),
       )
@@ -362,7 +365,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           value: [
             cmd(
               "/st … shortcuts",
-              "Common actions as first-class subcommands (setup-town, say, log, end, next-phase, close-nominations, resolve-next, execute, mark-dead).",
+              "Common actions as first-class subcommands (setup-town, broadcast, log, end, next-phase, close-nominations, resolve-next, execute, mark-dead).",
             ),
             cmd(
               "/st do",
@@ -392,7 +395,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           ].join("\n\n"),
         },
         ...doActionFields(ST_SLASH_SHORTCUTS, "/st", "Mobile shortcuts (`/st …`)"),
-        ...doActionFields(ST_DO_ACTIONS, "/st do", "All actions (`/st do …`)"),
+        ...doActionFields(ST_DO_ACTIONS_FOR_HELP, "/st do", "All actions (`/st do …`)"),
         {
           name: "Reminders",
           value: [
@@ -483,7 +486,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           value: checklist([
             "`/st panel` — pin control panel in kib (or `/st do panel`)",
             "Optional: `/st do vote-visibility` `mode: public|secret`",
-            "Optional: `/st say` — broadcast to all player ST threads",
+            "Optional: `/st broadcast` — send the same message to all player ST threads",
             "Optional: `/st remind` / `/st set-reminders`",
             "Optional: `/st do add-st` / `/st do sync-st-threads` / `/st add-kib`",
             "Optional: `/st log` if the audit log is missing",
@@ -548,7 +551,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
       {
         name: "During the night",
         value: checklist([
-          "`/st say` — broadcast the same night info to every player ST thread",
+          "`/st broadcast` — send the same night info to every player ST thread",
           "Use each player’s private ST thread for personal night results",
           "Deaths overnight: `/st mark-dead` `player:`",
           "Optional: `/st remind` / `/st set-reminders` for morning pings",

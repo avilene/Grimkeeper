@@ -65,14 +65,18 @@ describe("help content", () => {
     expect(st.data.description).toContain("/game setup");
     expect(st.data.description).toContain("log thread");
     expect(st.data.description).toContain("/st next-phase");
+    expect(st.data.description).toContain("/st broadcast");
     for (const action of ST_SLASH_SHORTCUTS) {
       expect(stText).toContain(`/st ${action.name}`);
       expect(stText).toContain(action.description);
     }
-    for (const action of ST_DO_ACTIONS) {
+    for (const action of ST_DO_ACTIONS.filter((a) => a.name !== "say")) {
       expect(stText).toContain(`/st do ${action.name}`);
       expect(stText).toContain(action.description);
     }
+    expect(stText).toContain("/st broadcast");
+    expect(stText).not.toContain("/st do say");
+    expect(stText).not.toContain("/st say");
     expect(stText.toLowerCase()).toContain("close-nominations");
     expect(stText.toLowerCase()).toContain("next-phase");
     expect(stText.toLowerCase()).toContain("add-st");
@@ -91,12 +95,15 @@ describe("help content", () => {
     const night = buildStGuideEmbed("night");
     expect(setup.data.title).toContain("Setup");
     expect(fieldValues(setup)).toContain("/st setup-town");
+    expect(fieldValues(setup)).toContain("/st broadcast");
     expect(day.data.title).toContain("Day");
     expect(fieldValues(day)).toContain("/st close-nominations");
     expect(fieldValues(day)).toContain("/st next-phase");
     expect(night.data.title).toContain("Night");
-    expect(fieldValues(night)).toContain("/st say");
+    expect(fieldValues(night)).toContain("/st broadcast");
     expect(fieldValues(night)).toContain("/st mark-dead");
+    expect(fieldValues(setup)).not.toContain("/st say");
+    expect(fieldValues(night)).not.toContain("/st say");
     for (const embed of [setup, day, night]) {
       for (const field of embed.data.fields ?? []) {
         expect(field.value.length).toBeLessThanOrEqual(1024);
@@ -119,6 +126,11 @@ describe("help content", () => {
     const phaseHits = searchHelpEntries(ST_HELP_ENTRIES, "next-phase");
     expect(phaseHits.some((entry) => entry.command === "/st next-phase")).toBe(true);
     expect(phaseHits.some((entry) => entry.command === "/st do next-phase")).toBe(true);
+
+    const broadcastHits = searchHelpEntries(ST_HELP_ENTRIES, "broadcast");
+    expect(broadcastHits.some((entry) => entry.command === "/st broadcast")).toBe(true);
+    expect(broadcastHits.some((entry) => entry.command === "/st do broadcast")).toBe(true);
+    expect(broadcastHits.some((entry) => entry.command === "/st do say")).toBe(false);
 
     const remindHits = searchHelpEntries(ST_HELP_ENTRIES, "reminder");
     expect(remindHits.length).toBeGreaterThan(1);

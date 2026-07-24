@@ -9,7 +9,8 @@ export type DoAction = {
 
 export const ST_DO_ACTIONS: DoAction[] = [
   { name: "setup-town", description: "Set roster + seats from ordered @mentions", needs: ["players"] },
-  { name: "say", description: "Broadcast to all player threads from kib", needs: ["message"] },
+  { name: "broadcast", description: "Broadcast to all player threads from kib", needs: ["message"] },
+  { name: "say", description: "Alias for broadcast (prefer /st broadcast)", needs: ["message"] },
   { name: "log", description: "Create or reopen the ST-only audit log thread" },
   {
     name: "recreate-threads",
@@ -56,7 +57,7 @@ export const ST_DO_ACTIONS: DoAction[] = [
  */
 export const ST_SLASH_SHORTCUTS: DoAction[] = [
   { name: "setup-town", description: "Set roster + seats from ordered @mentions", needs: ["players"] },
-  { name: "say", description: "Broadcast to all player threads from kib", needs: ["message"] },
+  { name: "broadcast", description: "Broadcast to all player threads from kib", needs: ["message"] },
   { name: "log", description: "Create or reopen the ST-only audit log thread" },
   { name: "end", description: "End the game (strip roles, open kib)", needs: ["winner"] },
   { name: "next-phase", description: "Advance Setup → Night 1 → Day 1 → …" },

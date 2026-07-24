@@ -68,7 +68,7 @@ describe("ST_SLASH_SHORTCUTS", () => {
     expect(ST_SLASH_SHORTCUTS.map((a) => a.name)).toEqual(
       expect.arrayContaining([
         "setup-town",
-        "say",
+        "broadcast",
         "log",
         "end",
         "next-phase",
