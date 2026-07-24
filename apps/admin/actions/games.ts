@@ -5,8 +5,12 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { setFlash } from "@/lib/flash";
 import { emptyToNull, parseOptionalInt } from "@/lib/utils";
+
+export type SaveResult = {
+  ok: boolean;
+  message: string;
+};
 
 async function requireSession() {
   const session = await auth();
@@ -14,7 +18,22 @@ async function requireSession() {
   return session;
 }
 
-export async function saveGame(gameId: string, formData: FormData) {
+const PLAYER_TEAMS = new Set(["good", "evil", "traveler"]);
+
+function parsePlayerTeam(value: FormDataEntryValue | null): string | null {
+  const team = String(value ?? "").trim().toLowerCase();
+  if (!team) return null;
+  if (!PLAYER_TEAMS.has(team)) {
+    throw new Error(`Invalid team "${team}". Use good, evil, or traveler.`);
+  }
+  return team;
+}
+
+export async function saveGame(
+  gameId: string,
+  _prev: SaveResult | null,
+  formData: FormData,
+): Promise<SaveResult> {
   await requireSession();
   try {
     await prisma.game.update({
@@ -36,45 +55,55 @@ export async function saveGame(gameId: string, formData: FormData) {
         votingThreadId: emptyToNull(formData.get("votingThreadId")),
       },
     });
-    await setFlash("Game saved.");
+    // List page only — avoid refreshing this detail page (keeps scroll/focus).
+    revalidatePath("/games");
+    return { ok: true, message: "Game saved." };
   } catch (err) {
-    await setFlash(err instanceof Error ? err.message : String(err));
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
-  revalidatePath(`/games/${gameId}`);
-  revalidatePath("/games");
-  redirect(`/games/${gameId}`);
 }
 
-const PLAYER_TEAMS = new Set(["good", "evil", "traveler"]);
-
-function parsePlayerTeam(value: FormDataEntryValue | null): string | null {
-  const team = String(value ?? "").trim().toLowerCase();
-  if (!team) return null;
-  if (!PLAYER_TEAMS.has(team)) {
-    throw new Error(`Invalid team "${team}". Use good, evil, or traveler.`);
-  }
-  return team;
-}
-
-export async function savePlayer(gameId: string, playerId: string, formData: FormData) {
+export async function savePlayers(
+  gameId: string,
+  _prev: SaveResult | null,
+  formData: FormData,
+): Promise<SaveResult> {
   await requireSession();
   try {
-    await prisma.player.update({
-      where: { id: playerId },
-      data: {
-        displayName: String(formData.get("displayName") ?? "").trim(),
-        discordUserId: String(formData.get("discordUserId") ?? "").trim(),
-        seat: parseOptionalInt(formData.get("seat")),
-        roleId: emptyToNull(formData.get("roleId")),
-        team: parsePlayerTeam(formData.get("team")),
-        alive: formData.get("alive") === "on",
-        ghostVoteUsed: formData.get("ghostVoteUsed") === "on",
-      },
+    const playerIds = formData.getAll("playerId").map(String);
+    if (playerIds.length === 0) {
+      return { ok: false, message: "No players to save." };
+    }
+
+    const belonging = await prisma.player.findMany({
+      where: { gameId, id: { in: playerIds } },
+      select: { id: true },
     });
-    await setFlash("Player saved.");
+    const allowed = new Set(belonging.map((row) => row.id));
+    if (allowed.size !== playerIds.length) {
+      return { ok: false, message: "One or more players do not belong to this game." };
+    }
+
+    await prisma.$transaction(
+      playerIds.map((playerId) =>
+        prisma.player.update({
+          where: { id: playerId },
+          data: {
+            displayName: String(formData.get(`displayName_${playerId}`) ?? "").trim(),
+            discordUserId: String(formData.get(`discordUserId_${playerId}`) ?? "").trim(),
+            seat: parseOptionalInt(formData.get(`seat_${playerId}`)),
+            roleId: emptyToNull(formData.get(`roleId_${playerId}`)),
+            team: parsePlayerTeam(formData.get(`team_${playerId}`)),
+            alive: formData.get(`alive_${playerId}`) === "on",
+            ghostVoteUsed: formData.get(`ghostVoteUsed_${playerId}`) === "on",
+          },
+        }),
+      ),
+    );
+
+    revalidatePath("/games");
+    return { ok: true, message: `Saved ${playerIds.length} player${playerIds.length === 1 ? "" : "s"}.` };
   } catch (err) {
-    await setFlash(err instanceof Error ? err.message : String(err));
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
-  revalidatePath(`/games/${gameId}`);
-  redirect(`/games/${gameId}`);
 }

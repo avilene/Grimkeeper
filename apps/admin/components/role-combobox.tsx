@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,11 +25,13 @@ export function alignmentFromRoleType(type: string): "good" | "evil" | "traveler
 type RoleComboboxProps = {
   id: string;
   name?: string;
-  label?: string;
+  /** Pass `null` to hide the label (table cells). */
+  label?: string | null;
   defaultValue?: string | null;
   roles: RoleOption[];
-  /** When set, selecting a role fills this `<select name="team">` if it is empty. */
+  /** When set, selecting a role fills this `<select>` if it is empty. */
   teamSelectId?: string;
+  compact?: boolean;
 };
 
 export function RoleCombobox({
@@ -38,14 +41,19 @@ export function RoleCombobox({
   defaultValue,
   roles,
   teamSelectId,
+  compact = false,
 }: RoleComboboxProps) {
   const byId = useMemo(() => new Map(roles.map((role) => [role.id, role])), [roles]);
   const initial = defaultValue?.trim() ?? "";
   const initialRole = initial ? byId.get(initial) : undefined;
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const [value, setValue] = useState(initial);
   const [query, setQuery] = useState(initialRole?.name ?? initial);
   const [open, setOpen] = useState(false);
+  const [menuBox, setMenuBox] = useState<{ top: number; left: number; width: number } | null>(
+    null,
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -59,6 +67,29 @@ export function RoleCombobox({
         );
     return list.slice(0, 40);
   }, [query, roles]);
+
+  useEffect(() => {
+    if (!open || !inputRef.current) {
+      setMenuBox(null);
+      return;
+    }
+    const update = () => {
+      const rect = inputRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setMenuBox({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: Math.max(rect.width, 224),
+      });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open, query, filtered.length]);
 
   function pick(role: RoleOption) {
     setValue(role.id);
@@ -85,19 +116,69 @@ export function RoleCombobox({
     if (match) setQuery(match.name);
   }
 
+  const listbox = open ? (
+    <ul
+      id={`${id}-listbox`}
+      role="listbox"
+      className={cn(
+        "z-50 max-h-60 overflow-auto rounded-md border border-border bg-popover p-1",
+        "text-sm text-popover-foreground shadow-md",
+        compact ? "fixed" : "absolute mt-1 w-full min-w-[14rem]",
+      )}
+      style={
+        compact && menuBox
+          ? { top: menuBox.top, left: menuBox.left, width: menuBox.width }
+          : undefined
+      }
+    >
+      {filtered.length === 0 ? (
+        <li className="px-2 py-1.5 text-muted-foreground">
+          No matches — leave typed text to save a custom id
+        </li>
+      ) : (
+        filtered.map((role) => (
+          <li key={role.id} role="option" aria-selected={value === role.id}>
+            <button
+              type="button"
+              className={cn(
+                "flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left",
+                "hover:bg-accent hover:text-accent-foreground",
+                value === role.id && "bg-accent",
+              )}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => pick(role)}
+            >
+              <span>{role.name}</span>
+              <span className="shrink-0 text-xs capitalize text-muted-foreground">
+                {role.type}
+                {role.edition ? ` · ${role.edition}` : ""}
+              </span>
+            </button>
+          </li>
+        ))
+      )}
+    </ul>
+  ) : null;
+
   return (
-    <div className="relative space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
+    <div className={cn("relative", label != null && "space-y-1.5")}>
+      {label != null ? <Label htmlFor={id}>{label}</Label> : null}
       <input type="hidden" name={name} value={value} />
       <Input
+        ref={inputRef}
         id={id}
         role="combobox"
         aria-expanded={open}
         aria-controls={`${id}-listbox`}
         aria-autocomplete="list"
+        aria-label={label ?? "Character / role"}
         autoComplete="off"
-        placeholder="Search characters…"
+        placeholder="Search…"
         value={query}
+        className={cn(
+          compact &&
+            "h-8 min-w-[11rem] rounded-md border border-input bg-background px-2 text-sm shadow-sm",
+        )}
         onChange={(event) => {
           setQuery(event.target.value);
           setValue("");
@@ -118,43 +199,9 @@ export function RoleCombobox({
           }
         }}
       />
-      {open ? (
-        <ul
-          id={`${id}-listbox`}
-          role="listbox"
-          className={cn(
-            "absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-border bg-popover p-1",
-            "text-sm text-popover-foreground shadow-md",
-          )}
-        >
-          {filtered.length === 0 ? (
-            <li className="px-2 py-1.5 text-muted-foreground">
-              No matches — leave typed text to save a custom id
-            </li>
-          ) : (
-            filtered.map((role) => (
-              <li key={role.id} role="option" aria-selected={value === role.id}>
-                <button
-                  type="button"
-                  className={cn(
-                    "flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left",
-                    "hover:bg-accent hover:text-accent-foreground",
-                    value === role.id && "bg-accent",
-                  )}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => pick(role)}
-                >
-                  <span>{role.name}</span>
-                  <span className="shrink-0 text-xs capitalize text-muted-foreground">
-                    {role.type}
-                    {role.edition ? ` · ${role.edition}` : ""}
-                  </span>
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
-      ) : null}
+      {compact && typeof document !== "undefined" && listbox
+        ? createPortal(listbox, document.body)
+        : listbox}
     </div>
   );
 }
