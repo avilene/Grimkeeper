@@ -96,6 +96,25 @@ export function townSurfaceNameSuffix(gameId: string): string {
   return `· ${shortGameId(gameId)}`;
 }
 
+/** Name match for a town surface under an already-scoped parent channel. */
+export function matchesTownSurfaceThreadName(
+  name: string,
+  kind: TownSurfaceKind,
+  gameId: string,
+): boolean {
+  const label = SURFACE_META[kind].label;
+  const cleanName = townSurfaceThreadName(kind);
+  const legacyName = legacyTownSurfaceThreadName(kind, gameId);
+  // Match clean / current-game legacy names, or any leftover `Label · <oldShortId>`
+  // under this parent (reuse across games in the same town channel).
+  return (
+    name === cleanName ||
+    name === legacyName ||
+    name.startsWith(`${label} ·`) ||
+    (name.includes(label) && name.includes(townSurfaceNameSuffix(gameId)))
+  );
+}
+
 async function findTownSurfaceThread(
   guild: Guild,
   parentChannelId: string,
@@ -110,13 +129,7 @@ async function findTownSurfaceThread(
     }
   }
 
-  const label = SURFACE_META[kind].label;
-  const cleanName = townSurfaceThreadName(kind);
-  const legacyName = legacyTownSurfaceThreadName(kind, gameId);
-  const matches = (name: string) =>
-    name === cleanName ||
-    name === legacyName ||
-    (name.includes(label) && name.includes(townSurfaceNameSuffix(gameId)));
+  const matches = (name: string) => matchesTownSurfaceThreadName(name, kind, gameId);
 
   const active = await guild.channels.fetchActiveThreads().catch(() => null);
   const activeThread = active?.threads.find(
@@ -425,6 +438,11 @@ export async function postDayMarkersToTownSurfaces(
   for (const kind of ["whisper-decl", "claims"] as const) {
     const thread = await getTownSurfaceThread(guild, game, kind);
     if (!thread) continue;
+    const field = SURFACE_META[kind].dbField;
+    if (game[field] !== thread.id) {
+      await persistTownSurfaceThreadId(game.id, kind, thread.id);
+      game[field] = thread.id;
+    }
     if (thread.archived) {
       await thread.setArchived(false, `Day ${dayNumber} marker`).catch(() => undefined);
     }

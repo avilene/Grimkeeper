@@ -18,7 +18,6 @@ import { parseUserMentionsFromString } from "../town-setup.js";
 import {
   replyOrEditInteraction,
   requireActivePlayerGame,
-  requireCommandAccess,
 } from "./command-context.js";
 
 type ActiveWhisperContext = {
@@ -108,8 +107,6 @@ export class WhisperCommands {
     description: "Open (or resume) NW whispers with both seated neighbors",
   })
   async neighbor(interaction: CommandInteraction): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
-
     const context = await requireWhisperContext(interaction);
     if (!context) return;
 
@@ -185,8 +182,6 @@ export class WhisperCommands {
     name: string | undefined,
     interaction: CommandInteraction,
   ): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
-
     const context = await requireWhisperContext(interaction);
     if (!context) return;
 

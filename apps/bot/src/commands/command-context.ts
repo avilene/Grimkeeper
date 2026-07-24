@@ -564,13 +564,16 @@ export { buildReminderFireContent };
 
 export async function requireActivePlayerGame(interaction: CommandInteraction) {
   if (!interaction.guildId) {
-    await interaction.reply({ content: "This command must be used in a server.", flags: MessageFlags.Ephemeral });
+    await replyOrEditInteraction(interaction, {
+      content: "This command must be used in a server.",
+      flags: MessageFlags.Ephemeral,
+    });
     return null;
   }
 
   const game = await resolveActiveGameForInteraction(interaction);
   if (!game) {
-    await interaction.reply({
+    await replyOrEditInteraction(interaction, {
       content: await noActiveGameHereMessage(interaction.guildId),
       flags: MessageFlags.Ephemeral,
     });
@@ -580,7 +583,10 @@ export async function requireActivePlayerGame(interaction: CommandInteraction) {
   const engine = await loadEngine(game.id);
   const player = engine.getPlayerByDiscordId(interaction.user.id);
   if (!player) {
-    await interaction.reply({ content: "You are not in this game.", flags: MessageFlags.Ephemeral });
+    await replyOrEditInteraction(interaction, {
+      content: "You are not in this game.",
+      flags: MessageFlags.Ephemeral,
+    });
     return null;
   }
 
