@@ -515,7 +515,7 @@ export async function addDayThreadMembers(
   guild: Guild,
   threadId: string,
   engine: GameEngine,
-  options?: { includeDead?: boolean },
+  options?: { includeDead?: boolean; stRoleId?: string | null },
 ): Promise<void> {
   const includeDead = options?.includeDead === true;
   const memberIds = new Set<string>();
@@ -526,6 +526,14 @@ export async function addDayThreadMembers(
   }
   for (const stId of engine.getStorytellerDiscordIds()) {
     memberIds.add(stId);
+  }
+  // Include co-STs who hold the Discord role but are not in the engine ST list.
+  if (options?.stRoleId) {
+    for (const member of guild.members.cache.values()) {
+      if (member.roles.cache.has(options.stRoleId)) {
+        memberIds.add(member.id);
+      }
+    }
   }
 
   const thread = await guild.channels.fetch(threadId).catch(() => null);

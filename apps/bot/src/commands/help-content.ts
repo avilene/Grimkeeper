@@ -422,7 +422,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             "Vote lock/count stay in Town Voting; **Announce & resolve** posts to Town Voting + audit log.",
             "Each living player may nominate once per day; each player may be nominated once. Ghosts cannot nominate.",
             "`next-phase` advances Setup → Night 1 → Day 1 → …. Renames town to `base-setup` / `base-nightN` / `base-dayN`.",
-            "`add-st` / `sync-st-threads` promote STs and invite them into player ST threads.",
+            "`add-st` / `remove-st` / `sync-st-threads` manage co-STs and invite/remove them from player ST + whisper threads.",
             "`reset-to-setup` (ALLOWED_USER_IDS only) wipes day/night back to Setup, keeping the roster.",
             "Day stamps go to Voting, Whisper Declaration, Public Claims, kib, and whisper threads — not Rules.",
           ].join("\n"),

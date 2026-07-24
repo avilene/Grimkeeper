@@ -29,6 +29,11 @@ import {
   postDayMarkersToTownSurfaces,
   reloadTownSurfaceGame,
 } from "../town-surfaces.js";
+import {
+  addUserToGameWhispers,
+  removeUserFromGameWhispers,
+  syncStorytellersToWhisperThreads,
+} from "../whisper-thread.js";
 import { respondDoAutocomplete, resolveDoActionName, ST_DO_ACTIONS } from "./action-catalog.js";
 import { resolveOrCreatePlayerAlias } from "./alias.js";
 import {
@@ -84,7 +89,7 @@ export class StCommandsMinimal {
     player: User | undefined,
     @SlashOption({
       name: "user",
-      description: "Target user (add-st, add/remove spectator)",
+      description: "Target user (add/remove-st, add/remove spectator)",
       type: ApplicationCommandOptionType.User,
       required: false,
     })
@@ -222,6 +227,13 @@ export class StCommandsMinimal {
           return;
         }
         await this.addSt(user, interaction);
+        return;
+      case "remove-st":
+        if (!user) {
+          await missingOption(interaction, "user", "remove-st");
+          return;
+        }
+        await this.removeSt(user, interaction);
         return;
       case "sync-st-threads":
         await this.syncStThreads(interaction);
@@ -1109,6 +1121,8 @@ export class StCommandsMinimal {
         await thread.members.add(user.id).catch(() => undefined);
       }
 
+      const whisperThreads = await addUserToGameWhispers(guild, game.id, user.id);
+
       await postGameLog(
         guild,
         game,
@@ -1122,6 +1136,9 @@ export class StCommandsMinimal {
         playerThreads.length > 0
           ? `added to ${playerThreads.length} player ST thread${playerThreads.length === 1 ? "" : "s"}`
           : null,
+        whisperThreads > 0
+          ? `added to ${whisperThreads} whisper thread${whisperThreads === 1 ? "" : "s"}`
+          : null,
       ].filter(Boolean);
 
       await replyOrEditInteraction(interaction, {
@@ -1133,7 +1150,115 @@ export class StCommandsMinimal {
     }
   }
 
-  /** Invite everyone with the ST role (plus engine STs) into existing player ST threads. */
+  /** Demote a co-ST: engine + Discord ST role; remove whisper / player-thread / kib / log access. */
+  async removeSt(user: User, interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const state = engine.getState();
+      if (state.storytellerId === user.id) {
+        await replyOrEditInteraction(interaction, {
+          content: "Cannot demote the primary storyteller.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const wasPromoted = state.promotedStorytellerIds.includes(user.id);
+      if (wasPromoted) {
+        const events = engine.handle({
+          kind: GameCommandKind.DemoteStoryteller,
+          gameId: game.id,
+          discordUserId: user.id,
+        });
+        await persistEvents(engine, events);
+      }
+
+      const gameRoles = await resolveGameRoles(guild, game);
+      if (gameRoles) {
+        await removeRoleFromUser(guild, user.id, gameRoles.stRole.id);
+        await postGameLogRoleChange(
+          guild,
+          game,
+          "removed",
+          user.id,
+          `<@&${gameRoles.stRole.id}> (ST)`,
+          interaction.user.id,
+        );
+      } else if (!wasPromoted) {
+        await replyOrEditInteraction(interaction, {
+          content:
+            "That user is not a promoted storyteller, and this game has no ST role linked to strip.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const kib = await getKibThreadForGame(guild, game);
+      if (kib?.isThread()) {
+        await kib.members.remove(user.id).catch(() => undefined);
+      }
+
+      if (game.logThreadId) {
+        const logThread = await guild.channels.fetch(game.logThreadId).catch(() => null);
+        if (logThread?.isThread()) {
+          await logThread.members.remove(user.id).catch(() => undefined);
+        }
+      }
+
+      const playerThreads = await listPersonalPlayerThreads(guild, game, engine, {
+        includeArchived: true,
+      });
+      let playerThreadRemovals = 0;
+      for (const thread of playerThreads) {
+        if (!thread.isThread()) continue;
+        if (thread.archived) {
+          await thread
+            .setArchived(false, "Removing co-ST from player ST thread.")
+            .catch(() => undefined);
+        }
+        const ok = await thread.members.remove(user.id).then(() => true).catch(() => false);
+        if (ok) playerThreadRemovals++;
+      }
+
+      const whisperThreads = await removeUserFromGameWhispers(guild, game.id, user.id);
+
+      await postGameLog(
+        guild,
+        game,
+        `<@${interaction.user.id}> demoted <@${user.id}> from storyteller.`,
+      );
+
+      const accessHints = [
+        wasPromoted ? "removed from engine ST list" : null,
+        gameRoles ? "ST role removed" : null,
+        kib?.isThread() ? `removed from <#${kib.id}>` : null,
+        game.logThreadId ? `removed from <#${game.logThreadId}>` : null,
+        playerThreadRemovals > 0
+          ? `removed from ${playerThreadRemovals} player ST thread${playerThreadRemovals === 1 ? "" : "s"}`
+          : null,
+        whisperThreads > 0
+          ? `removed from ${whisperThreads} whisper thread${whisperThreads === 1 ? "" : "s"}`
+          : null,
+      ].filter(Boolean);
+
+      await replyOrEditInteraction(interaction, {
+        content:
+          accessHints.length > 0
+            ? `Demoted <@${user.id}> (${accessHints.join("; ")}).`
+            : `Demoted <@${user.id}>.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  /** Invite everyone with the ST role (plus engine STs) into existing player ST and whisper threads. */
   async syncStThreads(interaction: CommandInteraction): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
@@ -1149,21 +1274,34 @@ export class StCommandsMinimal {
         return;
       }
 
-      await setInteractionProgress(interaction, "Adding ST role holders to player threads…");
+      await setInteractionProgress(interaction, "Adding ST role holders to player and whisper threads…");
       const engine = await loadEngine(game.id);
       const { threads } = await syncStorytellersToPlayerThreads(guild, game, engine);
+      const whisperThreads = await syncStorytellersToWhisperThreads(guild, game, engine);
 
       await postGameLog(
         guild,
         game,
-        `<@${interaction.user.id}> synced ST role holders into **${threads}** player ST thread${threads === 1 ? "" : "s"}.`,
+        `<@${interaction.user.id}> synced ST role holders into **${threads}** player ST thread${threads === 1 ? "" : "s"}` +
+          (whisperThreads > 0
+            ? ` and **${whisperThreads}** whisper thread${whisperThreads === 1 ? "" : "s"}`
+            : "") +
+          `.`,
       );
+
+      const parts: string[] = [];
+      if (threads > 0) {
+        parts.push(`**${threads}** player ST thread${threads === 1 ? "" : "s"}`);
+      }
+      if (whisperThreads > 0) {
+        parts.push(`**${whisperThreads}** whisper thread${whisperThreads === 1 ? "" : "s"}`);
+      }
 
       await replyOrEditInteraction(interaction, {
         content:
-          threads > 0
-            ? `Added ST role holders (and engine storytellers) to **${threads}** player ST thread${threads === 1 ? "" : "s"}.`
-            : "No player ST threads found. Run `/st setup-town` first.",
+          parts.length > 0
+            ? `Added ST role holders (and engine storytellers) to ${parts.join(" and ")}.`
+            : "No player ST or whisper threads found. Run `/st setup-town` (and open whispers) first.",
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

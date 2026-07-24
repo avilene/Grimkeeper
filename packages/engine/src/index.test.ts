@@ -232,6 +232,35 @@ describe("GameEngine", () => {
     expect(engine.isStoryteller("user-2")).toBe(true);
   });
 
+  it("demotes promoted storytellers but not the primary", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(2));
+    for (const event of engine.handle({
+      kind: GameCommandKind.PromoteStoryteller,
+      gameId,
+      discordUserId: "user-2",
+    })) {
+      engine.apply(event);
+    }
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.DemoteStoryteller,
+      gameId,
+      discordUserId: "user-2",
+    })) {
+      engine.apply(event);
+    }
+    expect(engine.isStoryteller("user-2")).toBe(false);
+    expect(engine.getStorytellerDiscordIds()).toEqual(["story-1"]);
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.DemoteStoryteller,
+        gameId,
+        discordUserId: "story-1",
+      }),
+    ).toThrow("primary storyteller");
+  });
+
   it("rejects promoting an existing storyteller", () => {
     const engine = GameEngine.fromEvents(gameId, baseEvents());
     expect(() =>

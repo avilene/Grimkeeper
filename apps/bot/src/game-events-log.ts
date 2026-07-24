@@ -36,6 +36,8 @@ function eventFields(event: GameEvent): Record<string, unknown> {
       return { playerId: event.playerId };
     case GameEventType.StorytellerPromoted:
       return { discordUserId: event.discordUserId };
+    case GameEventType.StorytellerDemoted:
+      return { discordUserId: event.discordUserId };
     case GameEventType.RolesDealt:
       // Role assignments are secret — only log that dealing happened.
       return { assignmentCount: event.assignments.length };

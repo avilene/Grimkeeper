@@ -25,6 +25,7 @@ export const GameCommandKind = {
   PickSeat: "PickSeat",
   EndGame: "EndGame",
   PromoteStoryteller: "PromoteStoryteller",
+  DemoteStoryteller: "DemoteStoryteller",
   SetupTown: "SetupTown",
   ResetTownToSetup: "ResetTownToSetup",
   SetPlayerAlive: "SetPlayerAlive",

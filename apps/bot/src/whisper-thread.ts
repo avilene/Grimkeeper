@@ -12,6 +12,7 @@ import { isFakePlayer, type GameEngine, type PlayerState } from "@grimkeeper/eng
 
 import {
   DEFAULT_THREAD_AUTO_ARCHIVE,
+  addStorytellersToPlayerThread,
   ensureThreadAutoArchive,
   isGameTextChannel,
 } from "./commands/command-context.js";
@@ -128,18 +129,18 @@ export function formatWhisperDeclaration(displayNames: string[]): string {
 }
 
 async function ensureWhisperMembers(
+  guild: Guild,
   thread: AnyThreadChannel,
   engine: GameEngine,
   participantDiscordIds: string[],
+  stRoleId?: string | null,
 ): Promise<void> {
-  const memberIds = new Set([
-    ...participantDiscordIds,
-    ...engine.getStorytellerDiscordIds(),
-  ]);
-  for (const userId of memberIds) {
+  for (const userId of participantDiscordIds) {
     if (isFakePlayer(userId)) continue;
     await thread.members.add(userId).catch(() => undefined);
   }
+  // Engine STs + anyone cached with the game ST Discord role (not only the original ST).
+  await addStorytellersToPlayerThread(guild, thread, engine, stRoleId);
 }
 
 export type OpenWhisperResult = {
@@ -158,7 +159,7 @@ export type OpenWhisperOptions = {
 /** Reuse an existing whisper for this participant set if present; otherwise create one. */
 export async function openOrReuseWhisperThread(
   guild: Guild,
-  game: { id: string; channelId: string },
+  game: { id: string; channelId: string; stRoleId?: string | null },
   engine: GameEngine,
   options: OpenWhisperOptions,
 ): Promise<OpenWhisperResult | null> {
@@ -175,7 +176,7 @@ export async function openOrReuseWhisperThread(
           .catch(() => undefined);
       }
       await ensureThreadAutoArchive(channel);
-      await ensureWhisperMembers(channel, engine, participantDiscordIds);
+      await ensureWhisperMembers(guild, channel, engine, participantDiscordIds, game.stRoleId);
       await channel
         .send({
           content: formatWhisperReusePing(participantDiscordIds),
@@ -192,7 +193,7 @@ export async function openOrReuseWhisperThread(
 
 export async function createWhisperThread(
   guild: Guild,
-  game: { id: string; channelId: string },
+  game: { id: string; channelId: string; stRoleId?: string | null },
   engine: GameEngine,
   options: OpenWhisperOptions,
 ): Promise<AnyThreadChannel | null> {
@@ -226,7 +227,7 @@ export async function createWhisperThread(
   }
 
   await ensureThreadAutoArchive(thread);
-  await ensureWhisperMembers(thread, engine, participantDiscordIds);
+  await ensureWhisperMembers(guild, thread, engine, participantDiscordIds, game.stRoleId);
 
   const state = engine.getState();
   const phase = state.phase === "night" ? "night" : "day";
@@ -284,4 +285,74 @@ export async function postDayMarkersToWhispers(
   }
 
   return { posted, failed };
+}
+
+/** Invite a user into every whisper thread for this game. Returns how many threads were updated. */
+export async function addUserToGameWhispers(
+  guild: Guild,
+  gameId: string,
+  userId: string,
+): Promise<number> {
+  if (isFakePlayer(userId)) return 0;
+  const whispers = await listGameWhispers(gameId);
+  let updated = 0;
+  for (const whisper of whispers) {
+    const channel = await guild.channels.fetch(whisper.threadId).catch(() => null);
+    if (!channel?.isThread()) continue;
+    if (channel.archived) {
+      await channel.setArchived(false, "Adding storyteller to whisper.").catch(() => undefined);
+    }
+    const ok = await channel.members.add(userId).then(() => true).catch(() => false);
+    if (ok) updated++;
+  }
+  return updated;
+}
+
+/**
+ * Remove a user from whisper threads for this game.
+ * Skips threads where they are a player participant (not only an ST observer).
+ */
+export async function removeUserFromGameWhispers(
+  guild: Guild,
+  gameId: string,
+  userId: string,
+): Promise<number> {
+  if (isFakePlayer(userId)) return 0;
+  const whispers = await listGameWhispers(gameId);
+  let updated = 0;
+  for (const whisper of whispers) {
+    const participants = whisper.participantKey.split(",").filter(Boolean);
+    if (participants.includes(userId)) continue;
+
+    const channel = await guild.channels.fetch(whisper.threadId).catch(() => null);
+    if (!channel?.isThread()) continue;
+    if (channel.archived) {
+      await channel.setArchived(false, "Removing storyteller from whisper.").catch(() => undefined);
+    }
+    const ok = await channel.members.remove(userId).then(() => true).catch(() => false);
+    if (ok) updated++;
+  }
+  return updated;
+}
+
+/** Invite engine STs + ST-role holders into every whisper thread for this game. */
+export async function syncStorytellersToWhisperThreads(
+  guild: Guild,
+  game: { id: string; stRoleId?: string | null },
+  engine: GameEngine,
+): Promise<number> {
+  const whispers = await listGameWhispers(game.id);
+  let updated = 0;
+  for (const whisper of whispers) {
+    const channel = await guild.channels.fetch(whisper.threadId).catch(() => null);
+    if (!channel?.isThread()) continue;
+    if (channel.archived) {
+      await channel
+        .setArchived(false, "Syncing storytellers into whisper threads.")
+        .catch(() => undefined);
+    }
+    await addStorytellersToPlayerThread(guild, channel, engine, game.stRoleId);
+    updated++;
+  }
+  return updated;
 }

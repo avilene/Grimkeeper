@@ -1,4 +1,5 @@
 import { MessageFlags, type CommandInteraction, type Guild } from "discord.js";
+import { prisma } from "@grimkeeper/database";
 import { GameCommandKind, type VoteChoice } from "@grimkeeper/engine";
 
 import {
@@ -221,7 +222,18 @@ export async function runDevDayStart(options: {
 
     const dayNumber = engine.getState().dayNumber;
     let threadId = channelId;
-    const dayThread = await createDayThread(guild, channelId, gameId, dayNumber, engine);
+    const gameRow = await prisma.game.findUnique({
+      where: { id: gameId },
+      select: { stRoleId: true },
+    });
+    const dayThread = await createDayThread(
+      guild,
+      channelId,
+      gameId,
+      dayNumber,
+      engine,
+      gameRow?.stRoleId,
+    );
     if (dayThread) {
       threadId = dayThread.id;
       await dayThread.send({ embeds: [buildDayIntroEmbed(engine)] }).catch(() => undefined);
