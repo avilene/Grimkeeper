@@ -17,6 +17,7 @@ import {
   buildDevHelpEmbeds,
   buildGameHelpEmbeds,
   buildHelpSearchEmbeds,
+  buildPlayerHelpEmbeds,
   buildStGuideEmbed,
   buildStHelpEmbeds,
   type HelpSearchScope,
@@ -68,14 +69,18 @@ async function ensureHelpDeferred(interaction: CommandInteraction): Promise<void
 async function replyHelpEmbeds(
   interaction: CommandInteraction,
   embeds: EmbedBuilder[],
+  options?: { requireAccess?: boolean },
 ): Promise<void> {
+  const requireAccess = options?.requireAccess !== false;
   try {
     await ensureHelpDeferred(interaction);
 
-    const allowed = await canUseBot(interaction);
-    if (!allowed) {
-      await interaction.editReply({ content: ACCESS_DENIED, embeds: [] });
-      return;
+    if (requireAccess) {
+      const allowed = await canUseBot(interaction);
+      if (!allowed) {
+        await interaction.editReply({ content: ACCESS_DENIED, embeds: [] });
+        return;
+      }
     }
 
     await interaction.editReply({ content: null, embeds });
@@ -112,11 +117,13 @@ async function replyScopedHelp(
   scope: HelpSearchScope,
   search: string | undefined,
   full: () => EmbedBuilder[],
+  options?: { requireAccess?: boolean },
 ): Promise<void> {
   const query = search?.trim();
   await replyHelpEmbeds(
     interaction,
     query ? buildHelpSearchEmbeds(scope, query) : full(),
+    options,
   );
 }
 
@@ -143,6 +150,30 @@ export class GameHelpCommands {
     interaction: CommandInteraction,
   ): Promise<void> {
     await replyScopedHelp(interaction, "game", search, buildGameHelpEmbeds);
+  }
+}
+
+@Discord()
+@SlashGroup({ name: "player", description: "Day-play commands for players in an active game" })
+@SlashGroup("player")
+export class PlayerHelpCommands {
+  @Slash({
+    name: "help",
+    description: "Show nominate / vote / whisper / alias guide (optional search)",
+  })
+  async help(
+    @SlashOption({
+      name: "search",
+      description: "Filter commands by name or description",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    search: string | undefined,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    await replyScopedHelp(interaction, "player", search, buildPlayerHelpEmbeds, {
+      requireAccess: false,
+    });
   }
 }
 

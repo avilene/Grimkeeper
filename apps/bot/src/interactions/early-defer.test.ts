@@ -57,6 +57,7 @@ describe("isHelpOrGuideCommand", () => {
   it("matches help and guide checklists", () => {
     expect(isHelpOrGuideCommand(chatCommand("st", "help") as never)).toBe(true);
     expect(isHelpOrGuideCommand(chatCommand("game", "help") as never)).toBe(true);
+    expect(isHelpOrGuideCommand(chatCommand("player", "help") as never)).toBe(true);
     expect(isHelpOrGuideCommand(chatCommand("dev", "help") as never)).toBe(true);
     expect(isHelpOrGuideCommand(chatCommand("st", "setup", "guide") as never)).toBe(true);
     expect(isHelpOrGuideCommand(chatCommand("st", "day", "guide") as never)).toBe(true);
@@ -84,6 +85,10 @@ describe("shouldDeferSlashCommand", () => {
   it("defers /game commands except help", () => {
     expect(shouldDeferSlashCommand(chatCommand("game", "setup") as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("game", "help") as never)).toBe(false);
+  });
+
+  it("does not ephemeral-defer /player help", () => {
+    expect(shouldDeferSlashCommand(chatCommand("player", "help") as never)).toBe(false);
   });
 
   it("does not ephemeral-defer /st guide checklists", () => {

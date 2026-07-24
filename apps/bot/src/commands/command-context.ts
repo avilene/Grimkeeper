@@ -1326,7 +1326,9 @@ export async function ensurePlayerStThread(
   if (shouldAnnounce) {
     await thread
       .send({
-        content: `Private ST thread for <@${player.discordUserId}>. Only you, the storyteller, and server admins can access this thread.`,
+        content:
+          `Private ST thread for <@${player.discordUserId}>. Only you, the storyteller, and server admins can access this thread.\n` +
+          `Day-play commands: **/player help** (nominate, vote, whisper, alias, …).`,
         allowedMentions: { users: [player.discordUserId] },
       })
       .catch(() => undefined);
@@ -1474,7 +1476,10 @@ export async function createPersonalPlayerThread(
 
     await thread.members.add(userId).catch(() => undefined);
     await thread.send({
-      content: `Hi <@${userId}>! This is your private game thread for Grimkeeper.\nOnly you, the storyteller, and server admins can see this thread — do not try to invite others.`,
+      content:
+        `Hi <@${userId}>! This is your private game thread for Grimkeeper.\n` +
+        `Only you, the storyteller, and server admins can see this thread — do not try to invite others.\n` +
+        `Day-play commands: **/player help** (nominate, vote, whisper, alias, …).`,
       allowedMentions: { users: [userId] },
     });
     await persistPlayerStThreadId(gameId, userId, thread.id);

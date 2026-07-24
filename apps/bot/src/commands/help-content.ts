@@ -40,7 +40,7 @@ export type HelpEntry = {
   description: string;
 };
 
-export type HelpSearchScope = "game" | "st" | "dev";
+export type HelpSearchScope = "game" | "player" | "st" | "dev";
 
 function entriesFromActions(actions: DoAction[], prefix: string): HelpEntry[] {
   return actions.map((action) => ({
@@ -70,6 +70,21 @@ export const GAME_HELP_ENTRIES: HelpEntry[] = [
         : "."),
   })),
   { command: "/game help", description: "Player command guide (optional `search:`)." },
+  { command: "/player help", description: "Day-play guide: nominate, vote, whisper, alias (optional `search:`)." },
+];
+
+/** Day-play only — nominate / vote / whisper / alias (and related). */
+export const PLAYER_HELP_ENTRIES: HelpEntry[] = [
+  ...entriesFromActions(PLAYER_VOTE_ACTIONS, ""),
+  ...entriesFromActions(PLAYER_DAY_ACTIONS, ""),
+  {
+    command: "/alias",
+    description: "Set your display name for this server (used in every game). ST/admin can set `user:`.",
+  },
+  {
+    command: "/player help",
+    description: "Day-play guide: nominate, vote, whisper, alias (optional `search:`).",
+  },
 ];
 
 export const ST_HELP_ENTRIES: HelpEntry[] = [
@@ -170,6 +185,7 @@ export const DEV_HELP_ENTRIES: HelpEntry[] = [
 
 const HELP_ENTRIES_BY_SCOPE: Record<HelpSearchScope, HelpEntry[]> = {
   game: GAME_HELP_ENTRIES,
+  player: PLAYER_HELP_ENTRIES,
   st: ST_HELP_ENTRIES,
   dev: DEV_HELP_ENTRIES,
 };
@@ -193,9 +209,11 @@ export function buildHelpSearchEmbeds(
   const title =
     scope === "game"
       ? "Player help search"
-      : scope === "st"
-        ? "Storyteller help search"
-        : "Dev help search";
+      : scope === "player"
+        ? "Day-play help search"
+        : scope === "st"
+          ? "Storyteller help search"
+          : "Dev help search";
 
   if (matches.length === 0) {
     return [
@@ -291,6 +309,71 @@ function doActionFields(
   return fields;
 }
 
+export function buildPlayerHelpEmbeds(): EmbedBuilder[] {
+  return [
+    new EmbedBuilder()
+      .setColor(GUIDE_COLOR)
+      .setTitle("Player day commands")
+      .setDescription(
+        [
+          "Use these during an active game (usually in **Town Voting** or town).",
+          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/whisper`** · **`/alias`** · **`/roster`** · **`/role`**",
+          "",
+          "Search: `/player help search: whisper`. Full lobby/setup guide: **`/game help`**.",
+        ].join("\n"),
+      )
+      .addFields(
+        {
+          name: "Nominate",
+          value: [
+            cmd(
+              "/nominate",
+              "Nominate a living player (`player:` + `accusation:`). Once per living player per day; each person may be nominated once per day. Ghosts cannot nominate.",
+            ),
+            cmd("/defend", "Add your defense text when you are the nominee on an open nomination."),
+          ].join("\n\n"),
+        },
+        {
+          name: "Vote",
+          value: [
+            cmd(
+              "/vote",
+              "Public ballot on an open nomination (`nominee:`, `choice:`, optional `reason:`). You can also use the **Vote** button in Town Voting.",
+            ),
+            cmd(
+              "/privatevote",
+              "Private ballot — only the ST sees it on the kib vote tracker (`nominee:`, `choice:`, optional `reason:`).",
+            ),
+          ].join("\n\n"),
+        },
+        {
+          name: "Whisper",
+          value: [
+            cmd(
+              "/whisper neighbor",
+              "Open or resume neighbor (NW) whisper threads with both seated neighbors. ST is added; a declaration posts to Whisper Declaration when available.",
+            ),
+            cmd(
+              "/whisper with",
+              "Open or resume a whisper with one or more players (`players:` @mentions, optional `name:`). Groups default to `Group (names)`.",
+            ),
+          ].join("\n\n"),
+        },
+        {
+          name: "Alias & extras",
+          value: [
+            cmd(
+              "/alias",
+              "Set your display name for this server (used in nominations, votes, roster). ST/admin can set `user:`.",
+            ),
+            cmd("/roster", "Show seat order and alive/dead status."),
+            cmd("/role", "Look up a BotC character by fuzzy name (includes travelers)."),
+          ].join("\n\n"),
+        },
+      ),
+  ];
+}
+
 export function buildGameHelpEmbeds(): EmbedBuilder[] {
   return [
     new EmbedBuilder()
@@ -307,7 +390,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
           "Character lookup: **`/role name:`** — fuzzy search over official characters (incl. travelers).",
           "Set how your name appears with **`/alias`** (defaults to a short form of your Discord name at setup).",
           "",
-          "Lobby: `/game setup` then **`/st setup-town`** — see Lobby + Setup below. Full ST guide: **`/st help`**.",
+          "Day-play only: **`/player help`**. Lobby: `/game setup` then **`/st setup-town`**. Full ST guide: **`/st help`**.",
           "Also available as **`/game help`**. Search: `/game help search: vote`.",
         ].join("\n"),
       )

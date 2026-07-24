@@ -23,6 +23,7 @@ export async function loadCommandModules(): Promise<void> {
     stQueueEnabled,
     groups: [
       "game",
+      "player",
       "nominate",
       "defend",
       "vote",

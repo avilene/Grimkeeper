@@ -12,7 +12,7 @@ import { EmbedBuilder } from "discord.js";
 
 import { canUseBot } from "../access.js";
 import { reportError } from "../error-reporter.js";
-import { StGuideCommands } from "./command-help.js";
+import { PlayerHelpCommands, StGuideCommands } from "./command-help.js";
 
 describe("StGuideCommands.setup ack handling", () => {
   beforeEach(() => {
@@ -125,5 +125,43 @@ describe("StGuideCommands.setup ack handling", () => {
     await cmd.setup(ix as never);
     expect(ix.deferReply).not.toHaveBeenCalled();
     expect(ix.editReply).toHaveBeenCalledOnce();
+  });
+});
+
+describe("PlayerHelpCommands access", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows the guide even when the user is not on the bot allowlist", async () => {
+    vi.mocked(canUseBot).mockResolvedValue(false);
+    const cmd = new PlayerHelpCommands();
+    const ix = {
+      commandName: "player",
+      deferred: false,
+      replied: false,
+      createdTimestamp: Date.now(),
+      guildId: "g1",
+      channelId: "c1",
+      user: { id: "u1" },
+      isChatInputCommand: () => true,
+      options: {
+        getSubcommandGroup: () => null,
+        getSubcommand: () => "help",
+      },
+      deferReply: vi.fn().mockResolvedValue(undefined),
+      editReply: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn().mockResolvedValue(undefined),
+    };
+    await cmd.help(undefined, ix as never);
+    expect(canUseBot).not.toHaveBeenCalled();
+    expect(ix.editReply).toHaveBeenCalledOnce();
+    const payload = vi.mocked(ix.editReply).mock.calls[0]?.[0] as {
+      embeds?: EmbedBuilder[];
+      content?: string | null;
+    };
+    expect(payload?.embeds?.length).toBe(1);
+    expect(payload?.content).toBeNull();
+    expect(reportError).not.toHaveBeenCalled();
   });
 });

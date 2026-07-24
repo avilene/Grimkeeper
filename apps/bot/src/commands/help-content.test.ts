@@ -12,10 +12,12 @@ import {
   buildDevHelpEmbeds,
   buildGameHelpEmbeds,
   buildHelpSearchEmbeds,
+  buildPlayerHelpEmbeds,
   buildStGuideEmbed,
   buildStHelpEmbeds,
   searchHelpEntries,
   GAME_HELP_ENTRIES,
+  PLAYER_HELP_ENTRIES,
   ST_HELP_ENTRIES,
   DEV_HELP_ENTRIES,
 } from "./help-content.js";
@@ -37,6 +39,7 @@ describe("help content", () => {
     expect(game.data.description).toContain("/vote");
     expect(game.data.description).toContain("/privatevote");
     expect(game.data.description).toContain("/game help");
+    expect(game.data.description).toContain("/player help");
     expect(game.data.description).not.toContain("/game commands");
     expect(game.data.fields?.[0]?.name).toBe("Voting");
     expect(game.data.fields?.[1]?.name).toBe("Day");
@@ -109,6 +112,29 @@ describe("help content", () => {
         expect(field.value.length).toBeLessThanOrEqual(1024);
       }
     }
+  });
+
+  it("builds player day-play guide", () => {
+    const player = buildPlayerHelpEmbeds()[0]!;
+    const text = fieldValues(player);
+
+    expect(player.data.title).toBe("Player day commands");
+    expect(player.data.description).toContain("/player help");
+    expect(text).toContain("/nominate");
+    expect(text).toContain("/vote");
+    expect(text).toContain("/privatevote");
+    expect(text).toContain("/whisper neighbor");
+    expect(text).toContain("/whisper with");
+    expect(text).toContain("/alias");
+    expect(text).not.toContain("/game setup");
+    expect(text).not.toContain("/st setup-town");
+
+    const whisperHits = searchHelpEntries(PLAYER_HELP_ENTRIES, "whisper");
+    expect(whisperHits.some((entry) => entry.command.includes("whisper"))).toBe(true);
+
+    const search = buildHelpSearchEmbeds("player", "alias")[0]!;
+    expect(search.data.title).toBe("Day-play help search");
+    expect(search.data.description).toMatch(/match/);
   });
 
   it("builds dev guides", () => {
