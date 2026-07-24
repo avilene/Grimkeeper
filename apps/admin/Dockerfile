@@ -21,13 +21,25 @@ COPY apps/admin apps/admin/
 COPY packages packages/
 
 ENV DATABASE_URL=file:./packages/database/prisma/dev.db
+# Release name must match runtime SENTRY_RELEASE so uploaded maps apply to events.
+ARG SENTRY_RELEASE=
+ENV SENTRY_RELEASE=$SENTRY_RELEASE
+ARG SENTRY_ORG=grimkeeper
+ENV SENTRY_ORG=$SENTRY_ORG
+ARG SENTRY_PROJECT_ADMIN=admin
+ENV SENTRY_PROJECT_ADMIN=$SENTRY_PROJECT_ADMIN
 # Engine must build first — database imports `@grimkeeper/engine` types from dist/.
-RUN pnpm --filter @grimkeeper/engine build \
+# SENTRY_AUTH_TOKEN is a BuildKit secret (never baked into layers). When unset, build skips upload.
+RUN --mount=type=secret,id=sentry_auth_token,required=false \
+  export SENTRY_AUTH_TOKEN="$( [ -f /run/secrets/sentry_auth_token ] && cat /run/secrets/sentry_auth_token || true )" \
+  && pnpm --filter @grimkeeper/engine build \
   && pnpm --filter @grimkeeper/database build \
-  && pnpm --filter admin build
+  && CI=1 pnpm --filter admin build
 
 FROM node:24-bookworm-slim AS runner
 ENV NODE_ENV=production
+ARG SENTRY_RELEASE=
+ENV SENTRY_RELEASE=$SENTRY_RELEASE
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*

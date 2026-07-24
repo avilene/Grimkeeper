@@ -12,6 +12,7 @@ Next.js (App Router) + shadcn/ui admin for inspecting/editing live game projecti
 - ST queue boards / entries / members moderation
 - shadcn/ui (zinc dark) layout
 - Sentry (`@sentry/nextjs`) via dedicated `ADMIN_SENTRY_DSN` / admin project
+- Production source maps uploaded to Sentry during the admin Docker image build (when `SENTRY_AUTH_TOKEN` is set)
 
 ## Local setup
 
@@ -80,6 +81,13 @@ pnpm docker:redeploy
 ```
 
 4. Open the public URL and log in with Discord. Empty `ALLOWED_USER_IDS` denies everyone.
+
+**Source maps (readable Sentry stack traces)**
+
+1. Create a Sentry org auth token with `project:releases` + `org:read` (Organization Settings → Auth Tokens).
+2. Add it as the GitHub Actions secret `SENTRY_AUTH_TOKEN`.
+3. On push to `main`, the Docker workflow builds the admin image with `SENTRY_RELEASE=<git sha>` and uploads maps during `next build`. The same release is baked into the image so runtime events match.
+4. Local/image builds without the token still succeed; they just skip upload.
 
 **Notes**
 

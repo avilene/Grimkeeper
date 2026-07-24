@@ -90,13 +90,25 @@ const nextConfig: NextConfig = {
   },
 };
 
+const sentryRelease = process.env.SENTRY_RELEASE?.trim() || undefined;
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN?.trim() || undefined;
+
 export default withSentryConfig(nextConfig, {
   org: process.env.SENTRY_ORG?.trim() || "grimkeeper",
   project: process.env.SENTRY_PROJECT_ADMIN?.trim() || "admin",
-  // Source maps upload only when an auth token is present (CI / local release builds).
-  authToken: process.env.SENTRY_AUTH_TOKEN?.trim(),
+  // Source maps upload only when an auth token is present (CI Docker builds).
+  authToken: sentryAuthToken,
   silent: !process.env.CI,
   widenClientFileUpload: true,
   tunnelRoute: "/sentry-tunnel",
   disableLogger: true,
+  sourcemaps: {
+    // Strip client maps from the image after upload; server maps stay for Node stack traces.
+    deleteSourcemapsAfterUpload: true,
+  },
+  release: {
+    name: sentryRelease,
+    create: Boolean(sentryAuthToken),
+    finalize: Boolean(sentryAuthToken),
+  },
 });

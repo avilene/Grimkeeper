@@ -45,6 +45,8 @@ services:
       ADMIN_OAUTH_CALLBACK_URL: ${ADMIN_OAUTH_CALLBACK_URL:-}
       # Prefer ADMIN_SENTRY_DSN (admin project). Do not point this at the bot DSN.
       ADMIN_SENTRY_DSN: ${ADMIN_SENTRY_DSN:-}
+      # Release is baked into the admin image at build time (CI git sha). Do not override here.
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
       NODE_ENV: production
     volumes:
       - grimkeeper-data:/app/data

@@ -91,6 +91,14 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Tag released source maps with the git SHA (baked into the image as SENTRY_RELEASE).
+          build-args: |
+            SENTRY_RELEASE=${{ github.sha }}
+            SENTRY_ORG=grimkeeper
+            SENTRY_PROJECT_ADMIN=admin
+          # Auth token mounts only during `next build` — never lands in image layers.
+          secrets: |
+            sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
 
   build-and-push-deploy-hook:
     needs: changes

@@ -1,29 +1,40 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
 import { auth } from "@/lib/auth";
+
+/** Must match `FLASH_COOKIE` in lib/flash.ts (avoid importing that module on the edge). */
+const FLASH_COOKIE = "gk_admin_flash";
+
+function clearFlashCookie(req: NextRequest, res: NextResponse) {
+  if (req.cookies.has(FLASH_COOKIE)) {
+    res.cookies.delete(FLASH_COOKIE);
+  }
+  return res;
+}
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
   const isLoggedIn = Boolean(req.auth);
 
   if (pathname.startsWith("/api/auth") || pathname === "/healthz") {
-    return NextResponse.next();
+    return clearFlashCookie(req, NextResponse.next());
   }
 
   if (pathname === "/login") {
     if (isLoggedIn) {
-      return NextResponse.redirect(new URL("/games", req.nextUrl));
+      return clearFlashCookie(req, NextResponse.redirect(new URL("/games", req.nextUrl)));
     }
-    return NextResponse.next();
+    return clearFlashCookie(req, NextResponse.next());
   }
 
   if (!isLoggedIn) {
     const login = new URL("/login", req.nextUrl);
     login.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(login);
+    return clearFlashCookie(req, NextResponse.redirect(login));
   }
 
-  return NextResponse.next();
+  return clearFlashCookie(req, NextResponse.next());
 });
 
 export const config = {
