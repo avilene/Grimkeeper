@@ -48,12 +48,19 @@ COPY --from=build /app/packages/engine/node_modules ./packages/engine/node_modul
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
-# Ensure Node can resolve the workspace package by name from the admin app.
-RUN mkdir -p ./node_modules/@grimkeeper \
+# Ensure Node can resolve workspace packages + better-sqlite3 from apps/admin/server.js
+# (pnpm does not hoist native deps to the root; Next may also look under .next when bundled).
+RUN mkdir -p ./node_modules/@grimkeeper ./apps/admin/node_modules ./apps/admin/.next/build/Release \
   && ln -sfn ../../packages/database ./node_modules/@grimkeeper/database \
   && ln -sfn ../../packages/engine ./node_modules/@grimkeeper/engine \
+  && ln -sfn ../../../packages/database/node_modules/better-sqlite3 ./apps/admin/node_modules/better-sqlite3 \
+  && ln -sfn ../packages/database/node_modules/better-sqlite3 ./node_modules/better-sqlite3 \
   && test -f ./packages/database/node_modules/better-sqlite3/package.json \
-  && test -e ./packages/database/node_modules/better-sqlite3/build/Release/better_sqlite3.node
+  && test -e ./packages/database/node_modules/better-sqlite3/build/Release/better_sqlite3.node \
+  && cp -L ./packages/database/node_modules/better-sqlite3/build/Release/better_sqlite3.node \
+    ./apps/admin/.next/build/Release/better_sqlite3.node \
+  && test -e ./apps/admin/node_modules/better-sqlite3/build/Release/better_sqlite3.node \
+  && test -e ./apps/admin/.next/build/Release/better_sqlite3.node
 
 COPY scripts/admin-entrypoint.sh ./scripts/admin-entrypoint.sh
 RUN chmod +x ./scripts/admin-entrypoint.sh
