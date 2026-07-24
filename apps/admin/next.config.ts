@@ -53,7 +53,37 @@ const nextConfig: NextConfig = {
       "../../node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/**/*",
       "../../packages/database/dist/**/*",
       "../../packages/database/package.json",
+      "../../packages/database/node_modules/better-sqlite3/**/*",
     ],
+  },
+  // Sentry / monorepo tracing can still inline native deps into server chunks; when that
+  // happens bindings() looks under apps/admin/.next instead of node_modules.
+  webpack: (config, { isServer }) => {
+    if (!isServer) return config;
+
+    const externalPkgs = ["better-sqlite3", "@prisma/adapter-better-sqlite3"];
+    const externalize = (
+      { request }: { request?: string },
+      callback: (error?: Error | null, result?: string) => void,
+    ) => {
+      if (
+        request &&
+        externalPkgs.some((pkg) => request === pkg || request.startsWith(`${pkg}/`))
+      ) {
+        return callback(null, `commonjs ${request}`);
+      }
+      callback();
+    };
+
+    if (Array.isArray(config.externals)) {
+      config.externals.push(externalize);
+    } else if (config.externals) {
+      config.externals = [config.externals, externalize];
+    } else {
+      config.externals = [externalize];
+    }
+
+    return config;
   },
 };
 
