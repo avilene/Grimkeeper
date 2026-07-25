@@ -1977,9 +1977,11 @@ export class StCommandsMinimal {
         await replyOrEditInteraction(interaction, {
           content: [
             `Recorded nomination: **${nominator.displayName}** → **${nominee.displayName}**${overrideNote}.`,
-            voteThreadId
-              ? `Posted in <#${voteThreadId}>${posted.voteThread ? " (players pinged)." : "."}`
-              : "",
+            posted.voteThread && voteThreadId
+              ? `Posted in <#${voteThreadId}> (players pinged).`
+              : voteThreadId
+                ? `Could not post the nomination embed in <#${voteThreadId}> — try \`/st refresh-noms\`, or check that Town Voting is open.`
+                : "No Town Voting thread is linked for this day — run `/st do recreate-threads` or `/st mark` in Town Voting.",
           ]
             .filter(Boolean)
             .join(" "),

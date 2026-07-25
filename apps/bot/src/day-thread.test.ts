@@ -10,13 +10,16 @@ import {
 
 import {
   buildNominationEmbed,
+  ensureDiscussionChannelSendable,
   formatBlockContestSummary,
   formatNominationBlockField,
   formatNominationRef,
+  postNominationToChannel,
   sanitizeMarkdownLinkLabel,
   townPhaseBaseChannelName,
   townPhaseParentChannelName,
   townVoteThreadName,
+  type DayDiscussionChannel,
 } from "./day-thread.js";
 
 const gameId = "day-thread-test";
@@ -395,6 +398,65 @@ describe("formatNominationRef", () => {
     expect(formatNominationRef(engine, nominationId, null)).toBe(
       "nomination of arlie on sharii🦀 [craboots!]",
     );
+  });
+});
+
+describe("ensureDiscussionChannelSendable", () => {
+  it("unarchives Town Voting before posting so kib ST noms can send", async () => {
+    const setArchived = vi.fn().mockResolvedValue(undefined);
+    const send = vi.fn().mockResolvedValue({ id: "msg-1" });
+    const channel = {
+      id: "vote-1",
+      isThread: () => true,
+      archived: true,
+      setArchived,
+      send,
+    } as unknown as DayDiscussionChannel;
+
+    await ensureDiscussionChannelSendable(channel, "test");
+    expect(setArchived).toHaveBeenCalledWith(false, "test");
+  });
+
+  it("unarchives before postNominationToChannel send", async () => {
+    const engine = GameEngine.fromEvents(gameId, baseEvents());
+    engine.apply({
+      type: GameEventType.TownSetup,
+      gameId,
+      channelId: "channel-1",
+      players: [
+        { playerId: "p1", discordUserId: "u1", displayName: "Alice", seat: 1 },
+        { playerId: "p2", discordUserId: "u2", displayName: "Bob", seat: 2 },
+      ],
+      timestamp: new Date().toISOString(),
+    });
+    advanceToDay1(engine);
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: "p1",
+      nomineeId: "p2",
+      accusation: "evil",
+    })) {
+      engine.apply(event);
+    }
+    const nominationId = engine.getState().day!.nominations[0]!.id;
+
+    const setArchived = vi.fn().mockResolvedValue(undefined);
+    const send = vi.fn().mockResolvedValue({ id: "msg-1" });
+    const channel = {
+      id: "vote-1",
+      isThread: () => true,
+      archived: true,
+      setArchived,
+      send,
+    } as unknown as DayDiscussionChannel;
+
+    const message = await postNominationToChannel(engine, gameId, channel, nominationId, {
+      pingRoleId: "role-1",
+    });
+    expect(setArchived).toHaveBeenCalledWith(false, "Posting nomination to Town Voting.");
+    expect(send).toHaveBeenCalledOnce();
+    expect(message).toEqual({ id: "msg-1" });
   });
 });
 

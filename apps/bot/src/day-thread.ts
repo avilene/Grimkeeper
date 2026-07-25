@@ -19,6 +19,7 @@ import {
 
 import { isDevMode } from "./dev.js";
 import { encodeIdPair, parseIdPair } from "./interaction-ids.js";
+import { log } from "./logger.js";
 import { discordTimestamp } from "./reminder-message.js";
 
 export const VOTE_BUTTON_PREFIX = "gk:vote:";
@@ -377,6 +378,17 @@ export type DayDiscussionChannel =
   | PublicThreadChannel
   | PrivateThreadChannel;
 
+/** Unarchive Town Voting (and similar) so sends/edits work when STs act from kib. */
+export async function ensureDiscussionChannelSendable(
+  channel: DayDiscussionChannel,
+  reason: string,
+): Promise<void> {
+  if (!channel.isThread()) return;
+  if (channel.archived) {
+    await channel.setArchived(false, reason).catch(() => undefined);
+  }
+}
+
 export async function findNominationMessage(
   channel: DayDiscussionChannel,
   nominationId: string,
@@ -411,6 +423,8 @@ export async function updateNominationMessage(
   const nomination = engine.getNominationById(nominationId);
   if (!nomination) return;
 
+  await ensureDiscussionChannelSendable(channel, "Updating nomination embed.");
+
   const message =
     (await findNominationMessage(channel, nominationId)) ??
     null;
@@ -428,7 +442,14 @@ export async function updateNominationMessage(
       embeds: [embed],
       components: row ? [row] : [],
     })
-    .catch(() => undefined);
+    .catch((error: unknown) => {
+      log("warn", "nomination.embed.edit.failed", {
+        gameId,
+        nominationId,
+        channelId: channel.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
 }
 
 export async function clearNominationMessageInChannel(
@@ -480,6 +501,8 @@ export async function postNominationToChannel(
   const nomination = engine.getNominationById(nominationId);
   if (!nomination) return null;
 
+  await ensureDiscussionChannelSendable(channel, "Posting nomination to Town Voting.");
+
   const nominator = engine.getPlayerById(nomination.nominatorId);
   const nominee = engine.getPlayerById(nomination.nomineeId);
   const embed = buildNominationEmbed(engine, nomination);
@@ -498,8 +521,8 @@ export async function postNominationToChannel(
   if (pingRoleId) contentParts.push(`<@&${pingRoleId}>`);
   if (!options?.privateBallot) contentParts.push("**New nomination** — vote below, `/vote` (public), or `/privatevote`.");
 
-  return channel
-    .send({
+  try {
+    return await channel.send({
       content: contentParts.length > 0 ? contentParts.join(" ") : undefined,
       embeds: [embed],
       components: row ? [row] : [],
@@ -507,8 +530,17 @@ export async function postNominationToChannel(
         roles: pingRoleId ? [pingRoleId] : [],
         users: mentionUsers,
       },
-    })
-    .catch(() => null);
+    });
+  } catch (error) {
+    log("warn", "nomination.embed.post.failed", {
+      gameId,
+      nominationId,
+      channelId: channel.id,
+      archived: channel.isThread() ? channel.archived : false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 export async function addDayThreadMembers(

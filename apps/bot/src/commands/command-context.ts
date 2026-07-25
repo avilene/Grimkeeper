@@ -1736,11 +1736,21 @@ export async function postNominationEverywhere(
     channelId: string;
     kibThreadId?: string | null;
     guildId?: string;
+    votingThreadId?: string | null;
   },
   engine: GameEngine,
   nominationId: string,
 ): Promise<{ voteThread: boolean }> {
-  const voting = await resolveVotingChannel(guild, game, engine);
+  let voting = await resolveVotingChannel(guild, game, engine);
+  // ST nominations from kib often hit an archived/missing Town Voting thread — reopen/create it.
+  if (!voting && engine.getState().townMode && engine.getState().phase === "day") {
+    const reopened = await createTownVoteThread(guild, game, engine);
+    if (reopened) {
+      game = { ...game, votingThreadId: reopened.id };
+      voting = reopened as DayDiscussionChannel;
+    }
+  }
+
   let voteThread = false;
   if (voting) {
     let pingRoleId = game.playerRoleId ?? null;
@@ -1760,6 +1770,14 @@ export async function postNominationEverywhere(
         pingRoleId: roles?.playersRole.id ?? pingRoleId,
       }),
     );
+  } else {
+    log("warn", "nomination.embed.noVotingChannel", {
+      gameId: game.id,
+      nominationId,
+      phase: engine.getState().phase,
+      dayThreadId: engine.getState().day?.discordThreadId ?? null,
+      votingThreadId: game.votingThreadId ?? null,
+    });
   }
 
   if (engine.getState().townMode) {

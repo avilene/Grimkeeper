@@ -65,7 +65,7 @@ Player day play uses top-level slash commands. Storytellers use `/st …`. Guide
 | `/st panel` | Pin/refresh kib control panel |
 | `/st help` | Storyteller command guide (`search:` filters by name/description) |
 | `/st guide setup` / `day` / `night` | Phase checklists |
-| `/st remind` / `/st set-reminders` | Scheduled pings |
+| `/st reminder schedule` / `/st reminder batch` | Scheduled pings |
 
 ## Deploy to Railway
 

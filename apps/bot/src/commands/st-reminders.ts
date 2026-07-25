@@ -38,10 +38,14 @@ import {
 const EPHEMERAL = { flags: MessageFlags.Ephemeral };
 
 @Discord()
-@SlashGroup({ name: "st", description: "Storyteller commands for an active game" })
-@SlashGroup("st")
+@SlashGroup({
+  name: "reminder",
+  description: "Schedule and manage day/channel reminders",
+  root: "st",
+})
+@SlashGroup("reminder", "st")
 export class StReminderCommands {
-  @Slash({ name: "remind", description: "Schedule a reminder message in the day thread or town channel" })
+  @Slash({ name: "schedule", description: "Schedule a reminder message in the day thread or town channel" })
   async remind(
     @SlashOption({
       name: "in",
@@ -168,8 +172,8 @@ export class StReminderCommands {
   }
 
   @Slash({
-    name: "set-reminders",
-    description: "Replace channel offset reminders (cancels previous set-reminders in this channel)",
+    name: "batch",
+    description: "Replace channel offset reminders (cancels previous batch reminders in this channel)",
   })
   async setReminders(
     @SlashOption({
@@ -270,7 +274,7 @@ export class StReminderCommands {
     const pingLabel = formatPingRoleMentions(pingRoleId) ?? "player role";
     const replacedNote =
       replaced > 0
-        ? ` Replaced **${replaced}** previous set-reminders ping${replaced === 1 ? "" : "s"} in this channel.`
+        ? ` Replaced **${replaced}** previous batch ping${replaced === 1 ? "" : "s"} in this channel.`
         : "";
 
     logReminderAction("created", {
@@ -302,13 +306,13 @@ export class StReminderCommands {
         "",
         ...scheduleLines,
         "",
-        `**${totalPending}** reminder${totalPending === 1 ? "" : "s"} pending for ${scopeLabel}. Run again to replace this channel’s set-reminders batch.`,
+        `**${totalPending}** reminder${totalPending === 1 ? "" : "s"} pending for ${scopeLabel}. Run again to replace this channel’s reminder batch.`,
       ].join("\n"),
       ...EPHEMERAL,
     });
   }
 
-  @Slash({ name: "reminders", description: "List pending reminders for this game or channel" })
+  @Slash({ name: "list", description: "List pending reminders for this game or channel" })
   async reminders(interaction: CommandInteraction): Promise<void> {
     const access = await requireReminderAccess(interaction);
     if (!access) return;
@@ -342,14 +346,14 @@ export class StReminderCommands {
         new EmbedBuilder()
           .setTitle("Pending reminders")
           .setDescription(
-            `${lines.join("\n")}\n\nEdit with \`/st edit-reminder id:<prefix>\`, delete with \`/st delete-reminder id:<prefix>\`, or clear with \`/st clear-reminders\`.`,
+            `${lines.join("\n")}\n\nEdit with \`/st reminder edit id:<prefix>\`, delete with \`/st reminder delete id:<prefix>\`, or clear with \`/st reminder clear\`.`,
           ),
       ],
       ...EPHEMERAL,
     });
   }
 
-  @Slash({ name: "clear-reminders", description: "Cancel pending reminders for this game or channel" })
+  @Slash({ name: "clear", description: "Cancel pending reminders for this game or channel" })
   async clearReminders(
     @SlashChoice({ name: "All pending", value: "all" })
     @SlashChoice({ name: "This channel only", value: "channel" })
@@ -419,11 +423,11 @@ export class StReminderCommands {
     });
   }
 
-  @Slash({ name: "delete-reminder", description: "Cancel one pending reminder by ID prefix" })
+  @Slash({ name: "delete", description: "Cancel one pending reminder by ID prefix" })
   async deleteReminder(
     @SlashOption({
       name: "id",
-      description: "ID prefix from /st reminders (e.g. first 8 characters)",
+      description: "ID prefix from /st reminder list (e.g. first 8 characters)",
       type: ApplicationCommandOptionType.String,
       required: true,
     })
@@ -448,7 +452,7 @@ export class StReminderCommands {
     const cancelled = await cancelReminderByIdPrefix(reminderScope, trimmedId);
     if (cancelled === 0) {
       await replyOrEditInteraction(interaction, {
-        content: `No pending reminder found with ID prefix \`${trimmedId}\`. Check \`/st reminders\`.`,
+        content: `No pending reminder found with ID prefix \`${trimmedId}\`. Check \`/st reminder list\`.`,
         ...EPHEMERAL,
       });
       return;
@@ -469,11 +473,11 @@ export class StReminderCommands {
     });
   }
 
-  @Slash({ name: "edit-reminder", description: "Update a pending reminder by ID prefix" })
+  @Slash({ name: "edit", description: "Update a pending reminder by ID prefix" })
   async editReminder(
     @SlashOption({
       name: "id",
-      description: "ID prefix from /st reminders (e.g. first 8 characters)",
+      description: "ID prefix from /st reminder list (e.g. first 8 characters)",
       type: ApplicationCommandOptionType.String,
       required: true,
     })
@@ -530,7 +534,7 @@ export class StReminderCommands {
     const matches = await findRemindersByIdPrefix(reminderScope, trimmedId);
     if (matches.length === 0) {
       await replyOrEditInteraction(interaction, {
-        content: `No pending reminder found with ID prefix \`${trimmedId}\`. Check \`/st reminders\`.`,
+        content: `No pending reminder found with ID prefix \`${trimmedId}\`. Check \`/st reminder list\`.`,
         ...EPHEMERAL,
       });
       return;

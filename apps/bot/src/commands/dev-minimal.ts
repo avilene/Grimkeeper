@@ -277,7 +277,7 @@ export class DevCommandsMinimal {
         new EmbedBuilder()
           .setTitle("Pending reminders (server-wide)")
           .setDescription(
-            `${lines.join("\n")}${truncated}\n\nDelete one: \`/dev reminders delete:<prefix>\`. Clear all: \`/dev reminders clear_all:True\`.\nOther STs manage only their game via \`/st reminders\`.`,
+            `${lines.join("\n")}${truncated}\n\nDelete one: \`/dev reminders delete:<prefix>\`. Clear all: \`/dev reminders clear_all:True\`.\nOther STs manage only their game via \`/st reminder list\`.`,
           ),
       ],
       flags: MessageFlags.Ephemeral,

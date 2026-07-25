@@ -67,16 +67,16 @@ describe("isHelpOrGuideCommand", () => {
 
   it("does not match other st commands", () => {
     expect(isHelpOrGuideCommand(chatCommand("st", "panel") as never)).toBe(false);
-    expect(isHelpOrGuideCommand(chatCommand("st", "remind") as never)).toBe(false);
+    expect(isHelpOrGuideCommand(chatCommand("st", "schedule", "reminder") as never)).toBe(false);
     expect(isHelpOrGuideCommand(chatCommand("nominate", null) as never)).toBe(false);
   });
 });
 
 describe("shouldDeferSlashCommand", () => {
   it("defers reminder and other /st commands except help", () => {
-    expect(shouldDeferSlashCommand(chatCommand("st", "reminders") as never)).toBe(true);
-    expect(shouldDeferSlashCommand(chatCommand("st", "remind") as never)).toBe(true);
-    expect(shouldDeferSlashCommand(chatCommand("st", "set-reminders") as never)).toBe(true);
+    expect(shouldDeferSlashCommand(chatCommand("st", "list", "reminder") as never)).toBe(true);
+    expect(shouldDeferSlashCommand(chatCommand("st", "schedule", "reminder") as never)).toBe(true);
+    expect(shouldDeferSlashCommand(chatCommand("st", "batch", "reminder") as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("st", "execute") as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("st", "add-kib") as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("st", "help") as never)).toBe(false);
@@ -123,7 +123,7 @@ describe("shouldDeferSlashCommand", () => {
 
 describe("shouldDeferStReminderCommand", () => {
   it("matches shouldDeferSlashCommand", () => {
-    expect(shouldDeferStReminderCommand(chatCommand("st", "remind") as never)).toBe(true);
+    expect(shouldDeferStReminderCommand(chatCommand("st", "schedule", "reminder") as never)).toBe(true);
   });
 });
 

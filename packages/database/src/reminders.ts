@@ -184,7 +184,7 @@ export interface CancelRemindersFilter {
   channelId?: string;
   message?: string;
   idPrefix?: string;
-  /** When true, only cancel reminders created by `/st set-reminders` (have seriesEndAt). */
+  /** When true, only cancel reminders created by `/st reminder batch` (have seriesEndAt). */
   batchOnly?: boolean;
 }
 

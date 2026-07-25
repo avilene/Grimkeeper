@@ -154,24 +154,24 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
     description: "Refresh the live queue panel in the board thread.",
   },
   {
-    command: "/st remind",
+    command: "/st reminder schedule",
     description: "Schedule a reminder (requires ST role, storyteller, or allowlist).",
   },
   {
-    command: "/st set-reminders",
+    command: "/st reminder batch",
     description: "Replace this channel’s reminder batch (`1m 30m 1h 4 8`; does not stack).",
   },
-  { command: "/st reminders", description: "List pending reminders." },
+  { command: "/st reminder list", description: "List pending reminders." },
   {
-    command: "/st edit-reminder",
+    command: "/st reminder edit",
     description: "Update a pending reminder by ID prefix.",
   },
   {
-    command: "/st delete-reminder",
+    command: "/st reminder delete",
     description: "Cancel one pending reminder by ID prefix.",
   },
   {
-    command: "/st clear-reminders",
+    command: "/st reminder clear",
     description: "Cancel pending reminders for your game/channel.",
   },
   { command: "/st help", description: "Storyteller command guide (optional `search:`)." },
@@ -183,7 +183,7 @@ export const DEV_HELP_ENTRIES: HelpEntry[] = [
   { command: "/dev setup", description: "Fill lobby with fake players for testing." },
   {
     command: "/dev reminders",
-    description: "List/delete all server reminders (STs use `/st reminders` for their game).",
+    description: "List/delete all server reminders (STs use `/st reminder list` for their game).",
   },
   { command: "/dev help", description: "Dev command guide (optional `search:`)." },
 ];
@@ -456,7 +456,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           "1. `/game setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles (optional `kib_thread:` channel/thread + `log_thread:`)",
           "2. `/st setup-town` with `players:` @mentions in **seat order** (any player count)",
           "3. `/st broadcast` from kib to send the same message to all player threads",
-          "4. `/st remind` / `/st set-reminders` for scheduled pings (ST role or allowlist)",
+          "4. `/st reminder schedule` / `/st reminder batch` for scheduled pings (ST role or allowlist)",
           "5. `/st end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
           "",
           "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/st log` to recreate it mid-game.",
@@ -504,14 +504,14 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
         {
           name: "Reminders",
           value: [
-            cmd("/st remind", "Schedule a reminder (requires ST role, storyteller, or allowlist)."),
+            cmd("/st reminder schedule", "Schedule a reminder (requires ST role, storyteller, or allowlist)."),
             cmd(
-              "/st set-reminders",
+              "/st reminder batch",
               "Replace this channel’s reminder batch (`1m 30m 1h 4 8`; does not stack).",
             ),
-            cmd("/st reminders", "List pending reminders."),
+            cmd("/st reminder list", "List pending reminders."),
             cmd(
-              "/st edit-reminder / delete-reminder / clear-reminders",
+              "/st reminder edit / delete / clear",
               "Manage pending reminders for your game/channel.",
             ),
           ].join("\n\n"),
@@ -549,7 +549,7 @@ export function buildDevHelpEmbeds(): EmbedBuilder[] {
           cmd("/dev setup", "Fill lobby with fake players for testing."),
           cmd(
             "/dev reminders",
-            "List/delete all server reminders (STs use `/st reminders` for their game).",
+            "List/delete all server reminders (STs use `/st reminder list` for their game).",
           ),
         ].join("\n\n"),
       }),
@@ -592,7 +592,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "`/st panel` — pin control panel in kib (or `/st do panel`)",
             "Optional: `/st do vote-visibility` `mode: public|secret`",
             "Optional: `/st broadcast` — send the same message to all player ST threads",
-            "Optional: `/st remind` / `/st set-reminders`",
+            "Optional: `/st reminder schedule` / `/st reminder batch`",
             "Optional: `/st do add-st` / `/st do sync-st-threads` / `/st add-kib`",
             "Optional: `/st log` if the audit log is missing",
             "`/st next-phase` — start **Day 1** (opens nominations)",
@@ -660,7 +660,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           "`/st broadcast` — send the same night info to every player ST thread",
           "Use each player’s private ST thread for personal night results",
           "Deaths overnight: `/st mark-dead` `player:`",
-          "Optional: `/st remind` / `/st set-reminders` for morning pings",
+          "Optional: `/st reminder schedule` / `/st reminder batch` for morning pings",
         ]),
       },
       {
