@@ -75,6 +75,8 @@ describe("ST_SLASH_SHORTCUTS", () => {
         "reset-to-setup",
         "recreate-player-thread",
         "close-nominations",
+        "nominate",
+        "refresh-noms",
         "resolve-next",
         "execute",
         "mark-dead",

@@ -9,6 +9,7 @@ import {
   saveVote,
   type SaveResult,
 } from "@/actions/games";
+import { RefreshNomsButton } from "@/components/refresh-noms-button";
 import { SaveStatus, SubmitButton } from "@/components/save-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -352,11 +353,13 @@ export function NominationsSection({
   players,
   days,
   nominations,
+  discordRefreshPendingSince,
 }: {
   gameId: string;
   players: NominationPlayerOption[];
   days: Array<{ id: string; dayNumber: number }>;
   nominations: EditableNomination[];
+  discordRefreshPendingSince: Date | null;
 }) {
   const [createResult, createAction] = useActionState<SaveResult | null, FormData>(
     saveNomination.bind(null, gameId, null),
@@ -366,9 +369,12 @@ export function NominationsSection({
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Projection edits only — they do not append engine events or refresh Discord nomination
-        posts. Prefer bot commands during a live day.
+        Projection edits are SQLite-only until you push them. Use{" "}
+        <strong>Push noms to Discord</strong> (bot picks up within ~30s) or{" "}
+        <code>/st refresh-noms</code> for an immediate update — that syncs new noms, accusations,
+        defenses, and votes into the event log and Town Voting embeds.
       </p>
+      <RefreshNomsButton gameId={gameId} pendingSince={discordRefreshPendingSince} />
 
       {nominations.length === 0 ? (
         <p className="text-sm text-muted-foreground">No nominations recorded.</p>

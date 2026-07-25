@@ -593,19 +593,48 @@ export async function requireActivePlayerGame(interaction: CommandInteraction) {
   return { game, engine, player };
 }
 
+const BOT_ACCESS_DENIED_MESSAGE =
+  "You are not allowed to use this bot. Ask an admin to add your user ID " +
+  "to `ALLOWED_USER_IDS` or one of your role IDs to `ALLOWED_ROLE_IDS`.";
+
+async function replyAccessDenied(interaction: CommandInteraction): Promise<void> {
+  if (interaction.deferred || interaction.replied) {
+    await interaction.followUp({ content: BOT_ACCESS_DENIED_MESSAGE, flags: MessageFlags.Ephemeral });
+  } else {
+    await interaction.reply({ content: BOT_ACCESS_DENIED_MESSAGE, flags: MessageFlags.Ephemeral });
+  }
+}
+
+/** True when the user is seated in an active game in this guild (any venue). */
+export async function isActiveGamePlayer(interaction: CommandInteraction): Promise<boolean> {
+  if (!interaction.guildId) return false;
+
+  const venueGame = await resolveActiveGameForInteraction(interaction);
+  if (venueGame?.players.some((player) => player.discordUserId === interaction.user.id)) {
+    return true;
+  }
+
+  const games = await listActiveGamesForGuild(interaction.guildId);
+  return games.some((game) =>
+    game.players.some((player) => player.discordUserId === interaction.user.id),
+  );
+}
+
 export async function requireCommandAccess(interaction: CommandInteraction): Promise<boolean> {
   const allowed = await canUseBot(interaction);
   if (allowed) return true;
+  await replyAccessDenied(interaction);
+  return false;
+}
 
-  const message =
-    "You are not allowed to use this bot. Ask an admin to add your user ID " +
-    "to `ALLOWED_USER_IDS` or one of your role IDs to `ALLOWED_ROLE_IDS`.";
-
-  if (interaction.deferred || interaction.replied) {
-    await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
-  } else {
-    await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
-  }
+/**
+ * Day-play commands (`/nominate`, `/vote`, `/whisper`, …): allowlist **or** seated in an
+ * active game. Global allowlist alone would lock out normal players.
+ */
+export async function requireDayPlayAccess(interaction: CommandInteraction): Promise<boolean> {
+  if (await canUseBot(interaction)) return true;
+  if (await isActiveGamePlayer(interaction)) return true;
+  await replyAccessDenied(interaction);
   return false;
 }
 

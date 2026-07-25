@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { requestDiscordNomsRefresh } from "@grimkeeper/database";
 import { getBotcRole } from "@grimkeeper/engine";
 
 import type { SaveResult } from "@/lib/action-result";
@@ -482,6 +483,31 @@ export async function deleteVote(
     }
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: "Vote deleted." };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Ask the bot to push nomination/vote projection state to Discord (polled within ~30s). */
+export async function requestNomsDiscordRefresh(
+  gameId: string,
+  _prev: SaveResult | null,
+  _formData: FormData,
+): Promise<SaveResult> {
+  await requireSession();
+  try {
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      select: { id: true, phase: true },
+    });
+    if (!game) return { ok: false, message: "Game not found." };
+    await requestDiscordNomsRefresh(gameId);
+    revalidatePath(`/games/${gameId}`);
+    return {
+      ok: true,
+      message:
+        "Discord refresh queued. The bot will post missing nominations and update embeds within about 30 seconds (or run /st refresh-noms now).",
+    };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }

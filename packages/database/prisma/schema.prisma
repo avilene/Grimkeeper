@@ -16,6 +16,8 @@ model Game {
   nightNumber          Int            @default(0)
   /** Final winning team when phase is ended: good | evil. */
   winner               String?
+  /** When set, bot should push nomination/vote projection state to Discord and clear. */
+  discordNomsRefreshRequestedAt DateTime?
   stRoleId             String?
   playerRoleId         String?
   kibRoleId            String?

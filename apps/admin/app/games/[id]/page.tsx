@@ -120,6 +120,7 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
           players={game.players}
           days={game.gameDays.map((day) => ({ id: day.id, dayNumber: day.dayNumber }))}
           nominations={nominations}
+          discordRefreshPendingSince={game.discordNomsRefreshRequestedAt}
         />
       </section>
 

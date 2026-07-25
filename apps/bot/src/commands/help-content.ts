@@ -470,7 +470,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           value: [
             cmd(
               "/st … shortcuts",
-              "Common actions as first-class subcommands (setup-town, broadcast, log, end, next-phase, close-nominations, resolve-next, execute, mark-dead).",
+              "Common actions as first-class subcommands (setup-town, broadcast, log, end, next-phase, close-nominations, nominate, refresh-noms, resolve-next, execute, mark-dead).",
             ),
             cmd(
               "/st do",
@@ -625,7 +625,8 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "`/st resolve-next` (or panel) — resolve oldest open nomination",
             "If it passed: `/st execute` `player:` (or panel)",
             "Other deaths: `/st mark-dead` `player:` (`alive:` if reviving)",
-            "Fix a ballot: `/st do set-vote` — or nominate for someone: `/st do nominate`",
+            "Fix a ballot: `/st do set-vote` — or nominate for someone: `/st nominate`",
+            "After admin DB edits: `/st refresh-noms` (posts missing embeds + updates text/votes)",
           ]),
         },
         {

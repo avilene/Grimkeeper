@@ -19,7 +19,7 @@ import {
   replyEngineError,
   replyOrEditInteraction,
   requireActivePlayerGame,
-  requireCommandAccess,
+  requireDayPlayAccess,
   requireTownVotingChannel,
   resolveActiveGameForInteraction,
   respondGamePlayerAutocomplete,
@@ -47,7 +47,7 @@ async function castPlayerVote(
   reason: string | undefined,
   privateBallot: boolean,
 ): Promise<void> {
-  if (!(await requireCommandAccess(interaction))) return;
+  if (!(await requireDayPlayAccess(interaction))) return;
 
   const context = await requireActivePlayerGame(interaction);
   if (!context) return;
@@ -161,7 +161,7 @@ export class PlayerDayCommandsMinimal {
     accusation: string,
     interaction: CommandInteraction,
   ): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
+    if (!(await requireDayPlayAccess(interaction))) return;
 
     const context = await requireActivePlayerGame(interaction);
     if (!context) return;
@@ -235,7 +235,7 @@ export class PlayerDayCommandsMinimal {
     text: string,
     interaction: CommandInteraction,
   ): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
+    if (!(await requireDayPlayAccess(interaction))) return;
 
     const context = await requireActivePlayerGame(interaction);
     if (!context) return;
@@ -290,7 +290,7 @@ export class PlayerDayCommandsMinimal {
     text: string,
     interaction: CommandInteraction,
   ): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
+    if (!(await requireDayPlayAccess(interaction))) return;
 
     const context = await requireActivePlayerGame(interaction);
     if (!context) return;
@@ -403,7 +403,7 @@ export class PlayerDayCommandsMinimal {
 
   @Slash({ name: "roster", description: "Show seat order and alive/dead status" })
   async roster(interaction: CommandInteraction): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
+    if (!(await requireDayPlayAccess(interaction))) return;
 
     if (!interaction.guildId) {
       await replyOrEditInteraction(interaction, {

@@ -40,6 +40,10 @@ export const ST_DO_ACTIONS: DoAction[] = [
     description: "Nominate on behalf of a player",
     needs: ["nominator", "nominee", "accusation", "override?"],
   },
+  {
+    name: "refresh-noms",
+    description: "Push nomination/vote DB state to Discord (posts missing, updates embeds)",
+  },
   { name: "add-spectator", description: "Assign kib role + thread access (or use /st add-kib)", needs: ["user"] },
   { name: "remove-spectator", description: "Remove kib role (or use /st remove-kib)", needs: ["user"] },
   { name: "add-st", description: "Promote a co-storyteller (ST role only; no new player thread)", needs: ["user"] },
@@ -76,6 +80,15 @@ export const ST_SLASH_SHORTCUTS: DoAction[] = [
     needs: ["player"],
   },
   { name: "close-nominations", description: "Close nominations for the day" },
+  {
+    name: "nominate",
+    description: "Nominate on behalf of a player",
+    needs: ["nominator", "nominee", "accusation", "override?"],
+  },
+  {
+    name: "refresh-noms",
+    description: "Push nomination/vote DB state to Discord (posts missing, updates embeds)",
+  },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
   { name: "mark-dead", description: "Mark a player dead or alive", needs: ["player", "alive?"] },

@@ -62,6 +62,7 @@ import {
   syncGameProjection,
   syncStorytellersToPlayerThreads,
 } from "./command-context.js";
+import { refreshNominationsFromProjection } from "../refresh-noms-from-projection.js";
 
 @Discord()
 @SlashGroup({ name: "st", description: "Storyteller commands for an active game" })
@@ -328,6 +329,9 @@ export class StCommandsMinimal {
         }
         await this.nominateFor(nominator, nominee, accusation, override, interaction);
         return;
+      case "refresh-noms":
+        await this.refreshNoms(interaction);
+        return;
       default:
         await replyOrEditInteraction(interaction, {
           content: `Action \`${normalized}\` is not implemented.`,
@@ -591,6 +595,54 @@ export class StCommandsMinimal {
   async closeNominationsSlash(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     await this.closeNominations(interaction);
+  }
+
+  @Slash({
+    name: "refresh-noms",
+    description: "Push nomination/vote DB state to Discord (same as /st do refresh-noms)",
+  })
+  async refreshNomsSlash(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.refreshNoms(interaction);
+  }
+
+  @Slash({
+    name: "nominate",
+    description: "Nominate on behalf of a player (same as /st do nominate)",
+  })
+  async nominateSlash(
+    @SlashOption({
+      name: "nominator",
+      description: "Player making the nomination",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    nominator: User,
+    @SlashOption({
+      name: "nominee",
+      description: "Player being nominated",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    nominee: User,
+    @SlashOption({
+      name: "accusation",
+      description: "Accusation text",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    accusation: string,
+    @SlashOption({
+      name: "override",
+      description: "Allow a second nomination today for nominator and/or nominee",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    override: boolean | undefined,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.nominateFor(nominator, nominee, accusation, override, interaction);
   }
 
   @Slash({
@@ -1773,6 +1825,37 @@ export class StCommandsMinimal {
         content: message
           ? `Vote tracker updated in ${thread ? `<#${thread.id}>` : "kib"}.`
           : "Could not post the vote tracker (is kib available?).",
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async refreshNoms(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    if (!interaction.guild) {
+      await replyOrEditInteraction(interaction, {
+        content: "Refresh nominations in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      await setInteractionProgress(interaction, "Refreshing nominations from the database…");
+      const engine = await loadEngine(game.id);
+      const result = await refreshNominationsFromProjection(interaction.guild, game, engine);
+      await replyOrEditInteraction(interaction, {
+        content: [
+          `Discord nominations refreshed (${result.total} total).`,
+          result.appended > 0 ? `Synced ${result.appended} projection change(s) into the event log.` : null,
+          result.posted > 0 ? `Posted ${result.posted} missing nomination message(s).` : null,
+          "Existing embeds were updated; kib vote tracker refreshed.",
+        ]
+          .filter(Boolean)
+          .join(" "),
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

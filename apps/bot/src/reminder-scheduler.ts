@@ -7,6 +7,7 @@ import {
 
 import { buildReminderPingMention, buildReminderFireContent } from "./commands/command-context.js";
 import { logReminderAction } from "./action-log.js";
+import { processPendingDiscordNomsRefresh } from "./discord-noms-refresh-scheduler.js";
 import { reportError } from "./error-reporter.js";
 
 let schedulerStarted = false;
@@ -96,9 +97,15 @@ export function startReminderScheduler(client: Client, intervalMs = 30_000): voi
   void processDueReminders(client).catch((error: unknown) => {
     void reportError("reminder.scheduler.tick.failed", error);
   });
+  void processPendingDiscordNomsRefresh(client).catch((error: unknown) => {
+    void reportError("discord.noms.refresh.tick.failed", error);
+  });
   setInterval(() => {
     void processDueReminders(client).catch((error: unknown) => {
       void reportError("reminder.scheduler.tick.failed", error);
+    });
+    void processPendingDiscordNomsRefresh(client).catch((error: unknown) => {
+      void reportError("discord.noms.refresh.tick.failed", error);
     });
   }, intervalMs);
 }

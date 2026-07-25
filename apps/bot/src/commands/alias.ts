@@ -18,7 +18,7 @@ import {
   loadEngine,
   persistEvents,
   replyOrEditInteraction,
-  requireCommandAccess,
+  requireDayPlayAccess,
 } from "./command-context.js";
 
 /** Default in-game label from a Discord display name (strips [tags] / (tags)). */
@@ -104,7 +104,7 @@ export class AliasCommands {
     user: User | undefined,
     interaction: CommandInteraction,
   ): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
+    if (!(await requireDayPlayAccess(interaction))) return;
     if (!interaction.guildId) {
       await replyOrEditInteraction(interaction, {
         content: "Aliases are set in a server.",
