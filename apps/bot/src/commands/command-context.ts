@@ -42,6 +42,7 @@ import { isDevMode } from "../dev.js";
 import {
   clearNominationMessageInChannel,
   dayThreadName,
+  ensureDiscussionChannelSendable,
   legacyTownVoteThreadName,
   townVoteThreadName,
   postNominationToChannel,
@@ -1677,6 +1678,32 @@ export async function resolveVotingChannel(
   return null;
 }
 
+/**
+ * Resolve Town Voting, creating/reopening it on day if missing so ST kib actions can still post.
+ */
+export async function ensureVotingChannel(
+  guild: Guild,
+  game: GameRoleIds & {
+    id: string;
+    channelId: string;
+    votingThreadId?: string | null;
+  },
+  engine: GameEngine,
+): Promise<{ channel: DayDiscussionChannel | null; game: typeof game }> {
+  let voting = await resolveVotingChannel(guild, game, engine);
+  if (!voting && engine.getState().townMode && engine.getState().phase === "day") {
+    const reopened = await createTownVoteThread(guild, game, engine);
+    if (reopened) {
+      game = { ...game, votingThreadId: reopened.id };
+      voting = reopened as DayDiscussionChannel;
+    }
+  }
+  if (voting) {
+    await ensureDiscussionChannelSendable(voting, "Ensuring Town Voting is open for nominations.");
+  }
+  return { channel: voting, game };
+}
+
 export async function listPersonalPlayerThreads(
   guild: Guild,
   game: { id: string; channelId: string },
@@ -1741,15 +1768,9 @@ export async function postNominationEverywhere(
   engine: GameEngine,
   nominationId: string,
 ): Promise<{ voteThread: boolean }> {
-  let voting = await resolveVotingChannel(guild, game, engine);
-  // ST nominations from kib often hit an archived/missing Town Voting thread — reopen/create it.
-  if (!voting && engine.getState().townMode && engine.getState().phase === "day") {
-    const reopened = await createTownVoteThread(guild, game, engine);
-    if (reopened) {
-      game = { ...game, votingThreadId: reopened.id };
-      voting = reopened as DayDiscussionChannel;
-    }
-  }
+  const ensured = await ensureVotingChannel(guild, game, engine);
+  game = ensured.game;
+  const voting = ensured.channel;
 
   let voteThread = false;
   if (voting) {

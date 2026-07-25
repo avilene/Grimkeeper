@@ -42,7 +42,7 @@ export const ST_DO_ACTIONS: DoAction[] = [
   },
   {
     name: "refresh-noms",
-    description: "Push nomination/vote DB state to Discord (posts missing, updates embeds)",
+    description: "Push nomination/vote DB state to Discord (recreate missing open embeds, update votes)",
   },
   { name: "add-spectator", description: "Assign kib role + thread access (or use /st add-kib)", needs: ["user"] },
   { name: "remove-spectator", description: "Remove kib role (or use /st remove-kib)", needs: ["user"] },
@@ -87,7 +87,7 @@ export const ST_SLASH_SHORTCUTS: DoAction[] = [
   },
   {
     name: "refresh-noms",
-    description: "Push nomination/vote DB state to Discord (posts missing, updates embeds)",
+    description: "Push nomination/vote DB state to Discord (recreate missing open embeds, update votes)",
   },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },

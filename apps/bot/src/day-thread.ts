@@ -392,14 +392,27 @@ export async function ensureDiscussionChannelSendable(
 export async function findNominationMessage(
   channel: DayDiscussionChannel,
   nominationId: string,
-  limit = 100,
+  options?: { limit?: number; maxPages?: number },
 ): Promise<Message | null> {
-  const messages = await channel.messages.fetch({ limit }).catch(() => null);
-  if (!messages) return null;
-  for (const message of messages.values()) {
-    const embed = message.embeds[0];
-    const footerId = parseNominationIdFromFooter(embed?.footer?.text);
-    if (footerId === nominationId) return message;
+  const pageSize = options?.limit ?? 100;
+  const maxPages = options?.maxPages ?? 1;
+  let before: string | undefined;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const messages = await channel.messages
+      .fetch(before ? { limit: pageSize, before } : { limit: pageSize })
+      .catch(() => null);
+    if (!messages || messages.size === 0) return null;
+
+    for (const message of messages.values()) {
+      const embed = message.embeds[0];
+      const footerId = parseNominationIdFromFooter(embed?.footer?.text);
+      if (footerId === nominationId) return message;
+    }
+
+    const oldest = messages.last();
+    if (!oldest || messages.size < pageSize) return null;
+    before = oldest.id;
   }
   return null;
 }

@@ -626,7 +626,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "If it passed: `/st execute` `player:` (or panel)",
             "Other deaths: `/st mark-dead` `player:` (`alive:` if reviving)",
             "Fix a ballot: `/st do set-vote` — or nominate for someone: `/st nominate`",
-            "After admin DB edits: `/st refresh-noms` (posts missing embeds + updates text/votes)",
+            "After admin DB edits: `/st refresh-noms` (recreates missing open embeds + updates votes)",
           ]),
         },
         {

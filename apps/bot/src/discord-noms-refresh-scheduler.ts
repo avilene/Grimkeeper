@@ -34,8 +34,10 @@ export async function processPendingDiscordNomsRefresh(client?: Client): Promise
         log("info", "discord.noms.refresh.done", {
           gameId: game.id,
           appended: result.appended,
+          missing: result.missing,
           posted: result.posted,
           total: result.total,
+          votingChannelId: result.votingChannelId,
         });
       } catch (error) {
         void reportError("discord.noms.refresh.failed", error, { gameId: game.id });

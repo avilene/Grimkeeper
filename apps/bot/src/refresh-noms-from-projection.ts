@@ -12,14 +12,15 @@ import {
 
 import { findNominationMessage } from "./day-thread.js";
 import {
+  ensureVotingChannel,
   postNominationEverywhere,
   refreshAllNominationEverywhere,
-  resolveVotingChannel,
   syncGameProjection,
   toJson,
 } from "./commands/command-context.js";
 import { logGameEvent } from "./game-events-log.js";
 import { refreshGameStatusForEngine } from "./game-status.js";
+import { log } from "./logger.js";
 
 function isVoteChoice(value: string): value is VoteChoice {
   return value === "yes" || value === "no" || value === "conditional";
@@ -169,12 +170,17 @@ export async function reconcileDayProjectionIntoEngine(
 
 export type RefreshNomsResult = {
   appended: number;
+  /** Nominations with no Town Voting embed before this run. */
+  missing: number;
+  /** Successfully recreated embeds in Town Voting. */
   posted: number;
   total: number;
+  votingChannelId: string | null;
 };
 
 /**
- * Reconcile projection → events, post any missing Town Voting embeds, then refresh all.
+ * Reconcile projection → events, recreate missing embeds for open noms on the current day,
+ * then refresh all current-day nomination embeds.
  */
 export async function refreshNominationsFromProjection(
   guild: Guild,
@@ -183,6 +189,7 @@ export async function refreshNominationsFromProjection(
     channelId: string;
     kibThreadId?: string | null;
     guildId?: string;
+    votingThreadId?: string | null;
     playerRoleId?: string | null;
     stRoleId?: string | null;
     kibRoleId?: string | null;
@@ -190,20 +197,54 @@ export async function refreshNominationsFromProjection(
   engine: GameEngine,
 ): Promise<RefreshNomsResult> {
   const { appended } = await reconcileDayProjectionIntoEngine(engine);
-  const nominationIds = engine.getState().day?.nominations.map((nomination) => nomination.id) ?? [];
+  const dayNominations = engine.getState().day?.nominations ?? [];
+  const openNominationIds = dayNominations
+    .filter((nomination) => nomination.status === "open")
+    .map((nomination) => nomination.id);
 
-  const voting = await resolveVotingChannel(guild, game, engine);
+  const ensured = await ensureVotingChannel(guild, game, engine);
+  game = ensured.game;
+  const voting = ensured.channel;
+  let missing = 0;
   let posted = 0;
 
   if (voting) {
-    for (const nominationId of nominationIds) {
-      const existing = await findNominationMessage(voting, nominationId);
+    for (const nominationId of openNominationIds) {
+      // Search deeper than a single page so older day traffic doesn't look "missing".
+      const existing = await findNominationMessage(voting, nominationId, {
+        limit: 100,
+        maxPages: 5,
+      });
       if (existing) continue;
+      missing += 1;
       const result = await postNominationEverywhere(guild, game, engine, nominationId);
-      if (result.voteThread) posted += 1;
+      if (result.voteThread) {
+        posted += 1;
+      } else {
+        log("warn", "refreshNoms.postMissing.failed", {
+          gameId: game.id,
+          nominationId,
+          votingChannelId: voting.id,
+        });
+      }
     }
+  } else if (openNominationIds.length > 0) {
+    missing = openNominationIds.length;
+    log("warn", "refreshNoms.noVotingChannel", {
+      gameId: game.id,
+      open: openNominationIds.length,
+      votingThreadId: game.votingThreadId ?? null,
+      dayThreadId: engine.getState().day?.discordThreadId ?? null,
+    });
   }
 
+  // Refresh embeds for the current day (open + resolved); only open noms are recreated above.
   await refreshAllNominationEverywhere(guild, game, engine);
-  return { appended, posted, total: nominationIds.length };
+  return {
+    appended,
+    missing,
+    posted,
+    total: openNominationIds.length,
+    votingChannelId: voting?.id ?? null,
+  };
 }

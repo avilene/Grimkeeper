@@ -1849,9 +1849,15 @@ export class StCommandsMinimal {
       const result = await refreshNominationsFromProjection(interaction.guild, game, engine);
       await replyOrEditInteraction(interaction, {
         content: [
-          `Discord nominations refreshed (${result.total} total).`,
+          `Discord nominations refreshed (${result.total} open today).`,
           result.appended > 0 ? `Synced ${result.appended} projection change(s) into the event log.` : null,
-          result.posted > 0 ? `Posted ${result.posted} missing nomination message(s).` : null,
+          result.votingChannelId
+            ? result.missing > 0
+              ? `Recreated ${result.posted}/${result.missing} missing open embed(s) in <#${result.votingChannelId}>.`
+              : `No missing open embeds in <#${result.votingChannelId}>.`
+            : result.total > 0
+              ? "Could not find Town Voting — set Voting thread ID in admin or `/st mark` / recreate-threads."
+              : null,
           "Existing embeds were updated; kib vote tracker refreshed.",
         ]
           .filter(Boolean)
