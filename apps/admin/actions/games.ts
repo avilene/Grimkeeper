@@ -405,6 +405,12 @@ export async function deleteNomination(
   }
 }
 
+function optionalVoteChoice(raw: FormDataEntryValue | null): string | null {
+  const value = String(raw ?? "").trim();
+  if (!value) return null;
+  return value;
+}
+
 export async function saveVote(
   gameId: string,
   voteId: string | null,
@@ -415,14 +421,25 @@ export async function saveVote(
   try {
     const nominationId = String(formData.get("nominationId") ?? "").trim();
     const voterId = String(formData.get("voterId") ?? "").trim();
-    const choice = String(formData.get("choice") ?? "").trim();
+    const choice = optionalVoteChoice(formData.get("choice"));
     const reason = emptyToNull(formData.get("reason"));
+    const privateChoice = optionalVoteChoice(formData.get("privateChoice"));
+    const privateReason = emptyToNull(formData.get("privateReason"));
 
     if (!nominationId || !voterId) {
       return { ok: false, message: "Nomination and voter are required." };
     }
-    if (!VOTE_CHOICES.has(choice)) {
-      return { ok: false, message: `Invalid choice "${choice}". Use yes, no, or conditional.` };
+    if (choice && !VOTE_CHOICES.has(choice)) {
+      return { ok: false, message: `Invalid public choice "${choice}". Use yes, no, or conditional.` };
+    }
+    if (privateChoice && !VOTE_CHOICES.has(privateChoice)) {
+      return {
+        ok: false,
+        message: `Invalid private choice "${privateChoice}". Use yes, no, or conditional.`,
+      };
+    }
+    if (!choice && !privateChoice) {
+      return { ok: false, message: "Set a public and/or private ballot." };
     }
 
     const nomination = await prisma.nomination.findFirst({
@@ -445,6 +462,8 @@ export async function saveVote(
           voterId,
           choice,
           reason,
+          privateChoice,
+          privateReason,
           gameDayId: nomination.gameDayId,
         },
       });
@@ -456,6 +475,8 @@ export async function saveVote(
           voterId,
           choice,
           reason,
+          privateChoice,
+          privateReason,
         },
       });
     }

@@ -111,14 +111,18 @@ model Nomination {
 }
 
 model Vote {
-  id           String     @id @default(cuid())
-  gameDayId    String
-  nominationId String
-  voterId      String
-  choice       String
-  reason       String?
-  nomination   Nomination @relation(fields: [nominationId], references: [id], onDelete: Cascade)
-  gameDay      GameDay    @relation(fields: [gameDayId], references: [id], onDelete: Cascade)
+  id            String     @id @default(cuid())
+  gameDayId     String
+  nominationId  String
+  voterId       String
+  /** Public Town Voting ballot (yes / no / conditional). */
+  choice        String?
+  reason        String?
+  /** Private ST-thread ballot (yes / no / conditional). */
+  privateChoice String?
+  privateReason String?
+  nomination    Nomination @relation(fields: [nominationId], references: [id], onDelete: Cascade)
+  gameDay       GameDay    @relation(fields: [gameDayId], references: [id], onDelete: Cascade)
 
   @@unique([nominationId, voterId])
   @@index([gameDayId])

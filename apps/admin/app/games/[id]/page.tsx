@@ -73,7 +73,15 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
         defense: nomination.defense,
         order: nomination.order,
         status: nomination.status,
-        votes: nomination.votes,
+        votes: nomination.votes.map((vote) => ({
+          id: vote.id,
+          nominationId: vote.nominationId,
+          voterId: vote.voterId,
+          choice: vote.choice,
+          reason: vote.reason,
+          privateChoice: vote.privateChoice,
+          privateReason: vote.privateReason,
+        })),
       })),
     )
     .sort((a, b) => a.dayNumber - b.dayNumber || a.order - b.order || a.id.localeCompare(b.id));

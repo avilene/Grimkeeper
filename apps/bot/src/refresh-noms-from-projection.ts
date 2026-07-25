@@ -132,31 +132,58 @@ export async function reconcileDayProjectionIntoEngine(
     }
 
     for (const vote of nom.votes) {
-      if (!isVoteChoice(vote.choice)) continue;
-      const current = engine
-        .getState()
-        .day?.votes.find(
-          (row) => row.nominationId === nom.id && row.voterId === vote.voterId,
-        );
+      const publicChoice =
+        vote.choice && isVoteChoice(vote.choice) ? vote.choice : null;
+      const privateChoice =
+        vote.privateChoice && isVoteChoice(vote.privateChoice) ? vote.privateChoice : null;
+
+      const readCurrent = () =>
+        engine
+          .getState()
+          .day?.votes.find(
+            (row) => row.nominationId === nom.id && row.voterId === vote.voterId,
+          );
+
+      const beforePublic = readCurrent();
       if (
-        current &&
-        current.choice === vote.choice &&
-        (current.reason ?? null) === (vote.reason ?? null)
+        publicChoice &&
+        !(
+          beforePublic?.publicChoice === publicChoice &&
+          (beforePublic.reason ?? null) === (vote.reason ?? null)
+        )
       ) {
-        continue;
+        await appendAndApply(engine, {
+          type: GameEventType.VoteCast,
+          gameId: state.gameId,
+          nominationId: nom.id,
+          voterId: vote.voterId,
+          choice: publicChoice,
+          reason: vote.reason,
+          manualSet: true,
+          privateBallot: false,
+          timestamp: now(),
+        });
+        appended += 1;
       }
-      await appendAndApply(engine, {
-        type: GameEventType.VoteCast,
-        gameId: state.gameId,
-        nominationId: nom.id,
-        voterId: vote.voterId,
-        choice: vote.choice,
-        reason: vote.reason,
-        manualSet: true,
-        privateBallot: false,
-        timestamp: now(),
-      });
-      appended += 1;
+
+      const beforePrivate = readCurrent();
+      if (
+        privateChoice &&
+        beforePrivate?.privateChoice !== privateChoice
+      ) {
+        await appendAndApply(engine, {
+          type: GameEventType.VoteCast,
+          gameId: state.gameId,
+          nominationId: nom.id,
+          voterId: vote.voterId,
+          choice: privateChoice,
+          reason: vote.privateReason ?? vote.reason,
+          manualSet: true,
+          privateBallot: true,
+          timestamp: now(),
+        });
+        appended += 1;
+      }
     }
   }
 

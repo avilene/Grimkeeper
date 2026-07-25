@@ -128,6 +128,9 @@ export async function syncGameProjectionFromEngine(
   const voteKeys = new Set<string>();
   for (const vote of day.votes) {
     voteKeys.add(`${vote.nominationId}:${vote.voterId}`);
+    const publicChoice =
+      vote.publicChoice ?? (vote.privateChoice != null ? null : vote.choice);
+    const privateChoice = vote.privateChoice ?? null;
     const existing = await prisma.vote.findUnique({
       where: {
         nominationId_voterId: {
@@ -141,8 +144,12 @@ export async function syncGameProjectionFromEngine(
       await prisma.vote.update({
         where: { id: existing.id },
         data: {
-          choice: vote.choice,
+          choice: publicChoice,
           reason: vote.reason,
+          privateChoice,
+          // Engine has a single reason; keep admin privateReason unless this was a private cast.
+          privateReason:
+            privateChoice != null && publicChoice == null ? vote.reason : existing.privateReason,
         },
       });
       continue;
@@ -153,8 +160,10 @@ export async function syncGameProjectionFromEngine(
         gameDayId: gameDay.id,
         nominationId: vote.nominationId,
         voterId: vote.voterId,
-        choice: vote.choice,
+        choice: publicChoice,
         reason: vote.reason,
+        privateChoice,
+        privateReason: privateChoice != null && publicChoice == null ? vote.reason : null,
       },
     });
   }
