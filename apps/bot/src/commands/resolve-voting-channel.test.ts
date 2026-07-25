@@ -35,24 +35,19 @@ describe("findTownVoteThread", () => {
     expect(guild.channels.fetchActiveThreads).not.toHaveBeenCalled();
   });
 
-  it("ignores a stored votingThreadId that points at a player ST thread", async () => {
-    const playerSt = thread("st-last", "ST Zara");
-    const voting = thread("vote-1", "Town Voting");
+  it("uses stored votingThreadId even when the Discord name is not exactly Town Voting", async () => {
+    const stored = thread("vote-stored", "Day voting");
     const guild = {
       channels: {
-        fetch: vi.fn(async (id: string) => (id === "st-last" ? playerSt : null)),
-        fetchActiveThreads: vi.fn(async () => ({
-          threads: {
-            find: (predicate: (t: { parentId: string; name: string }) => boolean) =>
-              [voting].find(predicate),
-          },
-        })),
+        fetch: vi.fn(async (id: string) => (id === "vote-stored" ? stored : null)),
+        fetchActiveThreads: vi.fn(),
       },
     };
 
     await expect(
-      findTownVoteThread(guild as never, TOWN_ID, GAME_ID, "st-last"),
-    ).resolves.toEqual(voting);
+      findTownVoteThread(guild as never, TOWN_ID, GAME_ID, "vote-stored"),
+    ).resolves.toEqual(stored);
+    expect(guild.channels.fetchActiveThreads).not.toHaveBeenCalled();
   });
 
   it("does not treat Rules / Claims / Whisper / ST threads as Town Voting", async () => {

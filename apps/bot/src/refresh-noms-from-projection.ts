@@ -176,6 +176,8 @@ export type RefreshNomsResult = {
   posted: number;
   total: number;
   votingChannelId: string | null;
+  /** First Discord/post error when recreate failed. */
+  postError?: string;
 };
 
 /**
@@ -207,6 +209,7 @@ export async function refreshNominationsFromProjection(
   const voting = ensured.channel;
   let missing = 0;
   let posted = 0;
+  let postError: string | undefined;
 
   if (voting) {
     for (const nominationId of openNominationIds) {
@@ -221,15 +224,18 @@ export async function refreshNominationsFromProjection(
       if (result.voteThread) {
         posted += 1;
       } else {
+        postError ??= result.error ?? "Unknown Discord send failure.";
         log("warn", "refreshNoms.postMissing.failed", {
           gameId: game.id,
           nominationId,
           votingChannelId: voting.id,
+          error: result.error,
         });
       }
     }
   } else if (openNominationIds.length > 0) {
     missing = openNominationIds.length;
+    postError = "Could not resolve Town Voting thread.";
     log("warn", "refreshNoms.noVotingChannel", {
       gameId: game.id,
       open: openNominationIds.length,
@@ -246,5 +252,6 @@ export async function refreshNominationsFromProjection(
     posted,
     total: openNominationIds.length,
     votingChannelId: voting?.id ?? null,
+    postError,
   };
 }

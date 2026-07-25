@@ -445,8 +445,10 @@ describe("ensureDiscussionChannelSendable", () => {
     const send = vi.fn().mockResolvedValue({ id: "msg-1" });
     const channel = {
       id: "vote-1",
+      type: 11,
       isThread: () => true,
       archived: true,
+      locked: false,
       setArchived,
       send,
     } as unknown as DayDiscussionChannel;
@@ -457,6 +459,53 @@ describe("ensureDiscussionChannelSendable", () => {
     expect(setArchived).toHaveBeenCalledWith(false, "Posting nomination to Town Voting.");
     expect(send).toHaveBeenCalledOnce();
     expect(message).toEqual({ id: "msg-1" });
+  });
+
+  it("retries without mentions when the first send is rejected", async () => {
+    const engine = GameEngine.fromEvents(gameId, baseEvents());
+    engine.apply({
+      type: GameEventType.TownSetup,
+      gameId,
+      channelId: "channel-1",
+      players: [
+        { playerId: "p1", discordUserId: "u1", displayName: "Alice", seat: 1 },
+        { playerId: "p2", discordUserId: "u2", displayName: "Bob", seat: 2 },
+      ],
+      timestamp: new Date().toISOString(),
+    });
+    advanceToDay1(engine);
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: "p1",
+      nomineeId: "p2",
+      accusation: "evil",
+    })) {
+      engine.apply(event);
+    }
+    const nominationId = engine.getState().day!.nominations[0]!.id;
+
+    const send = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Missing Permissions"))
+      .mockResolvedValueOnce({ id: "msg-2" });
+    const channel = {
+      id: "vote-1",
+      type: 11,
+      isThread: () => true,
+      archived: false,
+      locked: false,
+      setArchived: vi.fn(),
+      setLocked: vi.fn(),
+      send,
+    } as unknown as DayDiscussionChannel;
+
+    const message = await postNominationToChannel(engine, gameId, channel, nominationId, {
+      pingRoleId: "role-1",
+    });
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1]?.[0]?.allowedMentions).toEqual({ parse: [] });
+    expect(message).toEqual({ id: "msg-2" });
   });
 });
 

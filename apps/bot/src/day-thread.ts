@@ -2,6 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelType,
   EmbedBuilder,
   type APIEmbedField,
   type Guild,
@@ -378,7 +379,7 @@ export type DayDiscussionChannel =
   | PublicThreadChannel
   | PrivateThreadChannel;
 
-/** Unarchive Town Voting (and similar) so sends/edits work when STs act from kib. */
+/** Unarchive/unlock Town Voting (and similar) so sends/edits work when STs act from kib. */
 export async function ensureDiscussionChannelSendable(
   channel: DayDiscussionChannel,
   reason: string,
@@ -386,6 +387,16 @@ export async function ensureDiscussionChannelSendable(
   if (!channel.isThread()) return;
   if (channel.archived) {
     await channel.setArchived(false, reason).catch(() => undefined);
+  }
+  if (channel.locked) {
+    await channel.setLocked(false, reason).catch(() => undefined);
+  }
+  // Private threads require membership before send/fetch.
+  if (channel.type === ChannelType.PrivateThread && "joinable" in channel) {
+    const privateThread = channel as PrivateThreadChannel;
+    if (privateThread.joinable) {
+      await privateThread.join().catch(() => undefined);
+    }
   }
 }
 
@@ -499,6 +510,11 @@ export async function postNominationToDayThread(
   return postNominationToChannel(engine, gameId, channel, nominationId);
 }
 
+export type PostNominationResult = {
+  message: Message | null;
+  error?: string;
+};
+
 export async function postNominationToChannel(
   engine: GameEngine,
   gameId: string,
@@ -511,8 +527,25 @@ export async function postNominationToChannel(
     pingRoleId?: string | null;
   },
 ): Promise<Message | null> {
+  const result = await postNominationToChannelDetailed(engine, gameId, channel, nominationId, options);
+  return result.message;
+}
+
+/** Post a nomination embed; retries without role/user pings if Discord rejects mentions. */
+export async function postNominationToChannelDetailed(
+  engine: GameEngine,
+  gameId: string,
+  channel: DayDiscussionChannel,
+  nominationId: string,
+  options?: {
+    privateBallot?: boolean;
+    pingRoleId?: string | null;
+  },
+): Promise<PostNominationResult> {
   const nomination = engine.getNominationById(nominationId);
-  if (!nomination) return null;
+  if (!nomination) {
+    return { message: null, error: `Nomination \`${nominationId}\` not found in engine state.` };
+  }
 
   await ensureDiscussionChannelSendable(channel, "Posting nomination to Town Voting.");
 
@@ -532,27 +565,57 @@ export async function postNominationToChannel(
   const pingRoleId = options?.pingRoleId ?? null;
   const contentParts: string[] = [];
   if (pingRoleId) contentParts.push(`<@&${pingRoleId}>`);
-  if (!options?.privateBallot) contentParts.push("**New nomination** — vote below, `/vote` (public), or `/privatevote`.");
+  if (!options?.privateBallot) {
+    contentParts.push("**New nomination** — vote below, `/vote` (public), or `/privatevote`.");
+  }
+  const content = contentParts.length > 0 ? contentParts.join(" ") : undefined;
+  const components = row ? [row] : [];
 
   try {
-    return await channel.send({
-      content: contentParts.length > 0 ? contentParts.join(" ") : undefined,
+    const message = await channel.send({
+      content,
       embeds: [embed],
-      components: row ? [row] : [],
+      components,
       allowedMentions: {
         roles: pingRoleId ? [pingRoleId] : [],
         users: mentionUsers,
       },
     });
-  } catch (error) {
-    log("warn", "nomination.embed.post.failed", {
-      gameId,
-      nominationId,
-      channelId: channel.id,
-      archived: channel.isThread() ? channel.archived : false,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return null;
+    return { message };
+  } catch (firstError) {
+    const firstMessage =
+      firstError instanceof Error ? firstError.message : String(firstError);
+    // Role/user mention permission failures are a common reason the whole send is rejected.
+    try {
+      const message = await channel.send({
+        content: options?.privateBallot
+          ? undefined
+          : "**New nomination** — vote below, `/vote` (public), or `/privatevote`.",
+        embeds: [embed],
+        components,
+        allowedMentions: { parse: [] },
+      });
+      log("warn", "nomination.embed.post.retriedWithoutMentions", {
+        gameId,
+        nominationId,
+        channelId: channel.id,
+        firstError: firstMessage,
+      });
+      return { message };
+    } catch (secondError) {
+      const error =
+        secondError instanceof Error ? secondError.message : String(secondError);
+      log("warn", "nomination.embed.post.failed", {
+        gameId,
+        nominationId,
+        channelId: channel.id,
+        archived: channel.isThread() ? channel.archived : false,
+        locked: channel.isThread() ? channel.locked : false,
+        firstError: firstMessage,
+        error,
+      });
+      return { message: null, error };
+    }
   }
 }
 

@@ -1858,6 +1858,9 @@ export class StCommandsMinimal {
             : result.total > 0
               ? "Could not find Town Voting — set Voting thread ID in admin or `/st mark` / recreate-threads."
               : null,
+          result.postError && result.posted < result.missing
+            ? `Post error: ${result.postError}`
+            : null,
           "Existing embeds were updated; kib vote tracker refreshed.",
         ]
           .filter(Boolean)
@@ -1986,7 +1989,7 @@ export class StCommandsMinimal {
             posted.voteThread && voteThreadId
               ? `Posted in <#${voteThreadId}> (players pinged).`
               : voteThreadId
-                ? `Could not post the nomination embed in <#${voteThreadId}> — try \`/st refresh-noms\`, or check that Town Voting is open.`
+                ? `Could not post the nomination embed in <#${voteThreadId}>${posted.error ? `: ${posted.error}` : " — try `/st refresh-noms`."}`
                 : "No Town Voting thread is linked for this day — run `/st do recreate-threads` or `/st mark` in Town Voting.",
           ]
             .filter(Boolean)

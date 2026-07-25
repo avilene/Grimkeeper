@@ -45,7 +45,7 @@ import {
   ensureDiscussionChannelSendable,
   legacyTownVoteThreadName,
   townVoteThreadName,
-  postNominationToChannel,
+  postNominationToChannelDetailed,
   updateNominationMessagesInChannels,
   type DayDiscussionChannel,
 } from "../day-thread.js";
@@ -1642,13 +1642,10 @@ export async function resolveVotingChannel(
     votingThreadId = row?.votingThreadId ?? null;
   }
 
+  // Admin "Voting thread ID" is authoritative when it points at a thread under town.
   if (votingThreadId) {
     const byId = await guild.channels.fetch(votingThreadId).catch(() => null);
-    if (
-      byId?.isThread() &&
-      byId.parentId === game.channelId &&
-      isTownVotingThreadName(byId.name, game.id)
-    ) {
+    if (byId?.isThread() && byId.parentId === game.channelId) {
       return byId as DayDiscussionChannel;
     }
   }
@@ -1767,12 +1764,13 @@ export async function postNominationEverywhere(
   },
   engine: GameEngine,
   nominationId: string,
-): Promise<{ voteThread: boolean }> {
+): Promise<{ voteThread: boolean; error?: string }> {
   const ensured = await ensureVotingChannel(guild, game, engine);
   game = ensured.game;
   const voting = ensured.channel;
 
   let voteThread = false;
+  let error: string | undefined;
   if (voting) {
     let pingRoleId = game.playerRoleId ?? null;
     if (!pingRoleId) {
@@ -1786,12 +1784,13 @@ export async function postNominationEverywhere(
       }
     }
     const roles = await resolveGameRoles(guild, game);
-    voteThread = Boolean(
-      await postNominationToChannel(engine, game.id, voting, nominationId, {
-        pingRoleId: roles?.playersRole.id ?? pingRoleId,
-      }),
-    );
+    const posted = await postNominationToChannelDetailed(engine, game.id, voting, nominationId, {
+      pingRoleId: roles?.playersRole.id ?? pingRoleId,
+    });
+    voteThread = Boolean(posted.message);
+    error = posted.error;
   } else {
+    error = "Could not resolve Town Voting thread.";
     log("warn", "nomination.embed.noVotingChannel", {
       gameId: game.id,
       nominationId,
@@ -1818,7 +1817,7 @@ export async function postNominationEverywhere(
     nominationId,
   ).catch(() => undefined);
 
-  return { voteThread };
+  return { voteThread, error };
 }
 
 export async function refreshNominationEverywhere(
@@ -1901,10 +1900,10 @@ export async function createTownVoteThread(
 
   let thread = await findTownVoteThread(guild, game.channelId, game.id, game.votingThreadId);
 
-  // Never reuse / rename a personal ST thread as Town Voting (that ate the last
-  // player thread when a stale votingThreadId or loose lookup pointed at it).
-  if (thread && (playerStThreadIds.has(thread.id) || !isTownVotingThreadName(thread.name, game.id))) {
-    if (game.votingThreadId === thread.id || playerStThreadIds.has(thread.id)) {
+  // Never reuse a personal ST thread as Town Voting. Admin-configured votingThreadId
+  // is kept even if the Discord name is not exactly "Town Voting".
+  if (thread && playerStThreadIds.has(thread.id)) {
+    if (game.votingThreadId === thread.id) {
       await prisma.game
         .update({
           where: { id: game.id },
@@ -1912,6 +1911,13 @@ export async function createTownVoteThread(
         })
         .catch(() => undefined);
     }
+    thread = null;
+  } else if (
+    thread &&
+    game.votingThreadId !== thread.id &&
+    !isTownVotingThreadName(thread.name, game.id)
+  ) {
+    // Name-search fallback hit something that isn't Town Voting — ignore it.
     thread = null;
   }
 
@@ -1988,13 +1994,10 @@ export async function findTownVoteThread(
     votingThreadId = row?.votingThreadId ?? null;
   }
 
+  // Stored/admin ID wins when the thread still lives under the town channel.
   if (votingThreadId) {
     const byId = await guild.channels.fetch(votingThreadId).catch(() => null);
-    if (
-      byId?.isThread() &&
-      byId.parentId === parentChannelId &&
-      isTownVotingThreadName(byId.name, gameId)
-    ) {
+    if (byId?.isThread() && byId.parentId === parentChannelId) {
       return byId;
     }
   }
