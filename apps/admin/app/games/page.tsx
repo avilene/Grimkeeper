@@ -42,12 +42,15 @@ export default async function GamesPage({
         Active games by default. Edits write directly to the SQLite projection — they do{" "}
         <strong>not</strong> append engine events and can drift from Discord / event history.
       </WarnBanner>
-      <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
         <Link href="/games" className="text-primary hover:underline">
           Active only
         </Link>
         <Link href="/games?show=all" className="text-primary hover:underline">
           Include ended
+        </Link>
+        <Link href="/games/record" className="text-primary hover:underline">
+          Record completed game
         </Link>
         <span>{games.length} shown</span>
       </div>
@@ -56,6 +59,7 @@ export default async function GamesPage({
           <TableRow>
             <TableHead>Game</TableHead>
             <TableHead>Phase</TableHead>
+            <TableHead>Source</TableHead>
             <TableHead>Guild</TableHead>
             <TableHead>Channel</TableHead>
             <TableHead>#</TableHead>
@@ -66,7 +70,7 @@ export default async function GamesPage({
         <TableBody>
           {games.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7}>No games found.</TableCell>
+              <TableCell colSpan={8}>No games found.</TableCell>
             </TableRow>
           ) : (
             games.map((game) => {
@@ -80,6 +84,13 @@ export default async function GamesPage({
                   </TableCell>
                   <TableCell>
                     <Badge variant={active ? "success" : "muted"}>{game.phase}</Badge>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {game.source === "stats_only" ? (
+                      <Badge variant="muted">stats only</Badge>
+                    ) : (
+                      "—"
+                    )}
                   </TableCell>
                   <TableCell className="font-mono text-xs">{game.guildId}</TableCell>
                   <TableCell className="font-mono text-xs">{game.channelId}</TableCell>

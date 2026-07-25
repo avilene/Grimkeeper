@@ -579,12 +579,15 @@ export function NominationsSection({
   days,
   nominations,
   discordRefreshPendingSince,
+  discordPushDisabled = false,
 }: {
   gameId: string;
   players: NominationPlayerOption[];
   days: Array<{ id: string; dayNumber: number }>;
   nominations: EditableNomination[];
   discordRefreshPendingSince: Date | null;
+  /** Stats-only / recorded games never push to Discord. */
+  discordPushDisabled?: boolean;
 }) {
   const [createResult, createAction] = useActionState<SaveResult | null, FormData>(
     saveNomination.bind(null, gameId, null),
@@ -605,13 +608,21 @@ export function NominationsSection({
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Projection edits are SQLite-only until you push them. Use{" "}
-        <strong>Push noms to Discord</strong> (bot picks up within ~30s) or{" "}
-        <code>/st refresh-noms</code> for an immediate update — that syncs new noms, accusations,
-        defenses, and votes into the event log and Town Voting embeds.
-      </p>
-      <RefreshNomsButton gameId={gameId} pendingSince={discordRefreshPendingSince} />
+      {discordPushDisabled ? (
+        <p className="text-sm text-muted-foreground">
+          Stats-only game — Discord nomination push is disabled (no threads or posts).
+        </p>
+      ) : (
+        <>
+          <p className="text-sm text-muted-foreground">
+            Projection edits are SQLite-only until you push them. Use{" "}
+            <strong>Push noms to Discord</strong> (bot picks up within ~30s) or{" "}
+            <code>/st refresh-noms</code> for an immediate update — that syncs new noms, accusations,
+            defenses, and votes into the event log and Town Voting embeds.
+          </p>
+          <RefreshNomsButton gameId={gameId} pendingSince={discordRefreshPendingSince} />
+        </>
+      )}
 
       {sortedNominations.length === 0 ? (
         <p className="text-sm text-muted-foreground">No nominations recorded.</p>

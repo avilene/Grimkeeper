@@ -27,6 +27,9 @@ type GameFields = {
   nightNumber: number;
   guildId: string;
   channelId: string;
+  source: string | null;
+  startedAt: Date | null;
+  endedAt: Date | null;
   stRoleId: string | null;
   playerRoleId: string | null;
   kibRoleId: string | null;
@@ -37,6 +40,12 @@ type GameFields = {
   claimsThreadId: string | null;
   rulesThreadId: string | null;
 };
+
+function toDatetimeLocal(value: Date | null): string {
+  if (!value) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
+}
 
 function Field({
   name,
@@ -102,6 +111,27 @@ export function GameFieldsForm({ gameId, game }: { gameId: string; game: GameFie
       <Field name="nightNumber" label="Night number" type="number" defaultValue={game.nightNumber} />
       <Field name="guildId" label="Guild ID" defaultValue={game.guildId} />
       <Field name="channelId" label="Town channel ID" defaultValue={game.channelId} />
+      <div className="space-y-1.5">
+        <Label htmlFor="source">Source</Label>
+        <Input
+          id="source"
+          readOnly
+          value={game.source ?? "live"}
+          className="font-mono text-muted-foreground"
+        />
+      </div>
+      <Field
+        name="startedAt"
+        label="Started at"
+        type="datetime-local"
+        defaultValue={toDatetimeLocal(game.startedAt)}
+      />
+      <Field
+        name="endedAt"
+        label="Ended at"
+        type="datetime-local"
+        defaultValue={toDatetimeLocal(game.endedAt)}
+      />
       <Field name="stRoleId" label="ST role ID" defaultValue={game.stRoleId} />
       <Field name="playerRoleId" label="Player role ID" defaultValue={game.playerRoleId} />
       <Field name="kibRoleId" label="Kib role ID" defaultValue={game.kibRoleId} />

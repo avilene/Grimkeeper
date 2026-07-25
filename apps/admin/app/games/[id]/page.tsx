@@ -1,6 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { formatBotcEdition, listBotcRoles } from "@grimkeeper/engine";
+import {
+  getGameEvents,
+  isStatsOnlyGame,
+  storytellerIdsFromEvents,
+} from "@grimkeeper/database";
+import {
+  formatBotcEdition,
+  listBotcRoles,
+  type GameEvent,
+} from "@grimkeeper/engine";
 
 import { FlashBanner, WarnBanner } from "@/components/banners";
 import { DeleteGameForm } from "@/components/delete-game-form";
@@ -10,6 +19,7 @@ import { GameRemindersSection } from "@/components/game-reminders-section";
 import { NominationsSection } from "@/components/nominations-section";
 import { PlayersTableForm } from "@/components/players-table-form";
 import type { RoleOption } from "@/components/role-combobox";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
 import { consumeFlash } from "@/lib/flash";
@@ -51,6 +61,14 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
     },
   });
   if (!game) notFound();
+
+  const statsOnly = isStatsOnlyGame(game.source);
+  const storedEvents = await getGameEvents(game.id);
+  const engineEvents = storedEvents.map((row) => row.payload as unknown as GameEvent);
+  const storytellerIds =
+    engineEvents.length > 0 ? storytellerIdsFromEvents(game.id, engineEvents) : [];
+  const primaryStorytellerId = storytellerIds[0] ?? null;
+  const coStorytellerIds = storytellerIds.slice(1);
 
   const roleOptions = catalogRoleOptions();
   const knownIds = new Set(roleOptions.map((role) => role.id));
@@ -96,18 +114,50 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
         </Button>
       </div>
       <FlashBanner message={flash} />
-      <WarnBanner>
-        Direct DB edits. Prefer bot commands when possible. Changing Discord IDs / thread IDs can
-        break live Discord surfaces until they are recreated. Phase is a select; winner applies when
-        phase is <code>ended</code>.
-      </WarnBanner>
+      {statsOnly ? (
+        <WarnBanner>
+          Stats-only recorded game. No Discord threads or posts. Storytellers come from engine
+          events (<code>GameCreated</code> / <code>StorytellerPromoted</code>).
+        </WarnBanner>
+      ) : (
+        <WarnBanner>
+          Direct DB edits. Prefer bot commands when possible. Changing Discord IDs / thread IDs can
+          break live Discord surfaces until they are recreated. Phase is a select; winner applies
+          when phase is <code>ended</code>.
+        </WarnBanner>
+      )}
       <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
         <span>
           ID <code>{game.id}</code>
         </span>
         <span>Created {game.createdAt.toISOString()}</span>
+        {game.startedAt ? <span>Started {game.startedAt.toISOString()}</span> : null}
+        {game.endedAt ? <span>Ended {game.endedAt.toISOString()}</span> : null}
         {game.winner ? <span>Winner {game.winner}</span> : null}
+        {statsOnly ? <Badge variant="muted">stats only</Badge> : null}
       </div>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Storytellers</h2>
+        {storytellerIds.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No storyteller events on this game (engine history empty or missing{" "}
+            <code>GameCreated</code>).
+          </p>
+        ) : (
+          <ul className="space-y-1 text-sm">
+            <li>
+              Primary ST{" "}
+              <code className="font-mono">{primaryStorytellerId}</code>
+            </li>
+            {coStorytellerIds.map((id) => (
+              <li key={id}>
+                Co-ST <code className="font-mono">{id}</code>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Game fields</h2>
@@ -132,6 +182,7 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
           days={game.gameDays.map((day) => ({ id: day.id, dayNumber: day.dayNumber }))}
           nominations={nominations}
           discordRefreshPendingSince={game.discordNomsRefreshRequestedAt}
+          discordPushDisabled={statsOnly}
         />
       </section>
 

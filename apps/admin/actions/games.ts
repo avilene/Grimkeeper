@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requestDiscordNomsRefresh } from "@grimkeeper/database";
+import {
+  isStatsOnlyGame,
+  recordCompletedGame,
+  requestDiscordNomsRefresh,
+  STATS_ONLY_CHANNEL_ID,
+} from "@grimkeeper/database";
 import { getBotcRole } from "@grimkeeper/engine";
 
 import type { SaveResult } from "@/lib/action-result";
@@ -58,6 +63,89 @@ function teamFromRoleId(roleId: string | null): string | null {
   return "good";
 }
 
+function parseRequiredDate(value: FormDataEntryValue | null, label: string): Date {
+  const raw = String(value ?? "").trim();
+  if (!raw) throw new Error(`${label} is required.`);
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) throw new Error(`Invalid ${label.toLowerCase()}.`);
+  return date;
+}
+
+function parseOptionalDate(value: FormDataEntryValue | null, label: string): Date | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) throw new Error(`Invalid ${label.toLowerCase()}.`);
+  return date;
+}
+
+/** Admin-only: create an ended game for stats (no Discord posts/threads/roles). */
+export async function recordCompletedGameAction(
+  _prev: SaveResult | null,
+  formData: FormData,
+): Promise<SaveResult> {
+  await requireSession();
+  try {
+    const guildId = String(formData.get("guildId") ?? "").trim();
+    const channelId =
+      String(formData.get("channelId") ?? "").trim() || STATS_ONLY_CHANNEL_ID;
+    const winnerRaw = String(formData.get("winner") ?? "").trim().toLowerCase();
+    if (winnerRaw !== "good" && winnerRaw !== "evil") {
+      return { ok: false, message: 'Winner must be "good" or "evil".' };
+    }
+    const startedAt = parseRequiredDate(formData.get("startedAt"), "Started at");
+    const endedAt = parseRequiredDate(formData.get("endedAt"), "Ended at");
+    const storytellerId = String(formData.get("storytellerId") ?? "").trim();
+    const coStorytellerIds = String(formData.get("coStorytellerIds") ?? "")
+      .split(/[\s,]+/)
+      .map((id) => id.trim())
+      .filter(Boolean);
+
+    const discordUserIds = formData.getAll("playerDiscordUserId").map(String);
+    const displayNames = formData.getAll("playerDisplayName").map(String);
+    const seats = formData.getAll("playerSeat").map(String);
+    const roleIds = formData.getAll("playerRoleId").map(String);
+    const teams = formData.getAll("playerTeam").map(String);
+
+    if (discordUserIds.length === 0) {
+      return { ok: false, message: "Add at least one player." };
+    }
+    if (
+      displayNames.length !== discordUserIds.length ||
+      seats.length !== discordUserIds.length ||
+      roleIds.length !== discordUserIds.length ||
+      teams.length !== discordUserIds.length
+    ) {
+      return { ok: false, message: "Player fields are incomplete." };
+    }
+
+    const players = discordUserIds.map((discordUserId, index) => ({
+      discordUserId: discordUserId.trim(),
+      displayName: displayNames[index]!.trim(),
+      seat: parseOptionalInt(seats[index] || null),
+      roleId: emptyToNull(roleIds[index] ?? null),
+      team: parsePlayerTeam(teams[index] ?? null),
+    }));
+
+    const { gameId } = await recordCompletedGame({
+      guildId,
+      channelId,
+      winner: winnerRaw,
+      startedAt,
+      endedAt,
+      storytellerId,
+      coStorytellerIds,
+      players,
+    });
+
+    revalidatePath("/games");
+    redirect(`/games/${gameId}`);
+  } catch (err) {
+    if (err && typeof err === "object" && "digest" in err) throw err;
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function saveGame(
   gameId: string,
   _prev: SaveResult | null,
@@ -76,6 +164,8 @@ export async function saveGame(
         nightNumber: Number(formData.get("nightNumber") ?? 0),
         guildId: String(formData.get("guildId") ?? "").trim(),
         channelId: String(formData.get("channelId") ?? "").trim(),
+        startedAt: parseOptionalDate(formData.get("startedAt"), "Started at"),
+        endedAt: parseOptionalDate(formData.get("endedAt"), "Ended at"),
         stRoleId: emptyToNull(formData.get("stRoleId")),
         playerRoleId: emptyToNull(formData.get("playerRoleId")),
         kibRoleId: emptyToNull(formData.get("kibRoleId")),
@@ -527,9 +617,12 @@ export async function requestNomsDiscordRefresh(
   try {
     const game = await prisma.game.findUnique({
       where: { id: gameId },
-      select: { id: true, phase: true },
+      select: { id: true, phase: true, source: true },
     });
     if (!game) return { ok: false, message: "Game not found." };
+    if (isStatsOnlyGame(game.source)) {
+      return { ok: false, message: "Stats-only games cannot push nominations to Discord." };
+    }
     await requestDiscordNomsRefresh(gameId);
     revalidatePath(`/games/${gameId}`);
     return {

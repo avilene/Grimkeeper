@@ -24,6 +24,17 @@ export {
   loadDayProjectionForRefresh,
 } from "./discord-noms-refresh.js";
 export {
+  GAME_SOURCE_STATS_ONLY,
+  STATS_ONLY_CHANNEL_ID,
+  buildRecordedGameEvents,
+  recordCompletedGame,
+  storytellerIdsFromEvents,
+  isStatsOnlyGame,
+  type RecordCompletedGameInput,
+  type RecordCompletedGamePlayerInput,
+  type RecordCompletedGameResult,
+} from "./record-completed-game.js";
+export {
   createReminder,
   createGameReminder,
   listDueReminders,

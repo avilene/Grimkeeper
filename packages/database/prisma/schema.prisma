@@ -16,6 +16,15 @@ model Game {
   nightNumber          Int            @default(0)
   /** Final winning team when phase is ended: good | evil. */
   winner               String?
+  /**
+   * Origin of the game row. Null for live Discord games.
+   * "stats_only" = admin-recorded completed game (no Discord posts/threads/roles).
+   */
+  source               String?
+  /** Wall-clock start (live games may leave null; recorded games set this). */
+  startedAt            DateTime?
+  /** Wall-clock end (live games may leave null; recorded games set this). */
+  endedAt              DateTime?
   /** When set, bot should push nomination/vote projection state to Discord and clear. */
   discordNomsRefreshRequestedAt DateTime?
   stRoleId             String?
