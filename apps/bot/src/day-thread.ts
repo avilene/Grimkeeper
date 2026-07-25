@@ -19,6 +19,7 @@ import {
 } from "@grimkeeper/engine";
 
 import { isDevMode } from "./dev.js";
+import { formatMaskedDiscordLink, sanitizeDiscordLinkLabel } from "./discord-links.js";
 import { encodeIdPair, parseIdPair } from "./interaction-ids.js";
 import { log } from "./logger.js";
 import { discordTimestamp } from "./reminder-message.js";
@@ -220,21 +221,16 @@ export function formatNominationBlockField(
   return `**${yesVotes}** yes (needed **${needed}** to pass).`;
 }
 
-/**
- * Make text safe as a Discord `[label](url)` label.
- * Strips `[bracket]` nickname tags and remaining `[]()` so names like `sharii [craboots!]` do not break the link.
- */
+/** @deprecated Prefer sanitizeDiscordLinkLabel from discord-links.js */
 export function sanitizeMarkdownLinkLabel(text: string): string {
-  const cleaned = text
-    .replace(/\s*\[[^\]]*\]/g, "")
-    .replace(/\s*\([^)]*\)/g, "")
-    .replace(/[\[\]()]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  return cleaned || "nomination";
+  const cleaned = sanitizeDiscordLinkLabel(text);
+  return cleaned === "link" ? "nomination" : cleaned;
 }
 
-/** Append a Discord jump URL for plain message content (masked `[label](url)` does not render outside embeds). */
+/**
+ * Nomination phrase with an optional jump link for plain message content.
+ * Uses a masked markdown link so Discord renders a real hyperlink (not a raw `(url)` suffix).
+ */
 export function formatNominationRef(
   engine: GameEngine,
   nominationId: string,
@@ -243,8 +239,7 @@ export function formatNominationRef(
 ): string {
   const phrase = formatNominationPhrase(engine, nominationId, options);
   if (!messageUrl) return phrase;
-  // Angle brackets keep the jump link clickable without a large embed preview.
-  return `${phrase} (<${messageUrl}>)`;
+  return formatMaskedDiscordLink(phrase, messageUrl);
 }
 
 export function buildDayIntroEmbed(engine: GameEngine): EmbedBuilder {

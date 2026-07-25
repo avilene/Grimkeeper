@@ -449,6 +449,16 @@ export async function saveVote(
     if (!nomination) return { ok: false, message: "Nomination not found on this game." };
     await assertPlayersOnGame(gameId, [voterId]);
 
+    const ballotData = {
+      nominationId,
+      voterId,
+      choice,
+      reason,
+      privateChoice,
+      privateReason,
+      gameDayId: nomination.gameDayId,
+    };
+
     if (voteId) {
       const existing = await prisma.vote.findFirst({
         where: { id: voteId, gameDay: { gameId } },
@@ -457,32 +467,19 @@ export async function saveVote(
       if (!existing) return { ok: false, message: "Vote not found on this game." };
       await prisma.vote.update({
         where: { id: voteId },
-        data: {
-          nominationId,
-          voterId,
-          choice,
-          reason,
-          privateChoice,
-          privateReason,
-          gameDayId: nomination.gameDayId,
-        },
+        data: ballotData,
       });
     } else {
-      await prisma.vote.create({
-        data: {
-          gameDayId: nomination.gameDayId,
-          nominationId,
-          voterId,
-          choice,
-          reason,
-          privateChoice,
-          privateReason,
-        },
+      // Pending roster rows create on first save; upsert if the voter already has a row.
+      await prisma.vote.upsert({
+        where: { nominationId_voterId: { nominationId, voterId } },
+        create: ballotData,
+        update: ballotData,
       });
     }
 
     revalidatePath(`/games/${gameId}`);
-    return { ok: true, message: voteId ? "Vote saved." : "Vote created." };
+    return { ok: true, message: voteId ? "Vote saved." : "Vote set." };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }

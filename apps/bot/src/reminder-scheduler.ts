@@ -7,6 +7,7 @@ import {
 
 import { buildReminderPingMention, buildReminderFireContent } from "./commands/command-context.js";
 import { logReminderAction } from "./action-log.js";
+import { unwrapSuppressedDiscordChannelLinks } from "./discord-links.js";
 import { processPendingDiscordNomsRefresh } from "./discord-noms-refresh-scheduler.js";
 import { reportError } from "./error-reporter.js";
 
@@ -46,12 +47,14 @@ export async function processDueReminders(client: Client): Promise<void> {
 
         const channel = await client.channels.fetch(reminder.channelId).catch(() => null);
         if (channel?.isTextBased() && !channel.isDMBased()) {
+          // Upgrade legacy `<discord.com/channels/...>` suppressors stored in older reminders.
+          const message = unwrapSuppressedDiscordChannelLinks(reminder.message);
           let content: string;
           if (reminder.pingPlayers) {
             const ping = await buildReminderPingMention(reminder);
             content = buildReminderFireContent(
               ping,
-              reminder.message,
+              message,
               reminder.fireAt,
               reminder.emoji,
               reminder.seriesEndAt,
@@ -59,7 +62,7 @@ export async function processDueReminders(client: Client): Promise<void> {
           } else {
             content = buildReminderFireContent(
               null,
-              reminder.message,
+              message,
               reminder.fireAt,
               reminder.emoji,
               reminder.seriesEndAt,

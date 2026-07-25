@@ -56,6 +56,17 @@ export type EditableVote = {
   privateReason: string | null;
 };
 
+/** Existing DB vote or a pending roster placeholder (no row yet). */
+type VoteTableEntry = {
+  id: string | null;
+  nominationId: string;
+  voterId: string;
+  choice: string | null;
+  reason: string | null;
+  privateChoice: string | null;
+  privateReason: string | null;
+};
+
 export type EditableNomination = {
   id: string;
   gameDayId: string;
@@ -82,15 +93,90 @@ function playerName(
   return player ? playerLabel(player) : playerId.slice(0, 8);
 }
 
-function votesSummary(votes: EditableVote[]): string {
-  if (votes.length === 0) return "no votes";
+function votesSummary(votes: EditableVote[], rosterSize: number): string {
   let publicYes = 0;
   let privateYes = 0;
+  let cast = 0;
   for (const vote of votes) {
+    const hasBallot = Boolean(vote.choice || vote.privateChoice);
+    if (hasBallot) cast += 1;
     if (vote.choice === "yes") publicYes += 1;
     if (vote.privateChoice === "yes") privateYes += 1;
   }
-  return `${votes.length} voter${votes.length === 1 ? "" : "s"} · ${publicYes} pub yes · ${privateYes} priv yes`;
+  const size = Math.max(rosterSize, votes.length);
+  return `${cast}/${size} cast · ${publicYes} pub yes · ${privateYes} priv yes`;
+}
+
+/**
+ * Seat circle starting after the nominee (same order as Town Voting embeds).
+ * Unseated players are appended after the circle.
+ */
+function playersInVoteOrder(
+  players: NominationPlayerOption[],
+  nomineeId: string,
+): NominationPlayerOption[] {
+  const seated = [...players]
+    .filter((player) => player.seat != null)
+    .sort((a, b) => (a.seat ?? 0) - (b.seat ?? 0));
+  const unseated = players.filter((player) => player.seat == null);
+
+  if (seated.length === 0) return [...unseated];
+
+  const nomineeIndex = seated.findIndex((player) => player.id === nomineeId);
+  if (nomineeIndex < 0) return [...seated, ...unseated];
+
+  const start = (nomineeIndex + 1) % seated.length;
+  const ordered: NominationPlayerOption[] = [];
+  for (let offset = 0; offset < seated.length; offset += 1) {
+    ordered.push(seated[(start + offset) % seated.length]!);
+  }
+  return [...ordered, ...unseated];
+}
+
+function buildVoteRoster(
+  nomination: EditableNomination,
+  players: NominationPlayerOption[],
+): VoteTableEntry[] {
+  const byVoter = new Map(nomination.votes.map((vote) => [vote.voterId, vote]));
+  const orderedPlayers = playersInVoteOrder(players, nomination.nomineeId);
+  const rows: VoteTableEntry[] = orderedPlayers.map((player) => {
+    const existing = byVoter.get(player.id);
+    if (existing) {
+      byVoter.delete(player.id);
+      return {
+        id: existing.id,
+        nominationId: nomination.id,
+        voterId: existing.voterId,
+        choice: existing.choice,
+        reason: existing.reason,
+        privateChoice: existing.privateChoice,
+        privateReason: existing.privateReason,
+      };
+    }
+    return {
+      id: null,
+      nominationId: nomination.id,
+      voterId: player.id,
+      choice: null,
+      reason: null,
+      privateChoice: null,
+      privateReason: null,
+    };
+  });
+
+  // Votes for players no longer on the roster (keep them editable).
+  for (const leftover of byVoter.values()) {
+    rows.push({
+      id: leftover.id,
+      nominationId: leftover.nominationId,
+      voterId: leftover.voterId,
+      choice: leftover.choice,
+      reason: leftover.reason,
+      privateChoice: leftover.privateChoice,
+      privateReason: leftover.privateReason,
+    });
+  }
+  return rows;
 }
 
 function PlayerSelect({
@@ -136,76 +222,47 @@ function PlayerSelect({
   );
 }
 
-function ChoiceSelect({
-  name,
-  label,
-  defaultValue,
-  form,
-  id,
-  allowEmpty,
-}: {
-  name: string;
-  label: string;
-  defaultValue?: string | null;
-  form?: string;
-  id?: string;
-  allowEmpty?: boolean;
-}) {
-  const selectId = id ?? name;
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={selectId}>{label}</Label>
-      <select
-        id={selectId}
-        name={name}
-        form={form}
-        defaultValue={defaultValue ?? ""}
-        className={formSelectClassName}
-      >
-        {allowEmpty ? <option value="">— none —</option> : null}
-        {CHOICES.map((choice) => (
-          <option key={choice} value={choice}>
-            {choice}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
 function VoteTableRow({
   gameId,
   vote,
   players,
+  orderIndex,
 }: {
   gameId: string;
-  vote: EditableVote;
+  vote: VoteTableEntry;
   players: NominationPlayerOption[];
+  orderIndex: number;
 }) {
-  const formId = `vote-save-${vote.id}`;
+  const rowKey = vote.id ?? `draft-${vote.nominationId}-${vote.voterId}`;
+  const formId = `vote-save-${rowKey}`;
   const [saveResult, saveAction] = useActionState<SaveResult | null, FormData>(
     saveVote.bind(null, gameId, vote.id),
     null,
   );
   const [deleteResult, deleteAction] = useActionState<SaveResult | null, FormData>(
-    deleteVote.bind(null, gameId, vote.id),
+    deleteVote.bind(null, gameId, vote.id ?? ""),
     null,
   );
+  const pending = !vote.id;
+  const hasBallot = Boolean(vote.choice || vote.privateChoice);
 
   return (
     <TableRow className="hover:bg-transparent align-top">
       <TableCell className="min-w-[9rem]">
         <form id={formId} action={saveAction} />
         <input form={formId} type="hidden" name="nominationId" value={vote.nominationId} />
-        <PlayerSelect
-          form={formId}
-          name="voterId"
-          label={null}
-          players={players}
-          defaultValue={vote.voterId}
-          compact
-          id={`voter-${vote.id}`}
-        />
+        <input form={formId} type="hidden" name="voterId" value={vote.voterId} />
+        <div className="space-y-0.5">
+          <div className="text-sm font-medium">
+            <span className="mr-1.5 text-xs text-muted-foreground">{orderIndex}.</span>
+            {playerName(players, vote.voterId)}
+          </div>
+          {pending ? (
+            <p className="text-xs text-muted-foreground">pending</p>
+          ) : !hasBallot ? (
+            <p className="text-xs text-muted-foreground">no ballot</p>
+          ) : null}
+        </div>
       </TableCell>
       <TableCell className="min-w-[7rem]">
         <select
@@ -263,24 +320,26 @@ function VoteTableRow({
         <div className="flex flex-col items-end gap-1">
           <div className="flex flex-wrap items-center justify-end gap-1">
             <Button type="submit" form={formId} size="sm">
-              Save
+              {pending ? "Set" : "Save"}
             </Button>
-            <form action={deleteAction}>
-              <Button
-                type="submit"
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={(event) => {
-                  if (!window.confirm("Delete this vote?")) event.preventDefault();
-                }}
-              >
-                Delete
-              </Button>
-            </form>
+            {vote.id ? (
+              <form action={deleteAction}>
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={(event) => {
+                    if (!window.confirm("Clear this vote row?")) event.preventDefault();
+                  }}
+                >
+                  Clear
+                </Button>
+              </form>
+            ) : null}
           </div>
           <SaveStatus result={saveResult} />
-          <SaveStatus result={deleteResult} />
+          {vote.id ? <SaveStatus result={deleteResult} /> : null}
         </div>
       </TableCell>
     </TableRow>
@@ -311,17 +370,10 @@ function NominationAccordionItem({
     deleteNomination.bind(null, gameId, nomination.id),
     null,
   );
-  const [voteCreateResult, voteCreateAction] = useActionState<SaveResult | null, FormData>(
-    saveVote.bind(null, gameId, null),
-    null,
+  const voteRoster = useMemo(
+    () => buildVoteRoster(nomination, players),
+    [nomination, players],
   );
-
-  const sortedVotes = useMemo(() => {
-    const seatById = new Map(players.map((player) => [player.id, player.seat ?? 999]));
-    return [...nomination.votes].sort(
-      (a, b) => (seatById.get(a.voterId) ?? 999) - (seatById.get(b.voterId) ?? 999),
-    );
-  }, [nomination.votes, players]);
 
   return (
     <div className="rounded-md border border-border bg-card">
@@ -344,7 +396,9 @@ function NominationAccordionItem({
             </span>
           </div>
           <p className="truncate text-sm text-muted-foreground">{nomination.accusation}</p>
-          <p className="text-xs text-muted-foreground">{votesSummary(nomination.votes)}</p>
+          <p className="text-xs text-muted-foreground">
+            {votesSummary(nomination.votes, players.length)}
+          </p>
         </div>
         <span className="shrink-0 text-xs text-muted-foreground">{open ? "Hide" : "Open"}</span>
       </button>
@@ -452,9 +506,15 @@ function NominationAccordionItem({
           </div>
 
           <div className="space-y-3">
-            <h4 className="text-sm font-medium">Votes</h4>
-            {sortedVotes.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No votes yet.</p>
+            <div className="space-y-1">
+              <h4 className="text-sm font-medium">Votes</h4>
+              <p className="text-xs text-muted-foreground">
+                Full seat circle in Town Voting order (first after the nominee, nominee last).
+                Pending rows are created when you set a ballot.
+              </p>
+            </div>
+            {voteRoster.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No players on this game yet.</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -468,51 +528,18 @@ function NominationAccordionItem({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedVotes.map((vote) => (
+                  {voteRoster.map((vote, index) => (
                     <VoteTableRow
-                      key={vote.id}
+                      key={vote.id ?? `draft-${vote.voterId}`}
                       gameId={gameId}
                       vote={vote}
                       players={players}
+                      orderIndex={index + 1}
                     />
                   ))}
                 </TableBody>
               </Table>
             )}
-
-            <form
-              action={voteCreateAction}
-              className="grid gap-3 rounded-md border border-dashed border-border bg-background/50 p-3 sm:grid-cols-2 lg:grid-cols-3"
-            >
-              <input type="hidden" name="nominationId" value={nomination.id} />
-              <h5 className="col-span-full text-sm font-medium">Add vote</h5>
-              <PlayerSelect name="voterId" label="Voter" players={players} />
-              <ChoiceSelect
-                name="choice"
-                label="Public ballot"
-                defaultValue="yes"
-                allowEmpty
-                id={`new-choice-${nomination.id}`}
-              />
-              <div className="space-y-1.5">
-                <Label htmlFor={`new-reason-${nomination.id}`}>Public reason</Label>
-                <Input id={`new-reason-${nomination.id}`} name="reason" />
-              </div>
-              <ChoiceSelect
-                name="privateChoice"
-                label="Private ballot"
-                allowEmpty
-                id={`new-private-choice-${nomination.id}`}
-              />
-              <div className="space-y-1.5 sm:col-span-2 lg:col-span-2">
-                <Label htmlFor={`new-private-reason-${nomination.id}`}>Private reason</Label>
-                <Input id={`new-private-reason-${nomination.id}`} name="privateReason" />
-              </div>
-              <div className="col-span-full flex flex-wrap items-center gap-3">
-                <SubmitButton>Add vote</SubmitButton>
-                <SaveStatus result={voteCreateResult} />
-              </div>
-            </form>
           </div>
         </div>
       ) : null}

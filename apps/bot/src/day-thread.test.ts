@@ -393,7 +393,7 @@ describe("formatNominationRef", () => {
     const nominationId = engine.getState().day!.nominations[0]!.id;
     const url = "https://discord.com/channels/1/2/3";
     expect(formatNominationRef(engine, nominationId, url)).toBe(
-      `nomination of arlie on sharii🦀 [craboots!] (<${url}>)`,
+      `[nomination of arlie on sharii🦀](${url})`,
     );
     expect(formatNominationRef(engine, nominationId, null)).toBe(
       "nomination of arlie on sharii🦀 [craboots!]",

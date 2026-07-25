@@ -450,14 +450,16 @@ export async function scheduleNominationVoteDeadlineReminder(
   const stMentions = stIds.map((id) => `<@${id}>`).join(" ");
   const voting = await resolveVotingChannel(guild, game, engine);
   const url = await resolveNominationMessageUrl(voting, nominationId);
+  const nominationRef = formatNominationRef(engine, nominationId, url, { capitalize: true });
+  const message = [stMentions.trim(), `${nominationRef} hit the 24h vote deadline — check the vote on the tracker.`]
+    .filter(Boolean)
+    .join(" ");
 
   await createReminder({
     gameId: game.id,
     guildId: game.guildId,
     channelId: kib.id,
-    message: `${stMentions} ${formatNominationRef(engine, nominationId, url, { capitalize: true })} hit the 24h vote deadline — check the vote on the tracker.`
-      .replace(/\s+/g, " ")
-      .trim(),
+    message,
     fireAt: new Date(nomination.voteDeadlineAt),
     createdBy: "system:vote-deadline",
     pingPlayers: false,
