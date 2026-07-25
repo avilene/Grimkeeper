@@ -22,15 +22,22 @@ export function alignmentFromRoleType(type: string): "good" | "evil" | "traveler
   return "good";
 }
 
+export type RolePickMeta = {
+  /** Suggested alignment when a catalog role is chosen. */
+  team?: "good" | "evil" | "traveler";
+};
+
 type RoleComboboxProps = {
   id: string;
   name?: string;
   /** Pass `null` to hide the label (table cells). */
   label?: string | null;
+  /** Controlled role id (preferred). */
+  value?: string;
+  onValueChange?: (roleId: string, meta?: RolePickMeta) => void;
+  /** Uncontrolled fallback when `value` is omitted. */
   defaultValue?: string | null;
   roles: RoleOption[];
-  /** When set, selecting a role fills this `<select>` if it is empty. */
-  teamSelectId?: string;
   compact?: boolean;
 };
 
@@ -38,22 +45,35 @@ export function RoleCombobox({
   id,
   name = "roleId",
   label = "Character / role",
+  value: valueProp,
+  onValueChange,
   defaultValue,
   roles,
-  teamSelectId,
   compact = false,
 }: RoleComboboxProps) {
+  const controlled = valueProp !== undefined;
   const byId = useMemo(() => new Map(roles.map((role) => [role.id, role])), [roles]);
-  const initial = defaultValue?.trim() ?? "";
+  const initial = (valueProp ?? defaultValue)?.trim() ?? "";
   const initialRole = initial ? byId.get(initial) : undefined;
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const [value, setValue] = useState(initial);
-  const [query, setQuery] = useState(initialRole?.name ?? initial);
+  const [uncontrolledValue, setUncontrolledValue] = useState(initial);
+  const value = controlled ? (valueProp ?? "") : uncontrolledValue;
+  const [query, setQuery] = useState(() => {
+    const role = initial ? byId.get(initial) : undefined;
+    return role?.name ?? initial;
+  });
   const [open, setOpen] = useState(false);
   const [menuBox, setMenuBox] = useState<{ top: number; left: number; width: number } | null>(
     null,
   );
+
+  useEffect(() => {
+    if (!controlled) return;
+    const next = (valueProp ?? "").trim();
+    const role = next ? byId.get(next) : undefined;
+    setQuery(role?.name ?? next);
+  }, [controlled, valueProp, byId]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -91,29 +111,33 @@ export function RoleCombobox({
     };
   }, [open, query, filtered.length]);
 
+  function setRole(roleId: string, meta?: RolePickMeta) {
+    if (!controlled) setUncontrolledValue(roleId);
+    onValueChange?.(roleId, meta);
+  }
+
   function pick(role: RoleOption) {
-    setValue(role.id);
     setQuery(role.name);
     setOpen(false);
-    if (!teamSelectId) return;
-    const teamSelect = document.getElementById(teamSelectId);
-    if (!(teamSelect instanceof HTMLSelectElement)) return;
-    if (teamSelect.value) return;
-    teamSelect.value = alignmentFromRoleType(role.type);
+    setRole(role.id, { team: alignmentFromRoleType(role.type) });
   }
 
   function commitTyped() {
     const trimmed = query.trim();
     if (!trimmed) {
-      setValue("");
+      setRole("");
       return;
     }
     if (value && byId.get(value)?.name === trimmed) return;
     const match =
       byId.get(trimmed.toLowerCase()) ||
       roles.find((role) => role.name.toLowerCase() === trimmed.toLowerCase());
-    setValue(match?.id ?? trimmed);
-    if (match) setQuery(match.name);
+    if (match) {
+      setQuery(match.name);
+      setRole(match.id, { team: alignmentFromRoleType(match.type) });
+      return;
+    }
+    setRole(trimmed);
   }
 
   const listbox = open ? (
@@ -181,7 +205,8 @@ export function RoleCombobox({
         )}
         onChange={(event) => {
           setQuery(event.target.value);
-          setValue("");
+          if (!controlled) setUncontrolledValue("");
+          onValueChange?.("");
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}

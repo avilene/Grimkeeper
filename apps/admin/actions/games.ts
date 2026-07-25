@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getBotcRole } from "@grimkeeper/engine";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -27,6 +28,15 @@ function parsePlayerTeam(value: FormDataEntryValue | null): string | null {
     throw new Error(`Invalid team "${team}". Use good, evil, or traveler.`);
   }
   return team;
+}
+
+function teamFromRoleId(roleId: string | null): string | null {
+  if (!roleId) return null;
+  const role = getBotcRole(roleId);
+  if (!role) return null;
+  if (role.team === "traveler") return "traveler";
+  if (role.team === "minion" || role.team === "demon") return "evil";
+  return "good";
 }
 
 export async function saveGame(
@@ -85,20 +95,23 @@ export async function savePlayers(
     }
 
     await prisma.$transaction(
-      playerIds.map((playerId) =>
-        prisma.player.update({
+      playerIds.map((playerId) => {
+        const roleId = emptyToNull(formData.get(`roleId_${playerId}`));
+        const team =
+          parsePlayerTeam(formData.get(`team_${playerId}`)) ?? teamFromRoleId(roleId);
+        return prisma.player.update({
           where: { id: playerId },
           data: {
             displayName: String(formData.get(`displayName_${playerId}`) ?? "").trim(),
             discordUserId: String(formData.get(`discordUserId_${playerId}`) ?? "").trim(),
             seat: parseOptionalInt(formData.get(`seat_${playerId}`)),
-            roleId: emptyToNull(formData.get(`roleId_${playerId}`)),
-            team: parsePlayerTeam(formData.get(`team_${playerId}`)),
+            roleId,
+            team,
             alive: formData.get(`alive_${playerId}`) === "on",
             ghostVoteUsed: formData.get(`ghostVoteUsed_${playerId}`) === "on",
           },
-        }),
-      ),
+        });
+      }),
     );
 
     revalidatePath("/games");
