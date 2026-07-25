@@ -220,6 +220,62 @@ describe("buildNominationEmbed", () => {
     vi.useRealTimers();
   });
 
+  it("updates the Votes close embed field after NominationVoteDeadlineUpdated", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));
+
+    const engine = GameEngine.fromEvents(gameId, baseEvents());
+    engine.apply({
+      type: GameEventType.TownSetup,
+      gameId,
+      channelId: "channel-1",
+      players: [
+        {
+          playerId: "p1",
+          discordUserId: "u1",
+          displayName: "Alice",
+          seat: 1,
+        },
+        {
+          playerId: "p2",
+          discordUserId: "u2",
+          displayName: "Bob",
+          seat: 2,
+        },
+      ],
+      timestamp: new Date().toISOString(),
+    });
+    advanceToDay1(engine);
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: "p1",
+      nomineeId: "p2",
+      accusation: "Looks evil.",
+    })) {
+      engine.apply(event);
+    }
+    const nomination = engine.getState().day!.nominations[0]!;
+    const nextDeadline = "2026-07-02T20:00:00.000Z";
+    engine.apply({
+      type: GameEventType.NominationVoteDeadlineUpdated,
+      gameId,
+      nominationId: nomination.id,
+      voteDeadlineAt: nextDeadline,
+      timestamp: new Date().toISOString(),
+    });
+
+    const updated = engine.getNominationById(nomination.id)!;
+    const embed = buildNominationEmbed(engine, updated);
+    const deadlineField = embed.data.fields?.find((field) => field.name === "Votes close");
+    expect(deadlineField?.value).toBe(
+      `<t:${Math.floor(new Date(nextDeadline).getTime() / 1000)}:R>`,
+    );
+
+    vi.useRealTimers();
+  });
+
   it("hides the vote order list in secret visibility", () => {
     const engine = GameEngine.fromEvents(gameId, baseEvents());
     engine.apply({

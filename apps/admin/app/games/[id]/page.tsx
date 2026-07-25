@@ -73,6 +73,7 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
         defense: nomination.defense,
         order: nomination.order,
         status: nomination.status,
+        voteDeadlineAt: nomination.voteDeadlineAt?.toISOString() ?? null,
         votes: nomination.votes.map((vote) => ({
           id: vote.id,
           nominationId: vote.nominationId,

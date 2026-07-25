@@ -1338,6 +1338,46 @@ describe("GameEngine", () => {
     vi.useRealTimers();
   });
 
+  it("applies NominationVoteDeadlineUpdated to change or clear the deadline", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));
+
+    const engine = setupTownEngine(3);
+    const [nominator, nominee] = engine.getState().players;
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: nominator!.id,
+      nomineeId: nominee!.id,
+      accusation: "Deadline edit.",
+    })) {
+      engine.apply(event);
+    }
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    engine.apply({
+      type: GameEventType.NominationVoteDeadlineUpdated,
+      gameId,
+      nominationId: nomination.id,
+      voteDeadlineAt: "2026-07-03T08:00:00.000Z",
+      timestamp: new Date().toISOString(),
+    });
+    expect(engine.getNominationById(nomination.id)?.voteDeadlineAt).toBe(
+      "2026-07-03T08:00:00.000Z",
+    );
+
+    engine.apply({
+      type: GameEventType.NominationVoteDeadlineUpdated,
+      gameId,
+      nominationId: nomination.id,
+      voteDeadlineAt: null,
+      timestamp: new Date().toISOString(),
+    });
+    expect(engine.getNominationById(nomination.id)?.voteDeadlineAt).toBeNull();
+
+    vi.useRealTimers();
+  });
+
   it("rejects player votes after the nomination deadline", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));

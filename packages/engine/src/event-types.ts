@@ -14,6 +14,7 @@ export const GameEventType = {
   NominationMade: "NominationMade",
   DefenseAdded: "DefenseAdded",
   AccusationUpdated: "AccusationUpdated",
+  NominationVoteDeadlineUpdated: "NominationVoteDeadlineUpdated",
   VoteCast: "VoteCast",
   NominationsPaused: "NominationsPaused",
   NominationsResumed: "NominationsResumed",

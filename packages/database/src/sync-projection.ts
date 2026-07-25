@@ -100,6 +100,7 @@ export async function syncGameProjectionFromEngine(
         defense: nomination.defense,
         order: nomination.order,
         status: nomination.status,
+        voteDeadlineAt: nomination.voteDeadlineAt ? new Date(nomination.voteDeadlineAt) : null,
       },
       update: {
         accusation: nomination.accusation,
@@ -108,6 +109,7 @@ export async function syncGameProjectionFromEngine(
         order: nomination.order,
         nominatorId: nomination.nominatorId,
         nomineeId: nomination.nomineeId,
+        voteDeadlineAt: nomination.voteDeadlineAt ? new Date(nomination.voteDeadlineAt) : null,
       },
     });
   }

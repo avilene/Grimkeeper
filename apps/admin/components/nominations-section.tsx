@@ -77,8 +77,19 @@ export type EditableNomination = {
   defense: string | null;
   order: number;
   status: string;
+  /** ISO string or null — vote close time. */
+  voteDeadlineAt: string | null;
   votes: EditableVote[];
 };
+
+/** `datetime-local` value in the browser's local timezone. */
+function toDatetimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 function playerLabel(player: NominationPlayerOption): string {
   const seat = player.seat == null ? "?" : String(player.seat);
@@ -398,6 +409,9 @@ function NominationAccordionItem({
           <p className="truncate text-sm text-muted-foreground">{nomination.accusation}</p>
           <p className="text-xs text-muted-foreground">
             {votesSummary(nomination.votes, players.length)}
+            {nomination.voteDeadlineAt
+              ? ` · closes ${new Date(nomination.voteDeadlineAt).toLocaleString()}`
+              : ""}
           </p>
         </div>
         <span className="shrink-0 text-xs text-muted-foreground">{open ? "Hide" : "Open"}</span>
@@ -446,6 +460,18 @@ function NominationAccordionItem({
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`deadline-${nomination.id}`}>Votes close</Label>
+              <Input
+                id={`deadline-${nomination.id}`}
+                name="voteDeadlineAt"
+                type="datetime-local"
+                defaultValue={toDatetimeLocalValue(nomination.voteDeadlineAt)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Clear and save to remove the deadline. Push to Discord to reschedule the kib reminder.
+              </p>
             </div>
             <PlayerSelect
               name="nominatorId"
@@ -652,6 +678,18 @@ export function NominationsSection({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-voteDeadlineAt">Votes close</Label>
+            <Input
+              id="new-voteDeadlineAt"
+              name="voteDeadlineAt"
+              type="datetime-local"
+              defaultValue={toDatetimeLocalValue(
+                new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+              )}
+            />
+            <p className="text-xs text-muted-foreground">Defaults to 24 hours from now if left blank.</p>
           </div>
           <PlayerSelect name="nominatorId" label="Nominator" players={players} />
           <PlayerSelect name="nomineeId" label="Nominee" players={players} />

@@ -56,7 +56,7 @@ export async function createReminder(input: CreateReminderInput) {
       where: { sourceKey: data.sourceKey },
     });
     if (existing) {
-      if (!existing.fired) return existing;
+      // Upsert by sourceKey so deadline/message changes reschedule unfired reminders.
       return prisma.gameReminder.update({
         where: { id: existing.id },
         data: { ...data, fired: false },
@@ -75,7 +75,6 @@ export async function createReminder(input: CreateReminderInput) {
       const existing = await prisma.gameReminder.findUniqueOrThrow({
         where: { sourceKey: data.sourceKey },
       });
-      if (!existing.fired) return existing;
       return prisma.gameReminder.update({
         where: { id: existing.id },
         data: { ...data, fired: false },

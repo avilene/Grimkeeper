@@ -20,10 +20,37 @@ import {
 } from "./commands/command-context.js";
 import { logGameEvent } from "./game-events-log.js";
 import { refreshGameStatusForEngine } from "./game-status.js";
+import {
+  cancelVoteDeadlineReminder,
+  scheduleNominationVoteDeadlineReminder,
+} from "./interactions/lock-votes.js";
 import { log } from "./logger.js";
 
 function isVoteChoice(value: string): value is VoteChoice {
   return value === "yes" || value === "no" || value === "conditional";
+}
+
+/** True when projection deadline differs from the engine (including null ↔ set). */
+export function voteDeadlineChanged(
+  engineDeadline: string | null | undefined,
+  projectionDeadline: Date | null | undefined,
+): boolean {
+  const engMs = engineDeadline ? new Date(engineDeadline).getTime() : null;
+  const projMs = projectionDeadline ? projectionDeadline.getTime() : null;
+  return engMs !== projMs;
+}
+
+/** Open, unlocked nominations with a deadline keep a kib vote-deadline reminder. */
+export function shouldKeepVoteDeadlineReminder(nomination: {
+  status: string;
+  votesLocked: boolean;
+  voteDeadlineAt: string | null;
+}): boolean {
+  return (
+    nomination.status === "open" &&
+    !nomination.votesLocked &&
+    Boolean(nomination.voteDeadlineAt)
+  );
 }
 
 /** Append a raw event (already shaped) without going through handle(). */
@@ -76,6 +103,7 @@ export async function reconcileDayProjectionIntoEngine(
 
   for (const nom of dayRow.nominations) {
     const existing = engine.getNominationById(nom.id);
+    const projDeadline = nom.voteDeadlineAt?.toISOString() ?? null;
     if (!existing) {
       await appendAndApply(engine, {
         type: GameEventType.NominationMade,
@@ -85,6 +113,7 @@ export async function reconcileDayProjectionIntoEngine(
         nomineeId: nom.nomineeId,
         accusation: nom.accusation,
         order: nom.order,
+        voteDeadlineAt: projDeadline ?? undefined,
         timestamp: now(),
       });
       appended += 1;
@@ -107,6 +136,16 @@ export async function reconcileDayProjectionIntoEngine(
           nominationId: nom.id,
           playerId: nom.nomineeId,
           defense: nom.defense,
+          timestamp: now(),
+        });
+        appended += 1;
+      }
+      if (voteDeadlineChanged(existing.voteDeadlineAt, nom.voteDeadlineAt)) {
+        await appendAndApply(engine, {
+          type: GameEventType.NominationVoteDeadlineUpdated,
+          gameId: state.gameId,
+          nominationId: nom.id,
+          voteDeadlineAt: projDeadline,
           timestamp: now(),
         });
         appended += 1;
@@ -273,6 +312,27 @@ export async function refreshNominationsFromProjection(
 
   // Refresh embeds for the current day (open + resolved); only open noms are recreated above.
   await refreshAllNominationEverywhere(guild, game, engine);
+
+  // Reschedule (or cancel) vote-deadline kib reminders from the latest deadlines.
+  // Skip locked/resolved noms so refresh does not resurrect a reminder cancelled on lock.
+  for (const nomination of dayNominations) {
+    if (!shouldKeepVoteDeadlineReminder(nomination)) {
+      await cancelVoteDeadlineReminder(nomination.id);
+      continue;
+    }
+    await scheduleNominationVoteDeadlineReminder(
+      guild,
+      {
+        id: game.id,
+        channelId: game.channelId,
+        kibThreadId: game.kibThreadId,
+        guildId: game.guildId ?? engine.getState().guildId,
+      },
+      engine,
+      nomination.id,
+    ).catch(() => undefined);
+  }
+
   return {
     appended,
     missing,

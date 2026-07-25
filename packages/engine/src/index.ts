@@ -85,6 +85,12 @@ export interface AccusationUpdatedEvent extends GameEventBase {
   accusation: string;
 }
 
+export interface NominationVoteDeadlineUpdatedEvent extends GameEventBase {
+  type: typeof GameEventType.NominationVoteDeadlineUpdated;
+  nominationId: string;
+  voteDeadlineAt: string | null;
+}
+
 export interface VoteCastEvent extends GameEventBase {
   type: typeof GameEventType.VoteCast;
   nominationId: string;
@@ -250,6 +256,7 @@ export type GameEvent =
   | NominationMadeEvent
   | DefenseAddedEvent
   | AccusationUpdatedEvent
+  | NominationVoteDeadlineUpdatedEvent
   | VoteCastEvent
   | NominationsPausedEvent
   | NominationsResumedEvent
@@ -1988,6 +1995,13 @@ export class GameEngine {
         const nomination = this.getNominationById(event.nominationId);
         if (nomination) {
           nomination.accusation = event.accusation;
+        }
+        break;
+      }
+      case GameEventType.NominationVoteDeadlineUpdated: {
+        const nomination = this.getNominationById(event.nominationId);
+        if (nomination) {
+          nomination.voteDeadlineAt = event.voteDeadlineAt;
         }
         break;
       }

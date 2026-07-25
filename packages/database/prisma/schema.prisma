@@ -95,16 +95,18 @@ model GameDay {
 }
 
 model Nomination {
-  id          String   @id
-  gameDayId   String
-  nominatorId String
-  nomineeId   String
-  accusation  String
-  defense     String?
-  order       Int
-  status      String
-  gameDay     GameDay  @relation(fields: [gameDayId], references: [id], onDelete: Cascade)
-  votes       Vote[]
+  id             String    @id
+  gameDayId      String
+  nominatorId    String
+  nomineeId      String
+  accusation     String
+  defense        String?
+  order          Int
+  status         String
+  /** When public voting closes (engine 24h deadline; editable in admin). */
+  voteDeadlineAt DateTime?
+  gameDay        GameDay   @relation(fields: [gameDayId], references: [id], onDelete: Cascade)
+  votes          Vote[]
 
   @@index([gameDayId])
   @@index([gameDayId, order])

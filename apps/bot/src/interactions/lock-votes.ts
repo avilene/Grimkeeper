@@ -438,6 +438,7 @@ export async function scheduleNominationVoteDeadlineReminder(
 ): Promise<void> {
   const nomination = engine.getNominationById(nominationId);
   if (!nomination?.voteDeadlineAt) return;
+  if (nomination.status !== "open" || nomination.votesLocked) return;
 
   const kib =
     (await getStorytellerThread(guild, game.channelId, {

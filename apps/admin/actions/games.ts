@@ -329,6 +329,14 @@ export async function saveNomination(
     const defense = emptyToNull(formData.get("defense"));
     const status = String(formData.get("status") ?? "open").trim();
     const order = Number(formData.get("order") ?? 1);
+    const voteDeadlineRaw = String(formData.get("voteDeadlineAt") ?? "").trim();
+    let voteDeadlineAt: Date | null = null;
+    if (voteDeadlineRaw) {
+      voteDeadlineAt = new Date(voteDeadlineRaw);
+      if (Number.isNaN(voteDeadlineAt.getTime())) {
+        return { ok: false, message: "Vote deadline must be a valid date/time." };
+      }
+    }
 
     if (!nominatorId || !nomineeId) {
       return { ok: false, message: "Nominator and nominee are required." };
@@ -360,6 +368,7 @@ export async function saveNomination(
           defense,
           status,
           order,
+          voteDeadlineAt,
         },
       });
     } else {
@@ -373,6 +382,8 @@ export async function saveNomination(
           defense,
           status,
           order,
+          voteDeadlineAt:
+            voteDeadlineAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000),
         },
       });
     }
