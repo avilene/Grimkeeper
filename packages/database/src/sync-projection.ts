@@ -1,9 +1,19 @@
-import type { GameEngine, GameState } from "@grimkeeper/engine";
+import { getBotcRole, type GameEngine, type GameState } from "@grimkeeper/engine";
 
 import { prisma } from "./client.js";
 
 export function shouldSyncDayState(state: GameState): boolean {
   return state.day !== null && state.phase === "day";
+}
+
+/** Default alignment from character catalog when Player.team is unset. */
+export function teamFromRoleId(roleId: string | null | undefined): string | null {
+  if (!roleId) return null;
+  const role = getBotcRole(roleId);
+  if (!role) return null;
+  if (role.team === "traveler") return "traveler";
+  if (role.team === "minion" || role.team === "demon") return "evil";
+  return "good";
 }
 
 export async function syncGameProjectionFromEngine(
@@ -18,18 +28,28 @@ export async function syncGameProjectionFromEngine(
       phase: state.phase,
       dayNumber: state.dayNumber,
       nightNumber: state.nightNumber,
+      winner: state.winner,
     },
   });
 
   for (const player of state.players) {
-    await prisma.player.updateMany({
+    const existing = await prisma.player.findFirst({
       where: { id: player.id, gameId },
+      select: { team: true },
+    });
+    if (!existing) continue;
+
+    const team = existing.team ?? teamFromRoleId(player.roleId);
+
+    await prisma.player.update({
+      where: { id: player.id },
       data: {
         seat: player.seat,
         roleId: player.roleId,
         alive: player.alive,
         ghostVoteUsed: player.ghostVoteUsed,
         displayName: player.displayName,
+        ...(team !== existing.team ? { team } : {}),
       },
     });
   }

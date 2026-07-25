@@ -22,6 +22,7 @@ const PLAYER_DAY_COMMANDS = new Set([
   "privatevote",
   "roster",
   "whisper",
+  "stats",
 ]);
 
 const INTERACTION_DEFER_BUDGET_MS = 2_800;

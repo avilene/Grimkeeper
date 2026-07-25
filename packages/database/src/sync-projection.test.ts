@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDayState, type GameState } from "@grimkeeper/engine";
 
-import { shouldSyncDayState } from "./sync-projection.js";
+import { shouldSyncDayState, teamFromRoleId } from "./sync-projection.js";
 
 function baseState(overrides: Partial<GameState> = {}): GameState {
   return {
@@ -31,5 +31,14 @@ describe("shouldSyncDayState", () => {
   it("returns false outside day phase", () => {
     expect(shouldSyncDayState(baseState({ phase: "night", day: createEmptyDayState(1) }))).toBe(false);
     expect(shouldSyncDayState(baseState({ phase: "day", day: null }))).toBe(false);
+  });
+});
+
+describe("teamFromRoleId", () => {
+  it("maps catalog roles to good / evil / traveler", () => {
+    expect(teamFromRoleId("washerwoman")).toBe("good");
+    expect(teamFromRoleId("imp")).toBe("evil");
+    expect(teamFromRoleId("bureaucrat")).toBe("traveler");
+    expect(teamFromRoleId(null)).toBeNull();
   });
 });

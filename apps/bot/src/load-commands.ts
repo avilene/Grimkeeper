@@ -7,6 +7,7 @@ export async function loadCommandModules(): Promise<void> {
   await import("./commands/player-day-minimal.js");
   await import("./commands/whisper.js");
   await import("./commands/alias.js");
+  await import("./commands/stats.js");
   await import("./commands/role.js");
   await import("./commands/st-minimal.js");
   await import("./commands/st-reminders.js");
@@ -31,6 +32,7 @@ export async function loadCommandModules(): Promise<void> {
       "roster",
       "whisper",
       "alias",
+      "stats",
       "role",
       "st",
       "dev",

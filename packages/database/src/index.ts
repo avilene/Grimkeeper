@@ -4,7 +4,19 @@ import type { GameEvent, Prisma } from "./generated/prisma/client.js";
 export { prisma, PrismaClient } from "./client.js";
 export type { GameEvent, Prisma } from "./generated/prisma/client.js";
 export { bindPrismaLogging, type DbLogFn, type DbLogLevel } from "./logging.js";
-export { syncGameProjectionFromEngine, shouldSyncDayState } from "./sync-projection.js";
+export {
+  syncGameProjectionFromEngine,
+  shouldSyncDayState,
+  teamFromRoleId,
+} from "./sync-projection.js";
+export { backfillGameWinnersFromEvents } from "./backfill-winners.js";
+export {
+  getPlayerStats,
+  aggregatePlayerStats,
+  type PlayerStats,
+  type CharacterStat,
+  type PlayerStatRow,
+} from "./player-stats.js";
 export {
   createReminder,
   createGameReminder,

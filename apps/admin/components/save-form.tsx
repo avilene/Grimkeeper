@@ -2,7 +2,7 @@
 
 import { useFormStatus } from "react-dom";
 
-import type { SaveResult } from "@/actions/games";
+import type { SaveResult } from "@/lib/action-result";
 import { Button } from "@/components/ui/button";
 
 export function SaveStatus({ result }: { result: SaveResult | null }) {
@@ -20,11 +20,19 @@ export function SaveStatus({ result }: { result: SaveResult | null }) {
   );
 }
 
-export function SubmitButton({ children }: { children: React.ReactNode }) {
+export function SubmitButton({
+  children,
+  variant = "default",
+  pendingLabel = "Saving…",
+}: {
+  children: React.ReactNode;
+  variant?: "default" | "secondary" | "destructive" | "outline" | "ghost";
+  pendingLabel?: string;
+}) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" disabled={pending}>
-      {pending ? "Saving…" : children}
+    <Button type="submit" variant={variant} disabled={pending}>
+      {pending ? pendingLabel : children}
     </Button>
   );
 }

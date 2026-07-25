@@ -126,6 +126,7 @@ describe("help content", () => {
     expect(text).toContain("/whisper neighbor");
     expect(text).toContain("/whisper with");
     expect(text).toContain("/alias");
+    expect(text).toContain("/stats");
     expect(text).not.toContain("/game setup");
     expect(text).not.toContain("/st setup-town");
 

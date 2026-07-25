@@ -12,6 +12,12 @@ export async function AppNav() {
       <Link href="/games" className="text-sm font-medium hover:text-primary">
         Games
       </Link>
+      <Link href="/reminders" className="text-sm font-medium hover:text-primary">
+        Reminders
+      </Link>
+      <Link href="/aliases" className="text-sm font-medium hover:text-primary">
+        Aliases
+      </Link>
       <Link href="/queues" className="text-sm font-medium hover:text-primary">
         Queue
       </Link>

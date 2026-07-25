@@ -16,7 +16,8 @@
     "test": "vitest run",
     "db:generate": "prisma generate",
     "db:generate:if-needed": "node scripts/generate-if-stale.mjs",
-    "db:push": "prisma db push && node scripts/generate-if-stale.mjs"
+    "db:push": "prisma db push && node scripts/generate-if-stale.mjs",
+    "db:backfill-winners": "node scripts/backfill-winners.mjs"
   },
   "dependencies": {
     "@grimkeeper/engine": "workspace:*",

@@ -70,7 +70,8 @@ export const GAME_HELP_ENTRIES: HelpEntry[] = [
         : "."),
   })),
   { command: "/game help", description: "Player command guide (optional `search:`)." },
-  { command: "/player help", description: "Day-play guide: nominate, vote, whisper, alias (optional `search:`)." },
+  { command: "/stats", description: "Win rate and most-played characters in this server (optional `user:`)." },
+  { command: "/player help", description: "Day-play guide: nominate, vote, whisper, alias, stats (optional `search:`)." },
 ];
 
 /** Day-play only — nominate / vote / whisper / alias (and related). */
@@ -82,8 +83,12 @@ export const PLAYER_HELP_ENTRIES: HelpEntry[] = [
     description: "Set your display name for this server (used in every game). ST/admin can set `user:`.",
   },
   {
+    command: "/stats",
+    description: "Your win rate and most-played characters in this server (optional `user:`).",
+  },
+  {
     command: "/player help",
-    description: "Day-play guide: nominate, vote, whisper, alias (optional `search:`).",
+    description: "Day-play guide: nominate, vote, whisper, alias, stats (optional `search:`).",
   },
 ];
 
@@ -317,7 +322,7 @@ export function buildPlayerHelpEmbeds(): EmbedBuilder[] {
       .setDescription(
         [
           "Use these during an active game (usually in **Town Voting** or town).",
-          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/whisper`** · **`/alias`** · **`/roster`** · **`/role`**",
+          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/whisper`** · **`/alias`** · **`/stats`** · **`/roster`** · **`/role`**",
           "",
           "Search: `/player help search: whisper`. Full lobby/setup guide: **`/game help`**.",
         ].join("\n"),
@@ -366,6 +371,10 @@ export function buildPlayerHelpEmbeds(): EmbedBuilder[] {
               "/alias",
               "Set your display name for this server (used in nominations, votes, roster). ST/admin can set `user:`.",
             ),
+            cmd(
+              "/stats",
+              "Your win rate and most-played characters in this server (optional `user:`).",
+            ),
             cmd("/roster", "Show seat order and alive/dead status."),
             cmd("/role", "Look up a BotC character by fuzzy name (includes travelers)."),
           ].join("\n\n"),
@@ -382,13 +391,14 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
       .setDescription(
         [
           "Day play uses top-level slash commands — not `/game …`.",
-          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/roster`** · **`/whisper`** · **`/role`** · **`/alias`**",
+          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/roster`** · **`/whisper`** · **`/role`** · **`/alias`** · **`/stats`**",
           "Nominations and votes happen in the **Town Voting** thread once Day 1 begins (`/st next-phase` twice after setup-town: Setup → Night 1 → Day 1).",
           "Each living player may nominate **once per day**; each player (alive or dead) may be nominated **once per day**. Ghosts cannot nominate.",
           "Public ballot: `/vote` (or the Vote button). Private ballot: `/privatevote` (ST sees it on the kib tracker).",
           "Whispers: `/whisper neighbor` opens NW threads with both seats; `/whisper with` takes `@mentions` (optional `name:`; groups default to `Group (names)`).",
           "Character lookup: **`/role name:`** — fuzzy search over official characters (incl. travelers).",
           "Set how your name appears with **`/alias`** (defaults to a short form of your Discord name at setup).",
+          "Ended-game record: **`/stats`** (optional `user:`) for win rate and most-played characters.",
           "",
           "Day-play only: **`/player help`**. Lobby: `/game setup` then **`/st setup-town`**. Full ST guide: **`/st help`**.",
           "Also available as **`/game help`**. Search: `/game help search: vote`.",
@@ -398,11 +408,17 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
         ...doActionFields(PLAYER_VOTE_ACTIONS, "", "Voting"),
         ...doActionFields(PLAYER_DAY_ACTIONS, "", "Day"),
         {
-          name: "Name",
-          value: cmd(
-            "/alias",
-            "Set your display name for this server (used in every game). ST/admin can set `user:`.",
-          ),
+          name: "Name & stats",
+          value: [
+            cmd(
+              "/alias",
+              "Set your display name for this server (used in every game). ST/admin can set `user:`.",
+            ),
+            cmd(
+              "/stats",
+              "Win rate and most-played characters in this server (optional `user:`).",
+            ),
+          ].join("\n\n"),
         },
         ...doActionFields(GAME_LOBBY_ACTIONS, "/game", "Lobby (`/game …`)"),
         ...doActionFields(

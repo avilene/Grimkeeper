@@ -6,9 +6,23 @@ import { saveGame, type SaveResult } from "@/actions/games";
 import { SaveStatus, SubmitButton } from "@/components/save-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+
+const PHASES = ["lobby", "setup", "night", "day", "ended"] as const;
+const WINNERS = [
+  { value: "", label: "—" },
+  { value: "good", label: "Good" },
+  { value: "evil", label: "Evil" },
+] as const;
+
+const selectClassName = cn(
+  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm",
+  "outline-none focus-visible:ring-2 focus-visible:ring-ring",
+);
 
 type GameFields = {
   phase: string;
+  winner: string | null;
   dayNumber: number;
   nightNumber: number;
   guildId: string;
@@ -54,7 +68,36 @@ export function GameFieldsForm({ gameId, game }: { gameId: string; game: GameFie
       action={action}
       className="grid gap-3 rounded-md border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-3"
     >
-      <Field name="phase" label="Phase" defaultValue={game.phase} />
+      <div className="space-y-1.5">
+        <Label htmlFor="phase">Phase</Label>
+        <select
+          id="phase"
+          name="phase"
+          defaultValue={game.phase}
+          className={selectClassName}
+        >
+          {PHASES.map((phase) => (
+            <option key={phase} value={phase}>
+              {phase}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="winner">Winner</Label>
+        <select
+          id="winner"
+          name="winner"
+          defaultValue={game.winner ?? ""}
+          className={selectClassName}
+        >
+          {WINNERS.map((winner) => (
+            <option key={winner.value || "none"} value={winner.value}>
+              {winner.label}
+            </option>
+          ))}
+        </select>
+      </div>
       <Field name="dayNumber" label="Day number" type="number" defaultValue={game.dayNumber} />
       <Field name="nightNumber" label="Night number" type="number" defaultValue={game.nightNumber} />
       <Field name="guildId" label="Guild ID" defaultValue={game.guildId} />

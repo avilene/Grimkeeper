@@ -3,15 +3,16 @@ import { notFound } from "next/navigation";
 import { formatBotcEdition, listBotcRoles } from "@grimkeeper/engine";
 
 import { FlashBanner, WarnBanner } from "@/components/banners";
+import { DeleteGameForm } from "@/components/delete-game-form";
+import { GameDaysSection } from "@/components/game-days-section";
 import { GameFieldsForm } from "@/components/game-fields-form";
+import { GameRemindersSection } from "@/components/game-reminders-section";
 import { PlayersTableForm } from "@/components/players-table-form";
 import type { RoleOption } from "@/components/role-combobox";
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
 import { consumeFlash } from "@/lib/flash";
 import { shortId } from "@/lib/utils";
-
-const ACTIVE_PHASES = ["lobby", "setup", "night", "day"] as const;
 
 function catalogRoleOptions(): RoleOption[] {
   return listBotcRoles()
@@ -36,6 +37,8 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
     where: { id },
     include: {
       players: { orderBy: [{ seat: "asc" }, { displayName: "asc" }] },
+      gameDays: { orderBy: { dayNumber: "asc" } },
+      reminders: { orderBy: { fireAt: "asc" }, take: 50 },
     },
   });
   if (!game) notFound();
@@ -60,19 +63,15 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
       <FlashBanner message={flash} />
       <WarnBanner>
         Direct DB edits. Prefer bot commands when possible. Changing Discord IDs / thread IDs can
-        break live Discord surfaces until they are recreated. Known phases:{" "}
-        {ACTIVE_PHASES.map((p) => (
-          <code key={p} className="mx-0.5">
-            {p}
-          </code>
-        ))}
-        , <code>ended</code>.
+        break live Discord surfaces until they are recreated. Phase is a select; winner applies when
+        phase is <code>ended</code>.
       </WarnBanner>
       <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
         <span>
           ID <code>{game.id}</code>
         </span>
         <span>Created {game.createdAt.toISOString()}</span>
+        {game.winner ? <span>Winner {game.winner}</span> : null}
       </div>
 
       <section className="space-y-3">
@@ -83,6 +82,21 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Players ({game.players.length})</h2>
         <PlayersTableForm gameId={game.id} players={game.players} roles={roleOptions} />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Days ({game.gameDays.length})</h2>
+        <GameDaysSection gameId={game.id} days={game.gameDays} />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Reminders ({game.reminders.length})</h2>
+        <GameRemindersSection gameId={game.id} reminders={game.reminders} />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-destructive">Danger zone</h2>
+        <DeleteGameForm gameId={game.id} />
       </section>
     </div>
   );
