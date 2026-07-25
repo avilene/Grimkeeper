@@ -18,6 +18,7 @@ const QUEUE_MODAL_SUBCOMMANDS = new Set(["join", "edit"]);
 const PLAYER_DAY_COMMANDS = new Set([
   "nominate",
   "defend",
+  "accusation",
   "vote",
   "privatevote",
   "roster",

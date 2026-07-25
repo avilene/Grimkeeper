@@ -7,6 +7,7 @@ import { DeleteGameForm } from "@/components/delete-game-form";
 import { GameDaysSection } from "@/components/game-days-section";
 import { GameFieldsForm } from "@/components/game-fields-form";
 import { GameRemindersSection } from "@/components/game-reminders-section";
+import { NominationsSection } from "@/components/nominations-section";
 import { PlayersTableForm } from "@/components/players-table-form";
 import type { RoleOption } from "@/components/role-combobox";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,15 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
     where: { id },
     include: {
       players: { orderBy: [{ seat: "asc" }, { displayName: "asc" }] },
-      gameDays: { orderBy: { dayNumber: "asc" } },
+      gameDays: {
+        orderBy: { dayNumber: "asc" },
+        include: {
+          nominations: {
+            orderBy: { order: "asc" },
+            include: { votes: { orderBy: { id: "asc" } } },
+          },
+        },
+      },
       reminders: { orderBy: { fireAt: "asc" }, take: 50 },
     },
   });
@@ -51,6 +60,21 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
     roleOptions.push({ id: roleId, name: roleId, type: "custom", edition: "in game" });
     knownIds.add(roleId);
   }
+
+  const nominations = game.gameDays.flatMap((day) =>
+    day.nominations.map((nomination) => ({
+      id: nomination.id,
+      gameDayId: day.id,
+      dayNumber: day.dayNumber,
+      nominatorId: nomination.nominatorId,
+      nomineeId: nomination.nomineeId,
+      accusation: nomination.accusation,
+      defense: nomination.defense,
+      order: nomination.order,
+      status: nomination.status,
+      votes: nomination.votes,
+    })),
+  );
 
   return (
     <div className="space-y-6">
@@ -87,6 +111,16 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Days ({game.gameDays.length})</h2>
         <GameDaysSection gameId={game.id} days={game.gameDays} />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Nominations & votes ({nominations.length})</h2>
+        <NominationsSection
+          gameId={game.id}
+          players={game.players}
+          days={game.gameDays.map((day) => ({ id: day.id, dayNumber: day.dayNumber }))}
+          nominations={nominations}
+        />
       </section>
 
       <section className="space-y-3">

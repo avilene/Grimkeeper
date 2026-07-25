@@ -322,7 +322,7 @@ export function buildPlayerHelpEmbeds(): EmbedBuilder[] {
       .setDescription(
         [
           "Use these during an active game (usually in **Town Voting** or town).",
-          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/whisper`** · **`/alias`** · **`/stats`** · **`/roster`** · **`/role`**",
+          "**`/nominate`** · **`/accusation`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/whisper`** · **`/alias`** · **`/stats`** · **`/roster`** · **`/role`**",
           "",
           "Search: `/player help search: whisper`. Full lobby/setup guide: **`/game help`**.",
         ].join("\n"),
@@ -334,6 +334,10 @@ export function buildPlayerHelpEmbeds(): EmbedBuilder[] {
             cmd(
               "/nominate",
               "Nominate a living player (`player:` + `accusation:`). Once per living player per day; each person may be nominated once per day. Ghosts cannot nominate.",
+            ),
+            cmd(
+              "/accusation",
+              "Update the accusation text on an open nomination you made (`text:`).",
             ),
             cmd("/defend", "Add your defense text when you are the nominee on an open nomination."),
           ].join("\n\n"),
@@ -391,9 +395,10 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
       .setDescription(
         [
           "Day play uses top-level slash commands — not `/game …`.",
-          "**`/nominate`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/roster`** · **`/whisper`** · **`/role`** · **`/alias`** · **`/stats`**",
+          "**`/nominate`** · **`/accusation`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/roster`** · **`/whisper`** · **`/role`** · **`/alias`** · **`/stats`**",
           "Nominations and votes happen in the **Town Voting** thread once Day 1 begins (`/st next-phase` twice after setup-town: Setup → Night 1 → Day 1).",
           "Each living player may nominate **once per day**; each player (alive or dead) may be nominated **once per day**. Ghosts cannot nominate.",
+          "Update your accusation with **`/accusation`**. Nominee defense: **`/defend`**.",
           "Public ballot: `/vote` (or the Vote button). Private ballot: `/privatevote` (ST sees it on the kib tracker).",
           "Whispers: `/whisper neighbor` opens NW threads with both seats; `/whisper with` takes `@mentions` (optional `name:`; groups default to `Group (names)`).",
           "Character lookup: **`/role name:`** — fuzzy search over official characters (incl. travelers).",
@@ -614,7 +619,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
         {
           name: "During the day",
           value: checklist([
-            "Players: `/nominate`, `/defend`, `/vote` (public), `/privatevote` (private)",
+            "Players: `/nominate`, `/accusation`, `/defend`, `/vote` (public), `/privatevote` (private)",
             "Watch kib vote tracker — refresh with `/st do votes` if needed",
             "Lock / count / announce from Town Voting or the panel",
             "`/st resolve-next` (or panel) — resolve oldest open nomination",

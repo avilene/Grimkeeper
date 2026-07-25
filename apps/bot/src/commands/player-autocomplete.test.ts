@@ -51,13 +51,9 @@ describe("filterPlayersForAutocomplete", () => {
     player({ id: "p3", discordUserId: "333", displayName: "Carol", seat: 3 }),
   ];
 
-  it("returns all living nominees excluding self for nominate", () => {
-    const matches = filterPlayersForAutocomplete(
-      roster,
-      { excludeUserId: "111" },
-      "",
-    );
-    expect(matches.map((p) => p.displayName)).toEqual(["Bob", "Carol"]);
+  it("includes self in nominate autocomplete roster", () => {
+    const matches = filterPlayersForAutocomplete(roster, {}, "");
+    expect(matches.map((p) => p.displayName)).toEqual(["Alice", "Bob", "Carol"]);
   });
 
   it("filters by typed name without requiring Discord role membership", () => {

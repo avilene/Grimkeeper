@@ -803,6 +803,48 @@ describe("GameEngine", () => {
     expect(engine.getNominationById(nomination.id)?.defense).toBe("I am good.");
   });
 
+  it("allows the nominator to update their accusation", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(3));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const players = engine.getState().players;
+    const nominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Original accusation.",
+    });
+    for (const event of nominationEvents) engine.apply(event);
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    const updated = engine.handle({
+      kind: GameCommandKind.UpdateAccusation,
+      gameId,
+      playerId: players[0]!.id,
+      nominationId: nomination.id,
+      accusation: "Updated accusation.",
+    });
+    for (const event of updated) engine.apply(event);
+
+    expect(engine.getNominationById(nomination.id)?.accusation).toBe("Updated accusation.");
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.UpdateAccusation,
+        gameId,
+        playerId: players[1]!.id,
+        nominationId: nomination.id,
+        accusation: "Not my nomination.",
+      }),
+    ).toThrow("Only the nominator can update the accusation");
+  });
+
   it("hides vote tallies in secret mode until revealed", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(5));
     engine.apply({
@@ -1110,6 +1152,25 @@ describe("GameEngine", () => {
         accusation: "Ghost accusation.",
       }),
     ).toThrow("Ghosts cannot nominate");
+  });
+
+  it("allows nominating yourself", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    const self = players[0]!;
+
+    const events = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: self.id,
+      nomineeId: self.id,
+      accusation: "I am the demon.",
+    });
+    for (const event of events) engine.apply(event);
+
+    const nomination = engine.getState().day!.nominations[0]!;
+    expect(nomination.nominatorId).toBe(self.id);
+    expect(nomination.nomineeId).toBe(self.id);
   });
 
   it("allows nominating a dead player", () => {

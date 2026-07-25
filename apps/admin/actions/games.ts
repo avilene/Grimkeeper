@@ -281,3 +281,208 @@ export async function deleteGameDay(
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
+
+const NOMINATION_STATUSES = new Set([
+  "open",
+  "resolved_pass",
+  "resolved_fail",
+  "executed",
+]);
+const VOTE_CHOICES = new Set(["yes", "no", "conditional"]);
+
+async function assertGameDay(gameId: string, gameDayId: string) {
+  const day = await prisma.gameDay.findFirst({
+    where: { id: gameDayId, gameId },
+    select: { id: true },
+  });
+  if (!day) throw new Error("Game day not found on this game.");
+  return day;
+}
+
+async function assertPlayersOnGame(gameId: string, playerIds: string[]) {
+  const unique = [...new Set(playerIds.filter(Boolean))];
+  if (unique.length === 0) return;
+  const found = await prisma.player.findMany({
+    where: { gameId, id: { in: unique } },
+    select: { id: true },
+  });
+  if (found.length !== unique.length) {
+    throw new Error("One or more players do not belong to this game.");
+  }
+}
+
+export async function saveNomination(
+  gameId: string,
+  nominationId: string | null,
+  _prev: SaveResult | null,
+  formData: FormData,
+): Promise<SaveResult> {
+  await requireSession();
+  try {
+    const gameDayId = String(formData.get("gameDayId") ?? "").trim();
+    await assertGameDay(gameId, gameDayId);
+
+    const nominatorId = String(formData.get("nominatorId") ?? "").trim();
+    const nomineeId = String(formData.get("nomineeId") ?? "").trim();
+    const accusation = String(formData.get("accusation") ?? "").trim();
+    const defense = emptyToNull(formData.get("defense"));
+    const status = String(formData.get("status") ?? "open").trim();
+    const order = Number(formData.get("order") ?? 1);
+
+    if (!nominatorId || !nomineeId) {
+      return { ok: false, message: "Nominator and nominee are required." };
+    }
+    if (!accusation) {
+      return { ok: false, message: "Accusation is required." };
+    }
+    if (!NOMINATION_STATUSES.has(status)) {
+      return { ok: false, message: `Invalid status "${status}".` };
+    }
+    if (!Number.isInteger(order) || order < 1) {
+      return { ok: false, message: "Order must be a positive integer." };
+    }
+    await assertPlayersOnGame(gameId, [nominatorId, nomineeId]);
+
+    if (nominationId) {
+      const existing = await prisma.nomination.findFirst({
+        where: { id: nominationId, gameDay: { gameId } },
+        select: { id: true },
+      });
+      if (!existing) return { ok: false, message: "Nomination not found on this game." };
+      await prisma.nomination.update({
+        where: { id: nominationId },
+        data: {
+          gameDayId,
+          nominatorId,
+          nomineeId,
+          accusation,
+          defense,
+          status,
+          order,
+        },
+      });
+    } else {
+      await prisma.nomination.create({
+        data: {
+          id: crypto.randomUUID(),
+          gameDayId,
+          nominatorId,
+          nomineeId,
+          accusation,
+          defense,
+          status,
+          order,
+        },
+      });
+    }
+
+    revalidatePath(`/games/${gameId}`);
+    return { ok: true, message: nominationId ? "Nomination saved." : "Nomination created." };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function deleteNomination(
+  gameId: string,
+  nominationId: string,
+  _prev: SaveResult | null,
+  _formData: FormData,
+): Promise<SaveResult> {
+  await requireSession();
+  try {
+    const result = await prisma.nomination.deleteMany({
+      where: { id: nominationId, gameDay: { gameId } },
+    });
+    if (result.count === 0) {
+      return { ok: false, message: "Nomination not found on this game." };
+    }
+    revalidatePath(`/games/${gameId}`);
+    return { ok: true, message: "Nomination deleted." };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function saveVote(
+  gameId: string,
+  voteId: string | null,
+  _prev: SaveResult | null,
+  formData: FormData,
+): Promise<SaveResult> {
+  await requireSession();
+  try {
+    const nominationId = String(formData.get("nominationId") ?? "").trim();
+    const voterId = String(formData.get("voterId") ?? "").trim();
+    const choice = String(formData.get("choice") ?? "").trim();
+    const reason = emptyToNull(formData.get("reason"));
+
+    if (!nominationId || !voterId) {
+      return { ok: false, message: "Nomination and voter are required." };
+    }
+    if (!VOTE_CHOICES.has(choice)) {
+      return { ok: false, message: `Invalid choice "${choice}". Use yes, no, or conditional.` };
+    }
+
+    const nomination = await prisma.nomination.findFirst({
+      where: { id: nominationId, gameDay: { gameId } },
+      select: { id: true, gameDayId: true },
+    });
+    if (!nomination) return { ok: false, message: "Nomination not found on this game." };
+    await assertPlayersOnGame(gameId, [voterId]);
+
+    if (voteId) {
+      const existing = await prisma.vote.findFirst({
+        where: { id: voteId, gameDay: { gameId } },
+        select: { id: true },
+      });
+      if (!existing) return { ok: false, message: "Vote not found on this game." };
+      await prisma.vote.update({
+        where: { id: voteId },
+        data: {
+          nominationId,
+          voterId,
+          choice,
+          reason,
+          gameDayId: nomination.gameDayId,
+        },
+      });
+    } else {
+      await prisma.vote.create({
+        data: {
+          gameDayId: nomination.gameDayId,
+          nominationId,
+          voterId,
+          choice,
+          reason,
+        },
+      });
+    }
+
+    revalidatePath(`/games/${gameId}`);
+    return { ok: true, message: voteId ? "Vote saved." : "Vote created." };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function deleteVote(
+  gameId: string,
+  voteId: string,
+  _prev: SaveResult | null,
+  _formData: FormData,
+): Promise<SaveResult> {
+  await requireSession();
+  try {
+    const result = await prisma.vote.deleteMany({
+      where: { id: voteId, gameDay: { gameId } },
+    });
+    if (result.count === 0) {
+      return { ok: false, message: "Vote not found on this game." };
+    }
+    revalidatePath(`/games/${gameId}`);
+    return { ok: true, message: "Vote deleted." };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}

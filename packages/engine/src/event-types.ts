@@ -13,6 +13,7 @@ export const GameEventType = {
   PlayerDied: "PlayerDied",
   NominationMade: "NominationMade",
   DefenseAdded: "DefenseAdded",
+  AccusationUpdated: "AccusationUpdated",
   VoteCast: "VoteCast",
   NominationsPaused: "NominationsPaused",
   NominationsResumed: "NominationsResumed",

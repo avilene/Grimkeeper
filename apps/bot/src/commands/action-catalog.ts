@@ -108,6 +108,7 @@ export const ST_SETUP_ACTIONS: DoAction[] = [
 export const PLAYER_DAY_ACTIONS: DoAction[] = [
   { name: "nominate", description: "Nominate a player (autocomplete from game roster)", needs: ["player", "accusation"] },
   { name: "defend", description: "Add defense to an open nomination against you", needs: ["text"] },
+  { name: "accusation", description: "Update your accusation on an open nomination you made", needs: ["text"] },
   { name: "roster", description: "Show seat order and alive/dead" },
   {
     name: "whisper neighbor",

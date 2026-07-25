@@ -27,6 +27,7 @@ export async function loadCommandModules(): Promise<void> {
       "player",
       "nominate",
       "defend",
+      "accusation",
       "vote",
       "privatevote",
       "roster",

@@ -78,6 +78,13 @@ export interface DefenseAddedEvent extends GameEventBase {
   defense: string;
 }
 
+export interface AccusationUpdatedEvent extends GameEventBase {
+  type: typeof GameEventType.AccusationUpdated;
+  nominationId: string;
+  playerId: string;
+  accusation: string;
+}
+
 export interface VoteCastEvent extends GameEventBase {
   type: typeof GameEventType.VoteCast;
   nominationId: string;
@@ -242,6 +249,7 @@ export type GameEvent =
   | PlayerDiedEvent
   | NominationMadeEvent
   | DefenseAddedEvent
+  | AccusationUpdatedEvent
   | VoteCastEvent
   | NominationsPausedEvent
   | NominationsResumedEvent
@@ -413,6 +421,14 @@ export interface AddDefenseCommand {
   playerId: string;
   nominationId: string;
   defense: string;
+}
+
+export interface UpdateAccusationCommand {
+  kind: typeof GameCommandKind.UpdateAccusation;
+  gameId: string;
+  playerId: string;
+  nominationId: string;
+  accusation: string;
 }
 
 export interface CastVoteCommand {
@@ -592,6 +608,7 @@ export type GameCommand =
   | MakeNominationCommand
   | OpenDayCommand
   | AddDefenseCommand
+  | UpdateAccusationCommand
   | CastVoteCommand
   | SetPlayerVoteCommand
   | KillPlayerCommand
@@ -1052,9 +1069,6 @@ export class GameEngine {
         this.assertDayState();
         this.assertNominationsAcceptingNew();
         this.assertAlivePlayer(command.nominatorId, "Ghosts cannot nominate.");
-        if (command.nominatorId === command.nomineeId) {
-          throw new GameEngineError("You cannot nominate yourself.");
-        }
         if (!command.accusation.trim()) {
           throw new GameEngineError("An accusation is required.");
         }
@@ -1093,6 +1107,21 @@ export class GameEngine {
         }
         if (!command.defense.trim()) {
           throw new GameEngineError("Defense text is required.");
+        }
+        break;
+      }
+      case GameCommandKind.UpdateAccusation: {
+        this.assertPhase("day", "Accusations can only be updated during the day.");
+        this.assertDayState();
+        const nomination = this.getNominationById(command.nominationId);
+        if (!nomination || nomination.status !== "open") {
+          throw new GameEngineError("That nomination is not open.");
+        }
+        if (nomination.nominatorId !== command.playerId) {
+          throw new GameEngineError("Only the nominator can update the accusation.");
+        }
+        if (!command.accusation.trim()) {
+          throw new GameEngineError("An accusation is required.");
         }
         break;
       }
@@ -1557,6 +1586,17 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
+      case GameCommandKind.UpdateAccusation:
+        return [
+          {
+            type: GameEventType.AccusationUpdated,
+            gameId: command.gameId,
+            nominationId: command.nominationId,
+            playerId: command.playerId,
+            accusation: command.accusation.trim(),
+            timestamp: new Date().toISOString(),
+          },
+        ];
       case GameCommandKind.CastVote:
         return [
           {
@@ -1941,6 +1981,13 @@ export class GameEngine {
         const nomination = this.getNominationById(event.nominationId);
         if (nomination) {
           nomination.defense = event.defense;
+        }
+        break;
+      }
+      case GameEventType.AccusationUpdated: {
+        const nomination = this.getNominationById(event.nominationId);
+        if (nomination) {
+          nomination.accusation = event.accusation;
         }
         break;
       }

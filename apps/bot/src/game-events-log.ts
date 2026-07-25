@@ -60,6 +60,8 @@ function eventFields(event: GameEvent): Record<string, unknown> {
       };
     case GameEventType.DefenseAdded:
       return { nominationId: event.nominationId, playerId: event.playerId };
+    case GameEventType.AccusationUpdated:
+      return { nominationId: event.nominationId, playerId: event.playerId };
     case GameEventType.VoteCast:
       return {
         nominationId: event.nominationId,

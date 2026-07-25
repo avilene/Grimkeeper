@@ -102,6 +102,7 @@ describe("shouldDeferSlashCommand", () => {
   it("defers top-level day commands", () => {
     expect(shouldDeferSlashCommand(chatCommand("nominate", null) as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("defend", null) as never)).toBe(true);
+    expect(shouldDeferSlashCommand(chatCommand("accusation", null) as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("vote", null) as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("privatevote", null) as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("roster", null) as never)).toBe(true);

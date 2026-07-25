@@ -121,6 +121,7 @@ describe("help content", () => {
     expect(player.data.title).toBe("Player day commands");
     expect(player.data.description).toContain("/player help");
     expect(text).toContain("/nominate");
+    expect(text).toContain("/accusation");
     expect(text).toContain("/vote");
     expect(text).toContain("/privatevote");
     expect(text).toContain("/whisper neighbor");

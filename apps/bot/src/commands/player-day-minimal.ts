@@ -29,9 +29,7 @@ import {
 async function respondNominatePlayerAutocomplete(
   interaction: AutocompleteInteraction,
 ): Promise<void> {
-  await respondGamePlayerAutocomplete(interaction, {
-    excludeUserId: interaction.user.id,
-  });
+  await respondGamePlayerAutocomplete(interaction);
 }
 
 async function respondVoteNomineeAutocomplete(
@@ -141,7 +139,7 @@ async function castPlayerVote(
   }
 }
 
-/** Top-level player day commands — `/nominate`, `/defend`, `/vote`, `/privatevote`, `/roster`. */
+/** Top-level player day commands — `/nominate`, `/accusation`, `/defend`, `/vote`, `/privatevote`, `/roster`. */
 @Discord()
 export class PlayerDayCommandsMinimal {
   @Slash({ name: "nominate", description: "Nominate a player (Town Voting)" })
@@ -221,6 +219,61 @@ export class PlayerDayCommandsMinimal {
           flags: MessageFlags.Ephemeral,
         });
       }
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  @Slash({ name: "accusation", description: "Update your accusation on an open nomination you made" })
+  async accusation(
+    @SlashOption({
+      name: "text",
+      description: "Updated accusation text",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    text: string,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+
+    const context = await requireActivePlayerGame(interaction);
+    if (!context) return;
+
+    const { game, engine, player } = context;
+    if (!(await requireTownVotingChannel(interaction, game, engine))) return;
+
+    const nomination = engine
+      .getState()
+      .day?.nominations.find(
+        (candidate) => candidate.nominatorId === player.id && candidate.status === "open",
+      );
+    if (!nomination) {
+      await replyOrEditInteraction(interaction, {
+        content: "You do not have an open nomination whose accusation you can update.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      const events = engine.handle({
+        kind: GameCommandKind.UpdateAccusation,
+        gameId: game.id,
+        nominationId: nomination.id,
+        playerId: player.id,
+        accusation: text,
+      });
+      await persistEvents(engine, events);
+
+      if (interaction.guild) {
+        await refreshNominationEverywhere(interaction.guild, game, engine, nomination.id);
+      }
+
+      await replyOrEditInteraction(interaction, {
+        content: "Accusation updated.",
+        flags: MessageFlags.Ephemeral,
+      });
     } catch (error) {
       await replyEngineError(interaction, error);
     }

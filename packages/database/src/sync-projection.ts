@@ -102,8 +102,12 @@ export async function syncGameProjectionFromEngine(
         status: nomination.status,
       },
       update: {
+        accusation: nomination.accusation,
         defense: nomination.defense,
         status: nomination.status,
+        order: nomination.order,
+        nominatorId: nomination.nominatorId,
+        nomineeId: nomination.nomineeId,
       },
     });
   }

@@ -11,6 +11,7 @@ export const GameCommandKind = {
   MakeNomination: "MakeNomination",
   OpenDay: "OpenDay",
   AddDefense: "AddDefense",
+  UpdateAccusation: "UpdateAccusation",
   CastVote: "CastVote",
   SetPlayerVote: "SetPlayerVote",
   KillPlayer: "KillPlayer",
