@@ -61,20 +61,22 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
     knownIds.add(roleId);
   }
 
-  const nominations = game.gameDays.flatMap((day) =>
-    day.nominations.map((nomination) => ({
-      id: nomination.id,
-      gameDayId: day.id,
-      dayNumber: day.dayNumber,
-      nominatorId: nomination.nominatorId,
-      nomineeId: nomination.nomineeId,
-      accusation: nomination.accusation,
-      defense: nomination.defense,
-      order: nomination.order,
-      status: nomination.status,
-      votes: nomination.votes,
-    })),
-  );
+  const nominations = game.gameDays
+    .flatMap((day) =>
+      day.nominations.map((nomination) => ({
+        id: nomination.id,
+        gameDayId: day.id,
+        dayNumber: day.dayNumber,
+        nominatorId: nomination.nominatorId,
+        nomineeId: nomination.nomineeId,
+        accusation: nomination.accusation,
+        defense: nomination.defense,
+        order: nomination.order,
+        status: nomination.status,
+        votes: nomination.votes,
+      })),
+    )
+    .sort((a, b) => a.dayNumber - b.dayNumber || a.order - b.order || a.id.localeCompare(b.id));
 
   return (
     <div className="space-y-6">

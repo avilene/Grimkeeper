@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useMemo, useState } from "react";
 
 import {
   deleteNomination,
@@ -14,13 +14,28 @@ import { SaveStatus, SubmitButton } from "@/components/save-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { cn, shortId } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 const STATUSES = ["open", "resolved_pass", "resolved_fail", "executed"] as const;
 const CHOICES = ["yes", "no", "conditional"] as const;
 
-const selectClassName = cn(
+const cellInputClass = cn(
+  "h-8 min-w-[7rem] rounded-md border border-input bg-background px-2 text-sm shadow-sm",
+  "outline-none focus-visible:ring-2 focus-visible:ring-ring",
+);
+
+const selectClassName = cn(cellInputClass, "w-full");
+
+const formSelectClassName = cn(
   "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm",
   "outline-none focus-visible:ring-2 focus-visible:ring-ring",
 );
@@ -57,26 +72,48 @@ function playerLabel(player: NominationPlayerOption): string {
   return `#${seat} ${player.displayName}`;
 }
 
+function votesSummary(votes: EditableVote[]): string {
+  if (votes.length === 0) return "—";
+  let yes = 0;
+  let no = 0;
+  let conditional = 0;
+  for (const vote of votes) {
+    if (vote.choice === "yes") yes += 1;
+    else if (vote.choice === "no") no += 1;
+    else if (vote.choice === "conditional") conditional += 1;
+  }
+  return `${yes}Y · ${no}N · ${conditional}C`;
+}
+
 function PlayerSelect({
   name,
   label,
   players,
   defaultValue,
+  form,
+  compact,
+  id,
 }: {
   name: string;
-  label: string;
+  label: string | null;
   players: NominationPlayerOption[];
   defaultValue?: string;
+  form?: string;
+  compact?: boolean;
+  id?: string;
 }) {
+  const selectId = id ?? name;
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor={name}>{label}</Label>
+    <div className={compact ? undefined : "space-y-1.5"}>
+      {label ? <Label htmlFor={selectId}>{label}</Label> : null}
       <select
-        id={name}
+        id={selectId}
         name={name}
+        form={form}
         required
         defaultValue={defaultValue ?? ""}
-        className={selectClassName}
+        className={compact ? selectClassName : formSelectClassName}
+        aria-label={label ?? undefined}
       >
         <option value="" disabled>
           Select player
@@ -91,17 +128,22 @@ function PlayerSelect({
   );
 }
 
-function NominationCard({
+function NominationTableRow({
   gameId,
   nomination,
   players,
   days,
+  expanded,
+  onToggleExpanded,
 }: {
   gameId: string;
   nomination: EditableNomination;
   players: NominationPlayerOption[];
   days: Array<{ id: string; dayNumber: number }>;
+  expanded: boolean;
+  onToggleExpanded: () => void;
 }) {
+  const formId = `nom-save-${nomination.id}`;
   const [saveResult, saveAction] = useActionState<SaveResult | null, FormData>(
     saveNomination.bind(null, gameId, nomination.id),
     null,
@@ -116,24 +158,28 @@ function NominationCard({
   );
 
   return (
-    <div className="space-y-4 rounded-md border border-border bg-card p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium">
-          Day {nomination.dayNumber} · order {nomination.order} ·{" "}
-          <code className="text-xs">{shortId(nomination.id)}</code>
-        </h3>
-        <span className="text-xs text-muted-foreground">{nomination.status}</span>
-      </div>
-
-      <form action={saveAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="space-y-1.5">
-          <Label htmlFor={`day-${nomination.id}`}>Game day</Label>
+    <>
+      <TableRow className="hover:bg-transparent">
+        <TableCell className="w-16">
+          <form id={formId} action={saveAction} />
+          <Input
+            form={formId}
+            name="order"
+            type="number"
+            defaultValue={nomination.order}
+            required
+            className={cn(cellInputClass, "w-14")}
+            aria-label={`Order for nomination ${nomination.order}`}
+          />
+        </TableCell>
+        <TableCell className="w-28">
           <select
-            id={`day-${nomination.id}`}
+            form={formId}
             name="gameDayId"
             defaultValue={nomination.gameDayId}
             className={selectClassName}
             required
+            aria-label={`Day for nomination ${nomination.order}`}
           >
             {days.map((day) => (
               <option key={day.id} value={day.id}>
@@ -141,24 +187,54 @@ function NominationCard({
               </option>
             ))}
           </select>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor={`order-${nomination.id}`}>Order</Label>
-          <Input
-            id={`order-${nomination.id}`}
-            name="order"
-            type="number"
-            defaultValue={nomination.order}
-            required
+        </TableCell>
+        <TableCell className="min-w-[9rem]">
+          <PlayerSelect
+            form={formId}
+            name="nominatorId"
+            label={null}
+            players={players}
+            defaultValue={nomination.nominatorId}
+            compact
+            id={`nominator-${nomination.id}`}
           />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor={`status-${nomination.id}`}>Status</Label>
+        </TableCell>
+        <TableCell className="min-w-[9rem]">
+          <PlayerSelect
+            form={formId}
+            name="nomineeId"
+            label={null}
+            players={players}
+            defaultValue={nomination.nomineeId}
+            compact
+            id={`nominee-${nomination.id}`}
+          />
+        </TableCell>
+        <TableCell className="min-w-[12rem]">
+          <Input
+            form={formId}
+            name="accusation"
+            defaultValue={nomination.accusation}
+            required
+            className={cn(cellInputClass, "min-w-[12rem]")}
+            aria-label={`Accusation for nomination ${nomination.order}`}
+          />
+          {expanded ? null : (
+            <input
+              form={formId}
+              type="hidden"
+              name="defense"
+              defaultValue={nomination.defense ?? ""}
+            />
+          )}
+        </TableCell>
+        <TableCell className="w-36">
           <select
-            id={`status-${nomination.id}`}
+            form={formId}
             name="status"
             defaultValue={nomination.status}
             className={selectClassName}
+            aria-label={`Status for nomination ${nomination.order}`}
           >
             {STATUSES.map((status) => (
               <option key={status} value={status}>
@@ -166,109 +242,126 @@ function NominationCard({
               </option>
             ))}
           </select>
-        </div>
-        <PlayerSelect
-          name="nominatorId"
-          label="Nominator"
-          players={players}
-          defaultValue={nomination.nominatorId}
-        />
-        <PlayerSelect
-          name="nomineeId"
-          label="Nominee"
-          players={players}
-          defaultValue={nomination.nomineeId}
-        />
-        <div className="space-y-1.5 sm:col-span-2 lg:col-span-3">
-          <Label htmlFor={`accusation-${nomination.id}`}>Accusation</Label>
-          <Textarea
-            id={`accusation-${nomination.id}`}
-            name="accusation"
-            defaultValue={nomination.accusation}
-            rows={2}
-            required
-          />
-        </div>
-        <div className="space-y-1.5 sm:col-span-2 lg:col-span-3">
-          <Label htmlFor={`defense-${nomination.id}`}>Defense</Label>
-          <Textarea
-            id={`defense-${nomination.id}`}
-            name="defense"
-            defaultValue={nomination.defense ?? ""}
-            rows={2}
-          />
-        </div>
-        <div className="col-span-full flex flex-wrap items-center gap-3">
-          <SubmitButton>Save nomination</SubmitButton>
-          <SaveStatus result={saveResult} />
-        </div>
-      </form>
-
-      <form action={deleteAction} className="flex flex-wrap items-center gap-2">
-        <Button
-          type="submit"
-          variant="ghost"
-          size="sm"
-          className="text-destructive hover:text-destructive"
-          onClick={(event) => {
-            if (!window.confirm("Delete this nomination and its votes?")) {
-              event.preventDefault();
-            }
-          }}
-        >
-          Delete nomination
-        </Button>
-        <SaveStatus result={deleteResult} />
-      </form>
-
-      <div className="space-y-3 border-t border-border pt-3">
-        <h4 className="text-sm font-medium">Votes ({nomination.votes.length})</h4>
-        {nomination.votes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No votes yet.</p>
-        ) : (
-          nomination.votes.map((vote) => (
-            <VoteRow
-              key={vote.id}
-              gameId={gameId}
-              vote={vote}
-              players={players}
-              nominations={[{ id: nomination.id, label: `Day ${nomination.dayNumber} #${nomination.order}` }]}
-            />
-          ))
-        )}
-
-        <form
-          action={voteCreateAction}
-          className="grid gap-3 rounded-md border border-dashed border-border p-3 sm:grid-cols-2 lg:grid-cols-4"
-        >
-          <input type="hidden" name="nominationId" value={nomination.id} />
-          <PlayerSelect name="voterId" label="Voter" players={players} />
-          <div className="space-y-1.5">
-            <Label htmlFor={`new-choice-${nomination.id}`}>Choice</Label>
-            <select
-              id={`new-choice-${nomination.id}`}
-              name="choice"
-              defaultValue="yes"
-              className={selectClassName}
-            >
-              {CHOICES.map((choice) => (
-                <option key={choice} value={choice}>
-                  {choice}
-                </option>
-              ))}
-            </select>
+        </TableCell>
+        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            className="text-left underline-offset-2 hover:underline"
+            aria-expanded={expanded}
+          >
+            {votesSummary(nomination.votes)}
+            <span className="ml-1 text-foreground/70">({nomination.votes.length})</span>
+          </button>
+        </TableCell>
+        <TableCell>
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex flex-wrap items-center justify-end gap-1">
+              <Button type="submit" form={formId} size="sm">
+                Save
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={onToggleExpanded}>
+                {expanded ? "Hide" : "Votes"}
+              </Button>
+              <form action={deleteAction}>
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={(event) => {
+                    if (!window.confirm("Delete this nomination and its votes?")) {
+                      event.preventDefault();
+                    }
+                  }}
+                >
+                  Delete
+                </Button>
+              </form>
+            </div>
+            <SaveStatus result={saveResult} />
+            <SaveStatus result={deleteResult} />
           </div>
-          <div className="space-y-1.5 sm:col-span-2 lg:col-span-2">
-            <Label htmlFor={`new-reason-${nomination.id}`}>Reason</Label>
-            <Input id={`new-reason-${nomination.id}`} name="reason" />
-          </div>
-          <div className="col-span-full flex flex-wrap items-center gap-3">
-            <SubmitButton>Add vote</SubmitButton>
-            <SaveStatus result={voteCreateResult} />
-          </div>
-        </form>
-      </div>
-    </div>
+        </TableCell>
+      </TableRow>
+
+      {expanded ? (
+        <TableRow className="hover:bg-transparent">
+          <TableCell colSpan={8} className="bg-muted/30">
+            <div className="space-y-4 p-1">
+              <div className="space-y-1.5">
+                <Label htmlFor={`defense-${nomination.id}`}>Defense</Label>
+                <Textarea
+                  form={formId}
+                  id={`defense-${nomination.id}`}
+                  name="defense"
+                  defaultValue={nomination.defense ?? ""}
+                  rows={2}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Save the nomination row to persist defense changes.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">Votes ({nomination.votes.length})</h4>
+                {nomination.votes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No votes yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {nomination.votes.map((vote) => (
+                      <VoteRow
+                        key={vote.id}
+                        gameId={gameId}
+                        vote={vote}
+                        players={players}
+                        nominations={[
+                          {
+                            id: nomination.id,
+                            label: `Day ${nomination.dayNumber} #${nomination.order}`,
+                          },
+                        ]}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                <form
+                  action={voteCreateAction}
+                  className="grid gap-3 rounded-md border border-dashed border-border bg-card p-3 sm:grid-cols-2 lg:grid-cols-4"
+                >
+                  <input type="hidden" name="nominationId" value={nomination.id} />
+                  <PlayerSelect name="voterId" label="Voter" players={players} />
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`new-choice-${nomination.id}`}>Choice</Label>
+                    <select
+                      id={`new-choice-${nomination.id}`}
+                      name="choice"
+                      defaultValue="yes"
+                      className={formSelectClassName}
+                    >
+                      {CHOICES.map((choice) => (
+                        <option key={choice} value={choice}>
+                          {choice}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2 lg:col-span-2">
+                    <Label htmlFor={`new-reason-${nomination.id}`}>Reason</Label>
+                    <Input id={`new-reason-${nomination.id}`} name="reason" />
+                  </div>
+                  <div className="col-span-full flex flex-wrap items-center gap-3">
+                    <SubmitButton>Add vote</SubmitButton>
+                    <SaveStatus result={voteCreateResult} />
+                  </div>
+                </form>
+              </div>
+            </div>
+          </TableCell>
+        </TableRow>
+      ) : null}
+    </>
   );
 }
 
@@ -293,14 +386,14 @@ function VoteRow({
   );
 
   return (
-    <div className="space-y-2 rounded-md border border-border/60 p-3">
+    <div className="space-y-2 rounded-md border border-border/60 bg-card p-3">
       <form action={saveAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-1.5">
           <Label>Nomination</Label>
           <select
             name="nominationId"
             defaultValue={vote.nominationId}
-            className={selectClassName}
+            className={formSelectClassName}
             required
           >
             {nominations.map((nomination) => (
@@ -313,7 +406,7 @@ function VoteRow({
         <PlayerSelect name="voterId" label="Voter" players={players} defaultValue={vote.voterId} />
         <div className="space-y-1.5">
           <Label>Choice</Label>
-          <select name="choice" defaultValue={vote.choice} className={selectClassName}>
+          <select name="choice" defaultValue={vote.choice} className={formSelectClassName}>
             {CHOICES.map((choice) => (
               <option key={choice} value={choice}>
                 {choice}
@@ -365,9 +458,21 @@ export function NominationsSection({
     saveNomination.bind(null, gameId, null),
     null,
   );
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const sortedNominations = useMemo(
+    () =>
+      [...nominations].sort(
+        (a, b) => a.dayNumber - b.dayNumber || a.order - b.order || a.id.localeCompare(b.id),
+      ),
+    [nominations],
+  );
+
+  const nextOrder =
+    sortedNominations.reduce((max, nomination) => Math.max(max, nomination.order), 0) + 1;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
         Projection edits are SQLite-only until you push them. Use{" "}
         <strong>Push noms to Discord</strong> (bot picks up within ~30s) or{" "}
@@ -376,18 +481,38 @@ export function NominationsSection({
       </p>
       <RefreshNomsButton gameId={gameId} pendingSince={discordRefreshPendingSince} />
 
-      {nominations.length === 0 ? (
+      {sortedNominations.length === 0 ? (
         <p className="text-sm text-muted-foreground">No nominations recorded.</p>
       ) : (
-        nominations.map((nomination) => (
-          <NominationCard
-            key={nomination.id}
-            gameId={gameId}
-            nomination={nomination}
-            players={players}
-            days={days}
-          />
-        ))
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Order</TableHead>
+              <TableHead>Day</TableHead>
+              <TableHead>Nominator</TableHead>
+              <TableHead>Nominee</TableHead>
+              <TableHead>Accusation</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Votes</TableHead>
+              <TableHead className="w-40" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedNominations.map((nomination) => (
+              <NominationTableRow
+                key={nomination.id}
+                gameId={gameId}
+                nomination={nomination}
+                players={players}
+                days={days}
+                expanded={expandedId === nomination.id}
+                onToggleExpanded={() =>
+                  setExpandedId((current) => (current === nomination.id ? null : nomination.id))
+                }
+              />
+            ))}
+          </TableBody>
+        </Table>
       )}
 
       {days.length === 0 ? (
@@ -407,7 +532,7 @@ export function NominationsSection({
               name="gameDayId"
               required
               defaultValue={days[days.length - 1]?.id}
-              className={selectClassName}
+              className={formSelectClassName}
             >
               {days.map((day) => (
                 <option key={day.id} value={day.id}>
@@ -423,12 +548,12 @@ export function NominationsSection({
               name="order"
               type="number"
               required
-              defaultValue={nominations.length + 1}
+              defaultValue={nextOrder}
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="new-status">Status</Label>
-            <select id="new-status" name="status" defaultValue="open" className={selectClassName}>
+            <select id="new-status" name="status" defaultValue="open" className={formSelectClassName}>
               {STATUSES.map((status) => (
                 <option key={status} value={status}>
                   {status}
