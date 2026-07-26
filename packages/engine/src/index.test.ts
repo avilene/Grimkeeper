@@ -505,7 +505,7 @@ describe("GameEngine", () => {
     expect(engine.getNominationById(firstId)?.status).toBe("open");
   });
 
-  it("blocks a second ghost vote", () => {
+  it("blocks a second ghost yes vote", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(3));
     engine.apply({
       type: GameEventType.DayStarted,
@@ -561,6 +561,94 @@ describe("GameEngine", () => {
         choice: "yes",
       }),
     ).toThrow("ghost vote");
+  });
+
+  it("allows ghosts to vote no or conditional without spending the ghost vote", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(3));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const players = engine.getState().players;
+    engine.apply({
+      type: GameEventType.PlayerDied,
+      gameId,
+      playerId: players[2]!.id,
+      cause: "night",
+      timestamp: new Date().toISOString(),
+    });
+
+    const firstNominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "First accusation.",
+    });
+    for (const event of firstNominationEvents) engine.apply(event);
+    const firstNomination = engine.getState().day!.nominations[0]!;
+
+    const secondNominationEvents = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[1]!.id,
+      nomineeId: players[0]!.id,
+      accusation: "Second accusation.",
+    });
+    for (const event of secondNominationEvents) engine.apply(event);
+    const secondNomination = engine.getState().day!.nominations[1]!;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      voterId: players[2]!.id,
+      nominationId: firstNomination.id,
+      choice: "no",
+    })) {
+      engine.apply(event);
+    }
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      voterId: players[2]!.id,
+      nominationId: secondNomination.id,
+      choice: "conditional",
+      reason: "If they claim good.",
+    })) {
+      engine.apply(event);
+    }
+
+    expect(engine.getPlayerById(players[2]!.id)?.ghostVoteUsed).toBe(false);
+    expect(
+      engine.getState().day!.votes.find(
+        (vote) => vote.nominationId === firstNomination.id && vote.voterId === players[2]!.id,
+      )?.choice,
+    ).toBe("no");
+    expect(
+      engine.getState().day!.votes.find(
+        (vote) => vote.nominationId === secondNomination.id && vote.voterId === players[2]!.id,
+      )?.choice,
+    ).toBe("conditional");
+
+    // Ghost can still spend their yes on a nomination after voting no elsewhere.
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      voterId: players[2]!.id,
+      nominationId: firstNomination.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
+    expect(
+      engine.getState().day!.votes.find(
+        (vote) => vote.nominationId === firstNomination.id && vote.voterId === players[2]!.id,
+      )?.choice,
+    ).toBe("yes");
   });
 
   it("allows only one execution per day", () => {

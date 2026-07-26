@@ -12,6 +12,9 @@ import {
 
 const GUIDE_COLOR = 0x5865f2;
 const FIELD_VALUE_LIMIT = 1024;
+/** Discord API: sum of title + description + field names/values (+ footer/author) ≤ 6000. */
+const EMBED_TOTAL_LIMIT = 6000;
+const EMBED_FIELD_COUNT_LIMIT = 25;
 
 function cmd(name: string, description: string): string {
   return `**${name}**\n${description}`;
@@ -314,6 +317,60 @@ function doActionFields(
   return fields;
 }
 
+function measureEmbedText(options: {
+  title?: string;
+  description?: string;
+  fields: { name: string; value: string }[];
+}): number {
+  let total = (options.title?.length ?? 0) + (options.description?.length ?? 0);
+  for (const field of options.fields) {
+    total += field.name.length + field.value.length;
+  }
+  return total;
+}
+
+/** Pack fields into one or more embeds under Discord's 6000-char / 25-field limits. */
+function packGuideEmbeds(options: {
+  title: string;
+  description: string;
+  fields: { name: string; value: string }[];
+}): EmbedBuilder[] {
+  const embeds: EmbedBuilder[] = [];
+  let currentFields: { name: string; value: string }[] = [];
+  let isFirst = true;
+
+  const flush = () => {
+    if (!isFirst && currentFields.length === 0) return;
+    const title = isFirst ? options.title : `${options.title} (cont.)`;
+    const embed = new EmbedBuilder().setColor(GUIDE_COLOR).setTitle(title);
+    if (isFirst) {
+      embed.setDescription(options.description);
+    }
+    if (currentFields.length > 0) {
+      embed.addFields(...currentFields);
+    }
+    embeds.push(embed);
+    currentFields = [];
+    isFirst = false;
+  };
+
+  for (const field of options.fields) {
+    const title = isFirst ? options.title : `${options.title} (cont.)`;
+    const description = isFirst ? options.description : undefined;
+    const candidate = [...currentFields, field];
+    const wouldExceed =
+      currentFields.length > 0 &&
+      (candidate.length > EMBED_FIELD_COUNT_LIMIT ||
+        measureEmbedText({ title, description, fields: candidate }) > EMBED_TOTAL_LIMIT);
+    if (wouldExceed) {
+      flush();
+    }
+    currentFields.push(field);
+  }
+  flush();
+  return embeds;
+}
+
 export function buildPlayerHelpEmbeds(): EmbedBuilder[] {
   return [
     new EmbedBuilder()
@@ -446,93 +503,89 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
 }
 
 export function buildStHelpEmbeds(): EmbedBuilder[] {
-  return [
-    new EmbedBuilder()
-      .setColor(GUIDE_COLOR)
-      .setTitle("Storyteller guide")
-      .setDescription(
-        [
-          "**Quick start**",
-          "1. `/game setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles (optional `kib_thread:` channel/thread + `log_thread:`)",
-          "2. `/st setup-town` with `players:` @mentions in **seat order** (any player count)",
-          "3. `/st broadcast` from kib to send the same message to all player threads",
-          "4. `/st reminder schedule` / `/st reminder batch` for scheduled pings (ST role or allowlist)",
-          "5. `/st end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
-          "",
-          "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/st log` to recreate it mid-game.",
-          "On mobile, prefer **`/st broadcast`**, **`/st next-phase`**, **`/st resolve-next`**, **`/st execute`**, etc. from the slash menu — no autocomplete. Full catalog still on **`/st do`**. Mid-game buttons: **`/st panel`**.",
-          "Phase checklists: **`/st guide setup`**, **`/st guide day`**, **`/st guide night`**.",
+  return packGuideEmbeds({
+    title: "Storyteller guide",
+    description: [
+      "**Quick start**",
+      "1. `/game setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles (optional `kib_thread:` channel/thread + `log_thread:`)",
+      "2. `/st setup-town` with `players:` @mentions in **seat order** (any player count)",
+      "3. `/st broadcast` from kib to send the same message to all player threads",
+      "4. `/st reminder schedule` / `/st reminder batch` for scheduled pings (ST role or allowlist)",
+      "5. `/st end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
+      "",
+      "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/st log` to recreate it mid-game.",
+      "On mobile, prefer **`/st broadcast`**, **`/st next-phase`**, **`/st resolve-next`**, **`/st execute`**, etc. from the slash menu — no autocomplete. Full catalog still on **`/st do`**. Mid-game buttons: **`/st panel`**.",
+      "Phase checklists: **`/st guide setup`**, **`/st guide day`**, **`/st guide night`**.",
+    ].join("\n"),
+    fields: [
+      {
+        name: "How to run commands",
+        value: [
+          cmd(
+            "/st … shortcuts",
+            "Common actions as first-class subcommands (setup-town, broadcast, log, end, next-phase, close-nominations, nominate, refresh-noms, resolve-next, execute, mark-dead).",
+          ),
+          cmd(
+            "/st do",
+            "Full action catalog via autocomplete (everything else, plus the shortcuts above).",
+          ),
+          cmd(
+            "/st guide setup|day|night",
+            "Phase checklist (commands only where the bot is involved).",
+          ),
+          cmd(
+            "/st mark",
+            "In a town thread: assign it as Town Voting, Rules, Public Claims, or Whisper Declaration.",
+          ),
+          cmd(
+            "/st panel",
+            "Pin/refresh kib buttons: resolve, execute, votes, close nominations, next phase, …",
+          ),
+          cmd(
+            "/st add-kib / remove-kib",
+            "Assign or remove kib role (same as `/st do add-spectator` / `remove-spectator`).",
+          ),
+          cmd(
+            "/st queue show|join|edit|attach|leave|refresh",
+            "ST queue board: who's ready to run (script, notes, co-STs, player signups).",
+          ),
+          cmd("/st help", "This guide (optional `search:`)."),
+        ].join("\n\n"),
+      },
+      ...doActionFields(ST_SLASH_SHORTCUTS, "/st", "Mobile shortcuts (`/st …`)"),
+      ...doActionFields(ST_DO_ACTIONS_FOR_HELP, "/st do", "All actions (`/st do …`)"),
+      {
+        name: "Reminders",
+        value: [
+          cmd("/st reminder schedule", "Schedule a reminder (requires ST role, storyteller, or allowlist)."),
+          cmd(
+            "/st reminder batch",
+            "Replace this channel’s reminder batch (`1m 30m 1h 4 8`; does not stack).",
+          ),
+          cmd("/st reminder list", "List pending reminders."),
+          cmd(
+            "/st reminder edit / delete / clear",
+            "Manage pending reminders for your game/channel.",
+          ),
+        ].join("\n\n"),
+      },
+      {
+        name: "Notes",
+        value: [
+          "`setup-town` enters **Setup** (opens Voting, Whisper Declaration, Public Claims, Rules). `/st next-phase` → Night 1 → Day 1.",
+          "Public: `/vote` or Vote button. Private: `/privatevote` (kib vote tracker).",
+          "`/st mark` assigns a thread as Town Voting, Rules, Public Claims, or Whisper Declaration.",
+          "`/st do recreate-threads` (Voting + town surfaces) · `/st recreate-player-thread` (one private ST thread).",
+          "Vote lock/count stay in Town Voting; **Announce & resolve** posts to Town Voting + audit log.",
+          "Each living player may nominate once per day; each player may be nominated once. Ghosts cannot nominate.",
+          "`next-phase` advances Setup → Night 1 → Day 1 → …. Renames town to `base-setup` / `base-nightN` / `base-dayN`.",
+          "`add-st` / `remove-st` / `sync-st-threads` manage co-STs and invite/remove them from player ST + whisper threads.",
+          "`reset-to-setup` (ALLOWED_USER_IDS only) wipes day/night back to Setup, keeping the roster.",
+          "Day stamps go to Voting, Whisper Declaration, Public Claims, kib, and whisper threads — not Rules.",
         ].join("\n"),
-      )
-      .addFields(
-        {
-          name: "How to run commands",
-          value: [
-            cmd(
-              "/st … shortcuts",
-              "Common actions as first-class subcommands (setup-town, broadcast, log, end, next-phase, close-nominations, nominate, refresh-noms, resolve-next, execute, mark-dead).",
-            ),
-            cmd(
-              "/st do",
-              "Full action catalog via autocomplete (everything else, plus the shortcuts above).",
-            ),
-            cmd(
-              "/st guide setup|day|night",
-              "Phase checklist (commands only where the bot is involved).",
-            ),
-            cmd(
-              "/st mark",
-              "In a town thread: assign it as Town Voting, Rules, Public Claims, or Whisper Declaration.",
-            ),
-            cmd(
-              "/st panel",
-              "Pin/refresh kib buttons: resolve, execute, votes, close nominations, next phase, …",
-            ),
-            cmd(
-              "/st add-kib / remove-kib",
-              "Assign or remove kib role (same as `/st do add-spectator` / `remove-spectator`).",
-            ),
-            cmd(
-              "/st queue show|join|edit|attach|leave|refresh",
-              "ST queue board: who's ready to run (script, notes, co-STs, player signups).",
-            ),
-            cmd("/st help", "This guide (optional `search:`)."),
-          ].join("\n\n"),
-        },
-        ...doActionFields(ST_SLASH_SHORTCUTS, "/st", "Mobile shortcuts (`/st …`)"),
-        ...doActionFields(ST_DO_ACTIONS_FOR_HELP, "/st do", "All actions (`/st do …`)"),
-        {
-          name: "Reminders",
-          value: [
-            cmd("/st reminder schedule", "Schedule a reminder (requires ST role, storyteller, or allowlist)."),
-            cmd(
-              "/st reminder batch",
-              "Replace this channel’s reminder batch (`1m 30m 1h 4 8`; does not stack).",
-            ),
-            cmd("/st reminder list", "List pending reminders."),
-            cmd(
-              "/st reminder edit / delete / clear",
-              "Manage pending reminders for your game/channel.",
-            ),
-          ].join("\n\n"),
-        },
-        {
-          name: "Notes",
-          value: [
-            "`setup-town` enters **Setup** (opens Voting, Whisper Declaration, Public Claims, Rules). `/st next-phase` → Night 1 → Day 1.",
-            "Public: `/vote` or Vote button. Private: `/privatevote` (kib vote tracker).",
-            "`/st mark` assigns a thread as Town Voting, Rules, Public Claims, or Whisper Declaration.",
-            "`/st do recreate-threads` (Voting + town surfaces) · `/st recreate-player-thread` (one private ST thread).",
-            "Vote lock/count stay in Town Voting; **Announce & resolve** posts to Town Voting + audit log.",
-            "Each living player may nominate once per day; each player may be nominated once. Ghosts cannot nominate.",
-            "`next-phase` advances Setup → Night 1 → Day 1 → …. Renames town to `base-setup` / `base-nightN` / `base-dayN`.",
-            "`add-st` / `remove-st` / `sync-st-threads` manage co-STs and invite/remove them from player ST + whisper threads.",
-            "`reset-to-setup` (ALLOWED_USER_IDS only) wipes day/night back to Setup, keeping the roster.",
-            "Day stamps go to Voting, Whisper Declaration, Public Claims, kib, and whisper threads — not Rules.",
-          ].join("\n"),
-        },
-      ),
-  ];
+      },
+    ],
+  });
 }
 
 export function buildDevHelpEmbeds(): EmbedBuilder[] {

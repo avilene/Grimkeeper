@@ -6,7 +6,7 @@ import {
 import { Discord, Slash, SlashOption } from "discordx";
 import { searchBotcRoles, BOTC_ROLE_SEARCH_MIN_LENGTH } from "@grimkeeper/engine";
 
-import { replyOrEditInteraction, requireCommandAccess } from "./command-context.js";
+import { replyOrEditInteraction } from "./command-context.js";
 import { buildRoleSearchResultEmbeds } from "../role-embed.js";
 
 async function respondRoleAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
@@ -64,8 +64,6 @@ export class RoleLookupCommands {
     name: string,
     interaction: CommandInteraction,
   ): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
-
     await replyOrEditInteraction(interaction, {
       embeds: buildRoleSearchResultEmbeds(name),
     });

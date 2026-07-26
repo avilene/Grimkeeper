@@ -28,4 +28,14 @@ describe("loadCommandModules", () => {
     expect(source).not.toContain('./commands/st.js');
     expect(source).not.toContain('./commands/dev.js');
   });
+
+  it("keeps /role as a public lookup (no allowlist gate)", () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "commands/role.ts"),
+      "utf8",
+    );
+    expect(source).not.toContain("requireCommandAccess");
+    expect(source).not.toContain("ALLOWED_USER_IDS");
+    expect(source).not.toContain("ALLOWED_ROLE_IDS");
+  });
 });

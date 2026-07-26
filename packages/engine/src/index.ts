@@ -1161,10 +1161,8 @@ export class GameEngine {
         if (nomination.countHandIndex != null) {
           throw new GameEngineError("A vote count is in progress. Wait for the storyteller.");
         }
-        if (!voter.alive) {
-          if (command.choice !== "yes") {
-            throw new GameEngineError("Ghost votes must be yes.");
-          }
+        // Ghosts may vote yes / no / conditional; only a yes spends the ghost vote.
+        if (!voter.alive && command.choice === "yes") {
           if (voter.ghostVoteUsed) {
             throw new GameEngineError("You have already used your ghost vote.");
           }

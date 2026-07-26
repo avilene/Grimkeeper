@@ -26,12 +26,34 @@ function fieldValues(embed: { data: { fields?: { name?: string | null; value: st
   return (embed.data.fields ?? []).map((field) => field.value).join("\n");
 }
 
+function embedTextSize(embed: {
+  data: {
+    title?: string | null;
+    description?: string | null;
+    fields?: { name?: string | null; value: string }[];
+    footer?: { text?: string | null } | null;
+    author?: { name?: string | null } | null;
+  };
+}): number {
+  const d = embed.data;
+  let total =
+    (d.title?.length ?? 0) +
+    (d.description?.length ?? 0) +
+    (d.footer?.text?.length ?? 0) +
+    (d.author?.name?.length ?? 0);
+  for (const field of d.fields ?? []) {
+    total += (field.name?.length ?? 0) + field.value.length;
+  }
+  return total;
+}
+
 describe("help content", () => {
   it("builds game and st guides from catalogs", () => {
     const game = buildGameHelpEmbeds()[0]!;
-    const st = buildStHelpEmbeds()[0]!;
+    const stEmbeds = buildStHelpEmbeds();
+    const st = stEmbeds[0]!;
     const gameText = fieldValues(game);
-    const stText = fieldValues(st);
+    const stText = stEmbeds.map(fieldValues).join("\n");
 
     expect(game.data.title).toBe("Player commands");
     expect(game.data.description).toContain("Town Voting");
@@ -65,6 +87,7 @@ describe("help content", () => {
     expect(gameText).toContain("/st do recreate-threads");
 
     expect(st.data.title).toBe("Storyteller guide");
+    expect(stEmbeds.length).toBeGreaterThan(1);
     expect(st.data.description).toContain("/game setup");
     expect(st.data.description).toContain("log thread");
     expect(st.data.description).toContain("/st next-phase");
@@ -86,10 +109,13 @@ describe("help content", () => {
     expect(st.data.description).toContain("/st guide setup");
     expect(stText).toContain("/st guide setup|day|night");
     expect(stText).toContain("/st add-kib / remove-kib");
-    for (const field of st.data.fields ?? []) {
-      expect(field.value.length).toBeLessThanOrEqual(1024);
+    for (const embed of stEmbeds) {
+      for (const field of embed.data.fields ?? []) {
+        expect(field.value.length).toBeLessThanOrEqual(1024);
+      }
+      expect((embed.data.description ?? "").length).toBeLessThanOrEqual(4096);
+      expect(embedTextSize(embed)).toBeLessThanOrEqual(6000);
     }
-    expect((st.data.description ?? "").length).toBeLessThanOrEqual(4096);
   });
 
   it("builds phase checklists", () => {
