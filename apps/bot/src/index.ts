@@ -128,6 +128,9 @@ client.on("interactionCreate", (interaction) => {
           const handledQueue = await queueHandlers.handleStQueueButton(interaction);
           if (handledQueue) return;
         }
+        const { handleHelpPageButton } = await import("./commands/help-pagination.js");
+        const handledHelp = await handleHelpPageButton(interaction);
+        if (handledHelp) return;
         const handledPanel = await handleStPanelButton(interaction);
         if (handledPanel) return;
         const handledLock = await handleLockVotesButton(interaction);

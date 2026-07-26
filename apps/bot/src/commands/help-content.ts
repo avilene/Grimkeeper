@@ -329,7 +329,10 @@ function measureEmbedText(options: {
   return total;
 }
 
-/** Pack fields into one or more embeds under Discord's 6000-char / 25-field limits. */
+/** Pack fields into one or more embeds under Discord's per-embed 6000-char / 25-field limits.
+ * Callers that send multiple embeds in one message must paginate — Discord also caps
+ * the combined text of all embeds in a message at 6000 characters.
+ */
 function packGuideEmbeds(options: {
   title: string;
   description: string;
@@ -359,10 +362,10 @@ function packGuideEmbeds(options: {
     const description = isFirst ? options.description : undefined;
     const candidate = [...currentFields, field];
     const wouldExceed =
-      currentFields.length > 0 &&
-      (candidate.length > EMBED_FIELD_COUNT_LIMIT ||
-        measureEmbedText({ title, description, fields: candidate }) > EMBED_TOTAL_LIMIT);
-    if (wouldExceed) {
+      candidate.length > EMBED_FIELD_COUNT_LIMIT ||
+      measureEmbedText({ title, description, fields: candidate }) > EMBED_TOTAL_LIMIT;
+    // Always allow the first field onto an empty page (field values are already ≤ 1024).
+    if (currentFields.length > 0 && wouldExceed) {
       flush();
     }
     currentFields.push(field);

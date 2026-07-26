@@ -23,6 +23,10 @@ import {
   type HelpSearchScope,
   type StGuideTopic,
 } from "./help-content.js";
+import {
+  buildHelpPageMessage,
+  shouldPaginateHelp,
+} from "./help-pagination.js";
 
 const ACCESS_DENIED =
   "You are not allowed to use this bot. Ask an admin to add your user ID " +
@@ -65,11 +69,12 @@ async function ensureHelpDeferred(interaction: CommandInteraction): Promise<void
 /**
  * Prefers early public defer (see startEarlyDefer for help/guide), then editReply with embeds.
  * Avoids the ephemeral "Working…" path that can leave guides stuck.
+ * Oversized multi-embed guides are paginated (Discord's combined embed limit is 6000).
  */
 async function replyHelpEmbeds(
   interaction: CommandInteraction,
   embeds: EmbedBuilder[],
-  options?: { requireAccess?: boolean },
+  options?: { requireAccess?: boolean; pageScope?: HelpSearchScope },
 ): Promise<void> {
   const requireAccess = options?.requireAccess !== false;
   try {
@@ -78,12 +83,22 @@ async function replyHelpEmbeds(
     if (requireAccess) {
       const allowed = await canUseBot(interaction);
       if (!allowed) {
-        await interaction.editReply({ content: ACCESS_DENIED, embeds: [] });
+        await interaction.editReply({ content: ACCESS_DENIED, embeds: [], components: [] });
         return;
       }
     }
 
-    await interaction.editReply({ content: null, embeds });
+    if (options?.pageScope && shouldPaginateHelp(embeds)) {
+      const page = buildHelpPageMessage(options.pageScope, 0);
+      await interaction.editReply({
+        content: null,
+        embeds: page.embeds,
+        components: page.components,
+      });
+      return;
+    }
+
+    await interaction.editReply({ content: null, embeds, components: [] });
   } catch (error) {
     // Token dead / already handled elsewhere (early ack miss, duplicate replica, etc.).
     // Includes 40060 — local deferred/replied flags stay false after a failed defer race.
@@ -102,7 +117,7 @@ async function replyHelpEmbeds(
 
     if (interaction.deferred || interaction.replied) {
       await interaction
-        .editReply({ content: "Could not show that guide. Try again.", embeds: [] })
+        .editReply({ content: "Could not show that guide. Try again.", embeds: [], components: [] })
         .catch(() => undefined);
       return;
     }
@@ -123,7 +138,10 @@ async function replyScopedHelp(
   await replyHelpEmbeds(
     interaction,
     query ? buildHelpSearchEmbeds(scope, query) : full(),
-    options,
+    {
+      ...options,
+      pageScope: query ? undefined : scope,
+    },
   );
 }
 

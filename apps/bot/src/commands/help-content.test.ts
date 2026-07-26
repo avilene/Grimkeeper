@@ -116,6 +116,9 @@ describe("help content", () => {
       expect((embed.data.description ?? "").length).toBeLessThanOrEqual(4096);
       expect(embedTextSize(embed)).toBeLessThanOrEqual(6000);
     }
+    // Discord also caps combined embed text in one message at 6000 — ST help must paginate.
+    const stCombined = stEmbeds.reduce((sum, embed) => sum + embedTextSize(embed), 0);
+    expect(stCombined).toBeGreaterThan(6000);
   });
 
   it("builds phase checklists", () => {
