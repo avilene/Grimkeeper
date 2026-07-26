@@ -1818,13 +1818,18 @@ export class StCommandsMinimal {
     if (!interaction.guild) return;
 
     try {
+      await setInteractionProgress(interaction, "Refreshing vote tracker and nomination embeds…");
       const engine = await loadEngine(game.id);
-      const message = await upsertStVoteTracker(interaction.guild, game.channelId, engine, game.kibThreadId);
+      await refreshAllNominationEverywhere(interaction.guild, game, engine);
       const thread = await getKibThreadForGame(interaction.guild, game);
+      const voting = await resolveVotingChannel(interaction.guild, game, engine);
       await replyOrEditInteraction(interaction, {
-        content: message
-          ? `Vote tracker updated in ${thread ? `<#${thread.id}>` : "kib"}.`
-          : "Could not post the vote tracker (is kib available?).",
+        content: [
+          `Vote tracker updated in ${thread ? `<#${thread.id}>` : "kib"}.`,
+          voting ? `Nomination embeds refreshed in <#${voting.id}>.` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

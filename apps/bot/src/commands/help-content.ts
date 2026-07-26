@@ -673,7 +673,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           name: "During the day",
           value: checklist([
             "Players: `/nominate`, `/accusation`, `/defend`, `/vote` (public), `/privatevote` (private)",
-            "Watch kib vote tracker — refresh with `/st do votes` if needed",
+            "Watch kib vote tracker — refresh with `/st do votes` if needed (also refreshes Town Voting nomination embeds)",
             "Lock / count / announce from Town Voting or the panel",
             "`/st resolve-next` (or panel) — resolve oldest open nomination",
             "If it passed: `/st execute` `player:` (or panel)",

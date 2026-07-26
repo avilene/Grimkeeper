@@ -34,7 +34,6 @@ import {
   upsertStControlPanel,
   type StPanelUserSelectAction,
 } from "../st-control-panel.js";
-import { upsertStVoteTracker } from "../st-vote-tracker.js";
 
 async function loadPanelStorytellerContext(
   interaction: ButtonInteraction | UserSelectMenuInteraction,
@@ -150,15 +149,19 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
     }
 
     if (action === "votes") {
-      const message = await upsertStVoteTracker(guild, game.channelId, engine, game.kibThreadId);
+      await refreshAllNominationEverywhere(guild, game, engine);
       const thread = await getStorytellerThread(guild, game.channelId, {
         kibThreadId: game.kibThreadId,
         gameId: game.id,
       });
+      const voting = await resolveVotingChannel(guild, game, engine);
       await interaction.editReply({
-        content: message
-          ? `Vote tracker updated in ${thread ? `<#${thread.id}>` : "kib"}.`
-          : "Could not post the vote tracker (kib missing or send failed — check the error channel).",
+        content: [
+          `Vote tracker updated in ${thread ? `<#${thread.id}>` : "kib"}.`,
+          voting ? `Nomination embeds refreshed in <#${voting.id}>.` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
       });
       return true;
     }
