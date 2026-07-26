@@ -800,6 +800,11 @@ export function normalizeVoteRecord(vote: VoteRecord): VoteRecord {
   };
 }
 
+function formatVoteReasonSuffix(reason: string | null | undefined): string {
+  const trimmed = reason?.trim();
+  return trimmed ? ` — ${trimmed}` : "";
+}
+
 function formatStorytellerVoteStatus(
   player: PlayerState,
   vote: VoteRecord | undefined,
@@ -816,12 +821,13 @@ function formatStorytellerVoteStatus(
   const publicChoice = publicBallotChoice(vote);
   const ghostTag = !player.alive ? " (ghost)" : "";
   const publicLabel = publicChoice ?? "—";
+  const reason = formatVoteReasonSuffix(vote.reason);
 
   if (privateChoice) {
-    return `**${privateChoice}**${ghostTag} (public: ${publicLabel})`;
+    return `**${privateChoice}**${ghostTag} (public: ${publicLabel})${reason}`;
   }
   if (publicChoice) {
-    return `**${publicChoice}**${ghostTag}`;
+    return `**${publicChoice}**${ghostTag}${reason}`;
   }
   if (!player.alive && player.ghostVoteUsed) {
     return "_ghost used (no vote this nomination)_";
@@ -2302,7 +2308,7 @@ export class GameEngine {
         const publicChoice = publicBallotChoice(vote);
         if (publicChoice) {
           const ghostTag = !player.alive ? " (ghost)" : "";
-          status = `**${publicChoice}**${ghostTag}`;
+          status = `**${publicChoice}**${ghostTag}${formatVoteReasonSuffix(vote.reason)}`;
         } else if (!player.alive && player.ghostVoteUsed) {
           status = "_ghost used (no vote this nomination)_";
         } else if (!player.alive) {

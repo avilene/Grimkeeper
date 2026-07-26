@@ -1869,6 +1869,50 @@ describe("GameEngine", () => {
     }
   });
 
+  it("shows optional notes on yes and no votes as well as conditional", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Note display test.",
+    })) {
+      engine.apply(event);
+    }
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: players[0]!.id,
+      choice: "yes",
+      reason: "Trust them today.",
+    })) {
+      engine.apply(event);
+    }
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: players[2]!.id,
+      choice: "no",
+      reason: "Too suspicious.",
+    })) {
+      engine.apply(event);
+    }
+
+    const publicRoll = engine.formatNominationVoteRoll(nomination.id, { audience: "public" });
+    expect(publicRoll).toContain("**yes** — Trust them today.");
+    expect(publicRoll).toContain("**no** — Too suspicious.");
+
+    const stRoll = engine.formatNominationVoteRoll(nomination.id, { audience: "storyteller" });
+    expect(stRoll).toContain("**yes** — Trust them today.");
+    expect(stRoll).toContain("**no** — Too suspicious.");
+  });
+
   it("keeps ST-thread private ballots off the public roll and shows both on storyteller roll", () => {
     const engine = setupTownEngine(3);
     const players = engine.getState().players;
