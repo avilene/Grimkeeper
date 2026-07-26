@@ -1611,10 +1611,11 @@ describe("GameEngine", () => {
     }
 
     const roll = engine.formatNominationVoteRoll(nomination.id);
-    const firstLine = roll.split("\n")[0]!;
-    expect(firstLine).toContain(players[2]!.displayName);
-    expect(firstLine).toContain("seat 3");
-    expect(roll.split("\n").at(-1)).toContain(players[1]!.displayName);
+    const lines = roll.split("\n");
+    expect(lines[0]).toContain(players[2]!.displayName);
+    expect(lines[0]).toContain("seat 3");
+    // Each voter is name line + vote line; nominee votes last.
+    expect(lines.at(-2)).toContain(players[1]!.displayName);
   });
 
   it("counts votes one-by-one with yes/no and locks when finished", () => {

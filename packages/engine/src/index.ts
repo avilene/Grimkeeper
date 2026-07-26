@@ -2323,7 +2323,7 @@ export class GameEngine {
       } else {
         status = "_pending_";
       }
-      const line = `${index + 1}. ${player.displayName}${deadTag} (${seat}): ${status}`;
+      const line = `${index + 1}. ${player.displayName}${deadTag} (${seat}):\n${status}`;
       // Do not wrap the whole line in ** — status already uses bold and Discord breaks nested markers.
       return underHand ? `👉 ${line}` : line;
     });
