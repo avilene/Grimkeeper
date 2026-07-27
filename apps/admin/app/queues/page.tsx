@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { FlashBanner, WarnBanner } from "@/components/banners";
+import { LocalTime } from "@/components/local-time";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
 import { consumeFlash } from "@/lib/flash";
+import { requireAdmin } from "@/lib/session";
 import { shortId } from "@/lib/utils";
 
 export const metadata = { title: "ST Queue" };
@@ -21,6 +23,7 @@ export default async function QueuesPage({
 }: {
   searchParams: Promise<{ show?: string }>;
 }) {
+  await requireAdmin();
   const { show } = await searchParams;
   const showAll = show === "all";
   const flash = await consumeFlash();
@@ -126,7 +129,9 @@ export default async function QueuesPage({
                         <TableCell>
                           {coSt} / {players}
                         </TableCell>
-                        <TableCell className="text-xs">{entry.createdAt.toISOString()}</TableCell>
+                        <TableCell className="text-xs">
+                          <LocalTime value={entry.createdAt} />
+                        </TableCell>
                       </TableRow>
                     );
                   })

@@ -1,19 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 
 import type { SaveResult } from "@/lib/action-result";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { requireAdmin } from "@/lib/session";
 
 export type { SaveResult };
-
-async function requireSession() {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
-  return session;
-}
 
 export async function saveAlias(
   originalGuildId: string | null,
@@ -21,7 +14,7 @@ export async function saveAlias(
   _prev: SaveResult | null,
   formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireAdmin();
   try {
     const guildId = String(formData.get("guildId") ?? "").trim();
     const discordUserId = String(formData.get("discordUserId") ?? "").trim();
@@ -70,7 +63,7 @@ export async function deleteAlias(
   _prev: SaveResult | null,
   _formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireAdmin();
   try {
     await prisma.playerAlias.delete({
       where: { guildId_discordUserId: { guildId, discordUserId } },

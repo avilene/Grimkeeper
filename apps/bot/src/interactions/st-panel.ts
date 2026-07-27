@@ -72,7 +72,7 @@ async function loadPanelStorytellerContext(
       ok: false,
       error: !game!.stRoleId
         ? "Only storytellers can use the control panel. This game has no ST role linked — ask an ST to `/st do add-st` you, or re-run `/game setup` with `st:`."
-        : "Only storytellers can use the control panel. Need this game’s ST Discord role, `/st do add-st`, or `ALLOWED_USER_IDS`.",
+        : "Only storytellers can use the control panel. Need this game’s ST Discord role, `/st do add-st`, or `ADMIN_IDS`.",
     };
   }
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
   getGameEvents,
   isStatsOnlyGame,
@@ -15,12 +15,14 @@ import { FlashBanner, WarnBanner } from "@/components/banners";
 import { DeleteGameForm } from "@/components/delete-game-form";
 import { GameDaysSection } from "@/components/game-days-section";
 import { GameFieldsForm } from "@/components/game-fields-form";
+import { LocalTime } from "@/components/local-time";
 import { GameRemindersSection } from "@/components/game-reminders-section";
 import { NominationsSection } from "@/components/nominations-section";
 import { PlayersTableForm } from "@/components/players-table-form";
 import type { RoleOption } from "@/components/role-combobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { canViewGame, getAccessProfile, homePathForAccess } from "@/lib/access";
 import { prisma } from "@/lib/db";
 import { consumeFlash } from "@/lib/flash";
 import { shortId } from "@/lib/utils";
@@ -43,6 +45,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function GameDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const access = await getAccessProfile();
+  if (!access) redirect("/login");
+  if (!canViewGame(access, id)) redirect(homePathForAccess(access));
+
   const flash = await consumeFlash();
   const game = await prisma.game.findUnique({
     where: { id },
@@ -130,9 +136,19 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
         <span>
           ID <code>{game.id}</code>
         </span>
-        <span>Created {game.createdAt.toISOString()}</span>
-        {game.startedAt ? <span>Started {game.startedAt.toISOString()}</span> : null}
-        {game.endedAt ? <span>Ended {game.endedAt.toISOString()}</span> : null}
+        <span>
+          Created <LocalTime value={game.createdAt} />
+        </span>
+        {game.startedAt ? (
+          <span>
+            Started <LocalTime value={game.startedAt} />
+          </span>
+        ) : null}
+        {game.endedAt ? (
+          <span>
+            Ended <LocalTime value={game.endedAt} />
+          </span>
+        ) : null}
         {game.winner ? <span>Winner {game.winner}</span> : null}
         {statsOnly ? <Badge variant="muted">stats only</Badge> : null}
       </div>
@@ -150,9 +166,9 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
               Primary ST{" "}
               <code className="font-mono">{primaryStorytellerId}</code>
             </li>
-            {coStorytellerIds.map((id) => (
-              <li key={id}>
-                Co-ST <code className="font-mono">{id}</code>
+            {coStorytellerIds.map((stId) => (
+              <li key={stId}>
+                Co-ST <code className="font-mono">{stId}</code>
               </li>
             ))}
           </ul>
@@ -191,10 +207,12 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
         <GameRemindersSection gameId={game.id} reminders={game.reminders} />
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-destructive">Danger zone</h2>
-        <DeleteGameForm gameId={game.id} />
-      </section>
+      {access.isAdmin ? (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold text-destructive">Danger zone</h2>
+          <DeleteGameForm gameId={game.id} />
+        </section>
+      ) : null}
     </div>
   );
 }

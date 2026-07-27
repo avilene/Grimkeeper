@@ -4,6 +4,7 @@ import { useActionState } from "react";
 
 import { deleteReminder, saveReminder, type SaveResult } from "@/actions/reminders";
 import { SaveStatus, SubmitButton } from "@/components/save-form";
+import { TimezoneOffsetInput } from "@/components/timezone-offset-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,6 +51,7 @@ export function ReminderForm({
         action={action}
         className="grid gap-3 rounded-md border border-border bg-card p-4 sm:grid-cols-2"
       >
+        <TimezoneOffsetInput />
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="message">Message</Label>
           <Textarea id="message" name="message" required defaultValue={reminder?.message ?? ""} rows={3} />

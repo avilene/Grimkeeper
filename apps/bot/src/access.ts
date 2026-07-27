@@ -21,10 +21,10 @@ export function parseList(value: string | undefined): Set<string> {
   );
 }
 
-/** True when the Discord user id is listed in `ALLOWED_USER_IDS` (roles do not count). */
+/** True when the Discord user id is listed in `ADMIN_IDS` (roles do not count). */
 export function isAllowedUserId(userId: string | null | undefined): boolean {
   if (!userId) return false;
-  return parseList(process.env.ALLOWED_USER_IDS).has(userId);
+  return parseList(process.env.ADMIN_IDS).has(userId);
 }
 
 /**
@@ -55,7 +55,7 @@ export async function fetchGuildMemberWithTimeout(
 }
 
 export async function canUseBot(interaction: AccessInteraction): Promise<boolean> {
-  const allowedUserIds = parseList(process.env.ALLOWED_USER_IDS);
+  const allowedUserIds = parseList(process.env.ADMIN_IDS);
   const allowedRoleIds = parseList(process.env.ALLOWED_ROLE_IDS);
   const userId = interaction?.user?.id;
 
@@ -85,7 +85,7 @@ export async function canUseBot(interaction: AccessInteraction): Promise<boolean
 }
 
 export async function isInExplicitAllowlist(interaction: AccessInteraction): Promise<boolean> {
-  const allowedUserIds = parseList(process.env.ALLOWED_USER_IDS);
+  const allowedUserIds = parseList(process.env.ADMIN_IDS);
   const allowedRoleIds = parseList(process.env.ALLOWED_ROLE_IDS);
   if (allowedUserIds.size === 0 && allowedRoleIds.size === 0) {
     return false;

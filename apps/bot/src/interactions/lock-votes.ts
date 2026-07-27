@@ -80,7 +80,7 @@ export async function handleLockVotesButton(interaction: ButtonInteraction): Pro
       await interaction.editReply({
         content: !game!.stRoleId
           ? "Only storytellers can use the vote tracker. This game has no ST role linked — ask an ST to `/st do add-st` you."
-          : "Only storytellers can use the vote tracker. Need this game’s ST Discord role, `/st do add-st`, or `ALLOWED_USER_IDS`.",
+          : "Only storytellers can use the vote tracker. Need this game’s ST Discord role, `/st do add-st`, or `ADMIN_IDS`.",
       });
       return true;
     }

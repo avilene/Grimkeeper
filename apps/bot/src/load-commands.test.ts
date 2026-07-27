@@ -35,7 +35,7 @@ describe("loadCommandModules", () => {
       "utf8",
     );
     expect(source).not.toContain("requireCommandAccess");
-    expect(source).not.toContain("ALLOWED_USER_IDS");
+    expect(source).not.toContain("ADMIN_IDS");
     expect(source).not.toContain("ALLOWED_ROLE_IDS");
   });
 });

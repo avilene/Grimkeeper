@@ -28,6 +28,35 @@ export type PlayerStatRow = {
   winner: string;
 };
 
+export type PlayerRoleHistoryEntry = {
+  gameId: string;
+  guildId: string;
+  channelId: string;
+  roleId: string | null;
+  roleName: string | null;
+  team: string | null;
+  winner: string;
+  result: "win" | "loss" | "unscored";
+  source: string | null;
+  endedAt: Date | null;
+  createdAt: Date;
+};
+
+export type GuildPlayerStats = {
+  guildId: string;
+  stats: PlayerStats;
+};
+
+export type PlayerStatsOverview = {
+  overall: PlayerStats;
+  byGuild: GuildPlayerStats[];
+  history: PlayerRoleHistoryEntry[];
+  /** Win rate when playing good (null if no scored good games). */
+  goodWinRate: number | null;
+  /** Win rate when playing evil (null if no scored evil games). */
+  evilWinRate: number | null;
+};
+
 export function aggregatePlayerStats(rows: PlayerStatRow[]): PlayerStats {
   let wins = 0;
   let losses = 0;
@@ -77,6 +106,29 @@ export function aggregatePlayerStats(rows: PlayerStatRow[]): PlayerStats {
   };
 }
 
+function winRateForTeam(rows: PlayerStatRow[], teamFilter: "good" | "evil"): number | null {
+  let wins = 0;
+  let losses = 0;
+  for (const row of rows) {
+    const team = row.team ?? teamFromRoleId(row.roleId);
+    if (team !== teamFilter) continue;
+    if (team === row.winner) wins += 1;
+    else losses += 1;
+  }
+  const scored = wins + losses;
+  return scored === 0 ? null : wins / scored;
+}
+
+function resultForSeat(
+  team: string | null,
+  roleId: string | null,
+  winner: string,
+): "win" | "loss" | "unscored" {
+  const resolved = team ?? teamFromRoleId(roleId);
+  if (resolved !== "good" && resolved !== "evil") return "unscored";
+  return resolved === winner ? "win" : "loss";
+}
+
 /** Guild-scoped stats for ended games with a recorded winner. */
 export async function getPlayerStats(
   guildId: string,
@@ -105,4 +157,89 @@ export async function getPlayerStats(
       winner: player.game.winner!,
     })),
   );
+}
+
+/**
+ * Cross-guild stats + role history for a Discord user (ended games with a winner).
+ * Used by the admin panel player stats page.
+ */
+export async function getPlayerStatsOverview(
+  discordUserId: string,
+): Promise<PlayerStatsOverview> {
+  const seats = await prisma.player.findMany({
+    where: {
+      discordUserId,
+      game: {
+        phase: "ended",
+        winner: { in: ["good", "evil"] },
+      },
+    },
+    select: {
+      roleId: true,
+      team: true,
+      game: {
+        select: {
+          id: true,
+          guildId: true,
+          channelId: true,
+          winner: true,
+          source: true,
+          endedAt: true,
+          createdAt: true,
+        },
+      },
+    },
+    orderBy: [{ game: { endedAt: "desc" } }, { game: { createdAt: "desc" } }],
+  });
+
+  const rows: PlayerStatRow[] = seats.map((seat) => ({
+    roleId: seat.roleId,
+    team: seat.team,
+    winner: seat.game.winner!,
+  }));
+
+  const byGuildMap = new Map<string, PlayerStatRow[]>();
+  for (const seat of seats) {
+    const guildId = seat.game.guildId;
+    const list = byGuildMap.get(guildId) ?? [];
+    list.push({
+      roleId: seat.roleId,
+      team: seat.team,
+      winner: seat.game.winner!,
+    });
+    byGuildMap.set(guildId, list);
+  }
+
+  const history: PlayerRoleHistoryEntry[] = seats.map((seat) => {
+    const team = seat.team ?? teamFromRoleId(seat.roleId);
+    const roleId = seat.roleId;
+    return {
+      gameId: seat.game.id,
+      guildId: seat.game.guildId,
+      channelId: seat.game.channelId,
+      roleId,
+      roleName: roleId ? (getBotcRole(roleId)?.name ?? roleId) : null,
+      team,
+      winner: seat.game.winner!,
+      result: resultForSeat(seat.team, seat.roleId, seat.game.winner!),
+      source: seat.game.source,
+      endedAt: seat.game.endedAt,
+      createdAt: seat.game.createdAt,
+    };
+  });
+
+  const byGuild = [...byGuildMap.entries()]
+    .map(([guildId, guildRows]) => ({
+      guildId,
+      stats: aggregatePlayerStats(guildRows),
+    }))
+    .sort((a, b) => b.stats.gamesPlayed - a.stats.gamesPlayed || a.guildId.localeCompare(b.guildId));
+
+  return {
+    overall: aggregatePlayerStats(rows),
+    byGuild,
+    history,
+    goodWinRate: winRateForTeam(rows, "good"),
+    evilWinRate: winRateForTeam(rows, "evil"),
+  };
 }

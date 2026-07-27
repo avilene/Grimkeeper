@@ -5,6 +5,7 @@ import { WarnBanner } from "@/components/banners";
 import { RecordGameForm } from "@/components/record-game-form";
 import type { RoleOption } from "@/components/role-combobox";
 import { Button } from "@/components/ui/button";
+import { requireAdmin } from "@/lib/session";
 
 export const metadata = { title: "Record completed game" };
 
@@ -19,7 +20,8 @@ function catalogRoleOptions(): RoleOption[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export default function RecordCompletedGamePage() {
+export default async function RecordCompletedGamePage() {
+  await requireAdmin();
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">

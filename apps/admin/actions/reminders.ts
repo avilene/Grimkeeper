@@ -4,32 +4,24 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import type { SaveResult } from "@/lib/action-result";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { parseLocalDateTime, parseTimezoneOffsetMinutes } from "@/lib/datetime";
 import { emptyToNull } from "@/lib/utils";
+import { requireAdmin, requireGameAccess } from "@/lib/session";
 
 export type { SaveResult };
-
-async function requireSession() {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
-  return session;
-}
-
-function parseFireAt(value: FormDataEntryValue | null): Date {
-  const raw = String(value ?? "").trim();
-  if (!raw) throw new Error("Fire at is required.");
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) throw new Error("Invalid fire-at datetime.");
-  return date;
-}
 
 export async function saveReminder(
   reminderId: string | null,
   _prev: SaveResult | null,
   formData: FormData,
 ): Promise<SaveResult> {
-  const session = await requireSession();
+  const timezoneOffsetMinutes = parseTimezoneOffsetMinutes(
+    formData.get("timezoneOffsetMinutes"),
+  );
+  const gameId = emptyToNull(formData.get("gameId"));
+  const access = gameId ? await requireGameAccess(gameId) : await requireAdmin();
+
   try {
     const message = String(formData.get("message") ?? "").trim();
     const guildId = String(formData.get("guildId") ?? "").trim();
@@ -42,8 +34,8 @@ export async function saveReminder(
       message,
       guildId,
       channelId,
-      gameId: emptyToNull(formData.get("gameId")),
-      fireAt: parseFireAt(formData.get("fireAt")),
+      gameId,
+      fireAt: parseLocalDateTime(formData.get("fireAt"), timezoneOffsetMinutes, "Fire at"),
       emoji: emptyToNull(formData.get("emoji")),
       pingPlayers: formData.get("pingPlayers") === "on",
       pingRoleId: emptyToNull(formData.get("pingRoleId")),
@@ -64,11 +56,14 @@ export async function saveReminder(
     const created = await prisma.gameReminder.create({
       data: {
         ...data,
-        createdBy: session.user!.id!,
+        createdBy: access.userId,
       },
     });
     revalidatePath("/reminders");
-    if (data.gameId) revalidatePath(`/games/${data.gameId}`);
+    if (data.gameId) {
+      revalidatePath(`/games/${data.gameId}`);
+      redirect(`/games/${data.gameId}`);
+    }
     redirect(`/reminders/${created.id}`);
   } catch (err) {
     if (err && typeof err === "object" && "digest" in err) throw err;
@@ -81,16 +76,23 @@ export async function deleteReminder(
   _prev: SaveResult | null,
   _formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
   try {
     const existing = await prisma.gameReminder.findUnique({
       where: { id: reminderId },
       select: { gameId: true },
     });
     if (!existing) return { ok: false, message: "Reminder not found." };
+    if (existing.gameId) {
+      await requireGameAccess(existing.gameId);
+    } else {
+      await requireAdmin();
+    }
     await prisma.gameReminder.delete({ where: { id: reminderId } });
     revalidatePath("/reminders");
-    if (existing.gameId) revalidatePath(`/games/${existing.gameId}`);
+    if (existing.gameId) {
+      revalidatePath(`/games/${existing.gameId}`);
+      redirect(`/games/${existing.gameId}`);
+    }
     redirect("/reminders");
   } catch (err) {
     if (err && typeof err === "object" && "digest" in err) throw err;

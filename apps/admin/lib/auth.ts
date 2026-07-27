@@ -1,8 +1,6 @@
 import NextAuth from "next-auth";
 import Discord from "next-auth/providers/discord";
 
-import { parseAllowedUserIds } from "@/lib/env";
-
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Discord({
@@ -19,9 +17,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   callbacks: {
     async signIn({ profile }) {
+      // Anyone with a Discord account can sign in. Visibility is role-gated
+      // (ADMIN_IDS admins, storytellers, players) after login.
       const id = profile && "id" in profile ? String(profile.id) : "";
-      const allowed = parseAllowedUserIds(process.env.ALLOWED_USER_IDS);
-      return allowed.size > 0 && Boolean(id) && allowed.has(id);
+      return Boolean(id);
     },
     async jwt({ token, profile }) {
       if (profile && "id" in profile) {

@@ -13,17 +13,16 @@ import {
 import { getBotcRole } from "@grimkeeper/engine";
 
 import type { SaveResult } from "@/lib/action-result";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import {
+  parseLocalDateTime,
+  parseOptionalLocalDateTime,
+  parseTimezoneOffsetMinutes,
+} from "@/lib/datetime";
 import { emptyToNull, parseOptionalInt } from "@/lib/utils";
+import { requireAdmin, requireGameAccess } from "@/lib/session";
 
 export type { SaveResult };
-
-async function requireSession() {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
-  return session;
-}
 
 const GAME_PHASES = new Set(["lobby", "setup", "night", "day", "ended"]);
 const PLAYER_TEAMS = new Set(["good", "evil", "traveler"]);
@@ -65,29 +64,16 @@ function teamFromRoleId(roleId: string | null): string | null {
   return "good";
 }
 
-function parseRequiredDate(value: FormDataEntryValue | null, label: string): Date {
-  const raw = String(value ?? "").trim();
-  if (!raw) throw new Error(`${label} is required.`);
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) throw new Error(`Invalid ${label.toLowerCase()}.`);
-  return date;
-}
-
-function parseOptionalDate(value: FormDataEntryValue | null, label: string): Date | null {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) throw new Error(`Invalid ${label.toLowerCase()}.`);
-  return date;
-}
-
 /** Admin-only: create an ended game for stats (no Discord posts/threads/roles). */
 export async function recordCompletedGameAction(
   _prev: SaveResult | null,
   formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireAdmin();
   try {
+    const timezoneOffsetMinutes = parseTimezoneOffsetMinutes(
+      formData.get("timezoneOffsetMinutes"),
+    );
     const guildId = String(formData.get("guildId") ?? "").trim();
     const channelId =
       String(formData.get("channelId") ?? "").trim() || STATS_ONLY_CHANNEL_ID;
@@ -95,8 +81,16 @@ export async function recordCompletedGameAction(
     if (winnerRaw !== "good" && winnerRaw !== "evil") {
       return { ok: false, message: 'Winner must be "good" or "evil".' };
     }
-    const startedAt = parseRequiredDate(formData.get("startedAt"), "Started at");
-    const endedAt = parseRequiredDate(formData.get("endedAt"), "Ended at");
+    const startedAt = parseLocalDateTime(
+      formData.get("startedAt"),
+      timezoneOffsetMinutes,
+      "Started at",
+    );
+    const endedAt = parseLocalDateTime(
+      formData.get("endedAt"),
+      timezoneOffsetMinutes,
+      "Ended at",
+    );
     const storytellerId = String(formData.get("storytellerId") ?? "").trim();
     const coStorytellerIds = String(formData.get("coStorytellerIds") ?? "")
       .split(/[\s,]+/)
@@ -153,8 +147,11 @@ export async function saveGame(
   _prev: SaveResult | null,
   formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireGameAccess(gameId);
   try {
+    const timezoneOffsetMinutes = parseTimezoneOffsetMinutes(
+      formData.get("timezoneOffsetMinutes"),
+    );
     const phase = parseGamePhase(formData.get("phase"));
     const winner = parseWinner(formData.get("winner"), phase);
     await prisma.game.update({
@@ -166,8 +163,16 @@ export async function saveGame(
         nightNumber: Number(formData.get("nightNumber") ?? 0),
         guildId: String(formData.get("guildId") ?? "").trim(),
         channelId: String(formData.get("channelId") ?? "").trim(),
-        startedAt: parseOptionalDate(formData.get("startedAt"), "Started at"),
-        endedAt: parseOptionalDate(formData.get("endedAt"), "Ended at"),
+        startedAt: parseOptionalLocalDateTime(
+          formData.get("startedAt"),
+          timezoneOffsetMinutes,
+          "Started at",
+        ),
+        endedAt: parseOptionalLocalDateTime(
+          formData.get("endedAt"),
+          timezoneOffsetMinutes,
+          "Ended at",
+        ),
         stRoleId: emptyToNull(formData.get("stRoleId")),
         playerRoleId: emptyToNull(formData.get("playerRoleId")),
         kibRoleId: emptyToNull(formData.get("kibRoleId")),
@@ -192,7 +197,7 @@ export async function deleteGame(
   _prev: SaveResult | null,
   formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireAdmin();
   try {
     const confirm = String(formData.get("confirm") ?? "").trim();
     if (confirm !== "DELETE") {
@@ -212,7 +217,7 @@ export async function savePlayers(
   _prev: SaveResult | null,
   formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireGameAccess(gameId);
   try {
     const playerIds = formData.getAll("playerId").map(String);
     if (playerIds.length === 0) {
@@ -261,7 +266,7 @@ export async function addPlayer(
   _prev: SaveResult | null,
   formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireGameAccess(gameId);
   try {
     const displayName = String(formData.get("displayName") ?? "").trim();
     const discordUserId = String(formData.get("discordUserId") ?? "").trim();
@@ -296,7 +301,7 @@ export async function deletePlayer(
   _prev: SaveResult | null,
   _formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireGameAccess(gameId);
   try {
     const result = await prisma.player.deleteMany({
       where: { id: playerId, gameId },
@@ -318,8 +323,11 @@ export async function saveGameDay(
   _prev: SaveResult | null,
   formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireGameAccess(gameId);
   try {
+    const timezoneOffsetMinutes = parseTimezoneOffsetMinutes(
+      formData.get("timezoneOffsetMinutes"),
+    );
     const dayNumber = Number(formData.get("dayNumber") ?? 0);
     if (!Number.isInteger(dayNumber) || dayNumber < 1) {
       return { ok: false, message: "Day number must be a positive integer." };
@@ -330,13 +338,11 @@ export async function saveGameDay(
       nominationsOpen: formData.get("nominationsOpen") === "on",
       voteVisibility: String(formData.get("voteVisibility") ?? "public").trim() || "public",
       executionUsed: formData.get("executionUsed") === "on",
-      nominationsPausedUntil: (() => {
-        const raw = String(formData.get("nominationsPausedUntil") ?? "").trim();
-        if (!raw) return null;
-        const date = new Date(raw);
-        if (Number.isNaN(date.getTime())) throw new Error("Invalid paused-until datetime.");
-        return date;
-      })(),
+      nominationsPausedUntil: parseOptionalLocalDateTime(
+        formData.get("nominationsPausedUntil"),
+        timezoneOffsetMinutes,
+        "Paused-until datetime",
+      ),
     };
 
     if (dayId) {
@@ -362,7 +368,7 @@ export async function deleteGameDay(
   _prev: SaveResult | null,
   _formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireGameAccess(gameId);
   try {
     const result = await prisma.gameDay.deleteMany({ where: { id: dayId, gameId } });
     if (result.count === 0) {
@@ -410,8 +416,11 @@ export async function saveNomination(
   _prev: SaveResult | null,
   formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireGameAccess(gameId);
   try {
+    const timezoneOffsetMinutes = parseTimezoneOffsetMinutes(
+      formData.get("timezoneOffsetMinutes"),
+    );
     const gameDayId = String(formData.get("gameDayId") ?? "").trim();
     await assertGameDay(gameId, gameDayId);
 
@@ -421,13 +430,15 @@ export async function saveNomination(
     const defense = emptyToNull(formData.get("defense"));
     const status = String(formData.get("status") ?? "open").trim();
     const order = Number(formData.get("order") ?? 1);
-    const voteDeadlineRaw = String(formData.get("voteDeadlineAt") ?? "").trim();
     let voteDeadlineAt: Date | null = null;
-    if (voteDeadlineRaw) {
-      voteDeadlineAt = new Date(voteDeadlineRaw);
-      if (Number.isNaN(voteDeadlineAt.getTime())) {
-        return { ok: false, message: "Vote deadline must be a valid date/time." };
-      }
+    try {
+      voteDeadlineAt = parseOptionalLocalDateTime(
+        formData.get("voteDeadlineAt"),
+        timezoneOffsetMinutes,
+        "Vote deadline",
+      );
+    } catch {
+      return { ok: false, message: "Vote deadline must be a valid date/time." };
     }
 
     if (!nominatorId || !nomineeId) {
@@ -493,7 +504,7 @@ export async function deleteNomination(
   _prev: SaveResult | null,
   _formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireGameAccess(gameId);
   try {
     const result = await prisma.nomination.deleteMany({
       where: { id: nominationId, gameDay: { gameId } },
@@ -520,7 +531,7 @@ export async function saveVote(
   _prev: SaveResult | null,
   formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireGameAccess(gameId);
   try {
     const nominationId = String(formData.get("nominationId") ?? "").trim();
     const voterId = String(formData.get("voterId") ?? "").trim();
@@ -594,7 +605,7 @@ export async function deleteVote(
   _prev: SaveResult | null,
   _formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireGameAccess(gameId);
   try {
     const result = await prisma.vote.deleteMany({
       where: { id: voteId, gameDay: { gameId } },
@@ -615,7 +626,7 @@ export async function requestNomsDiscordRefresh(
   _prev: SaveResult | null,
   _formData: FormData,
 ): Promise<SaveResult> {
-  await requireSession();
+  await requireGameAccess(gameId);
   try {
     const game = await prisma.game.findUnique({
       where: { id: gameId },

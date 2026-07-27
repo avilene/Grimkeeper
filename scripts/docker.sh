@@ -53,7 +53,7 @@ Droplet setup (recommended — skips pnpm install on server):
 
 Admin UI on the droplet (optional compose profile — separate image):
   1. Discord OAuth2 redirect: https://YOUR_HOST/api/auth/callback/discord (or http://IP:3847/...)
-  2. In .env: COMPOSE_PROFILES=admin (and OAuth / ALLOWED_USER_IDS — see apps/admin/README.md)
+  2. In .env: COMPOSE_PROFILES=admin (and OAuth / ADMIN_IDS — see apps/admin/README.md)
   3. Optional: ADMIN_IMAGE=ghcr.io/YOUR_USER/Grimkeeper-admin:latest
      (defaults to GRIMKEEPER_IMAGE with -admin before the tag)
   4. pnpm docker:redeploy   # recreates bot + admin from their images

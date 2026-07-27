@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { AliasForm } from "@/components/alias-form";
 import { WarnBanner } from "@/components/banners";
+import { LocalTime } from "@/components/local-time";
 import {
   Table,
   TableBody,
@@ -11,11 +12,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
+import { requireAdmin } from "@/lib/session";
 import { shortId } from "@/lib/utils";
 
 export const metadata = { title: "Aliases" };
 
 export default async function AliasesPage() {
+  await requireAdmin();
   const aliases = await prisma.playerAlias.findMany({
     orderBy: [{ guildId: "asc" }, { alias: "asc" }],
     take: 200,
@@ -63,7 +66,7 @@ export default async function AliasesPage() {
                     {shortId(row.discordUserId, 10)}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {row.updatedAt.toISOString()}
+                    <LocalTime value={row.updatedAt} />
                   </TableCell>
                 </TableRow>
               ))}

@@ -390,7 +390,7 @@ export async function requireStorytellerGame(interaction: CommandInteraction) {
     const roleHint = game.stRoleId ? ` <@&${game.stRoleId}>` : "";
     const detail = !game.stRoleId
       ? " This game has no ST role linked in the DB — re-run `/game setup` with `st:`."
-      : ` Need this game’s ST Discord role${roleHint} (or \`ALLOWED_USER_IDS\`).`;
+      : ` Need this game’s ST Discord role${roleHint} (or \`ADMIN_IDS\`).`;
     log("info", "st.access.denied", {
       userId: interaction.user.id,
       gameId: game.id,
@@ -501,7 +501,7 @@ export async function requireReminderAccess(interaction: CommandInteraction): Pr
   if (!(await canManageChannelReminders(interaction))) {
     await replyOrEditInteraction(interaction, {
       content:
-        "No active game access. Set reminders with the **ST role**, or add your user/role to `ALLOWED_USER_IDS` / `ALLOWED_ROLE_IDS`.",
+        "No active game access. Set reminders with the **ST role**, or add your user/role to `ADMIN_IDS` / `ALLOWED_ROLE_IDS`.",
       flags: MessageFlags.Ephemeral,
     });
     return null;
@@ -596,7 +596,7 @@ export async function requireActivePlayerGame(interaction: CommandInteraction) {
 
 const BOT_ACCESS_DENIED_MESSAGE =
   "You are not allowed to use this bot. Ask an admin to add your user ID " +
-  "to `ALLOWED_USER_IDS` or one of your role IDs to `ALLOWED_ROLE_IDS`.";
+  "to `ADMIN_IDS` or one of your role IDs to `ALLOWED_ROLE_IDS`.";
 
 async function replyAccessDenied(interaction: CommandInteraction): Promise<void> {
   if (interaction.deferred || interaction.replied) {

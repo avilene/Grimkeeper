@@ -12,11 +12,19 @@ export {
 export { backfillGameWinnersFromEvents } from "./backfill-winners.js";
 export {
   getPlayerStats,
+  getPlayerStatsOverview,
   aggregatePlayerStats,
   type PlayerStats,
+  type PlayerStatsOverview,
+  type GuildPlayerStats,
+  type PlayerRoleHistoryEntry,
   type CharacterStat,
   type PlayerStatRow,
 } from "./player-stats.js";
+export {
+  listEngineStorytellerGameIds,
+  listGamesWithStRole,
+} from "./storyteller-access.js";
 export {
   requestDiscordNomsRefresh,
   listGamesPendingDiscordNomsRefresh,

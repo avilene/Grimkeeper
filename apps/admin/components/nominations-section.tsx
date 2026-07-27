@@ -11,6 +11,7 @@ import {
 } from "@/actions/games";
 import { RefreshNomsButton } from "@/components/refresh-noms-button";
 import { SaveStatus, SubmitButton } from "@/components/save-form";
+import { TimezoneOffsetInput } from "@/components/timezone-offset-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -420,6 +421,7 @@ function NominationAccordionItem({
       {open ? (
         <div className="space-y-4 border-t border-border px-4 py-4">
           <form id={formId} action={saveAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <TimezoneOffsetInput />
             <div className="space-y-1.5">
               <Label htmlFor={`order-${nomination.id}`}>Order</Label>
               <Input
@@ -653,6 +655,7 @@ export function NominationsSection({
           action={createAction}
           className="grid gap-3 rounded-md border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-3"
         >
+          <TimezoneOffsetInput />
           <h3 className="col-span-full text-sm font-medium">Add nomination</h3>
           <div className="space-y-1.5">
             <Label htmlFor="new-gameDayId">Game day</Label>

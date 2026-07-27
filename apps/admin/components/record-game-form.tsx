@@ -9,6 +9,7 @@ import {
   type RoleOption,
 } from "@/components/role-combobox";
 import { SaveStatus, SubmitButton } from "@/components/save-form";
+import { TimezoneOffsetInput } from "@/components/timezone-offset-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,6 +62,7 @@ export function RecordGameForm({ roles }: { roles: RoleOption[] }) {
 
   return (
     <form action={action} className="space-y-6">
+      <TimezoneOffsetInput />
       <div className="grid gap-3 rounded-md border border-border bg-card p-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="guildId">Guild ID</Label>

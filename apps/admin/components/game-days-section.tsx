@@ -4,6 +4,7 @@ import { useActionState } from "react";
 
 import { deleteGameDay, saveGameDay, type SaveResult } from "@/actions/games";
 import { SaveStatus, SubmitButton } from "@/components/save-form";
+import { TimezoneOffsetInput } from "@/components/timezone-offset-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,6 +53,7 @@ function DayRowForm({ gameId, day }: { gameId: string; day: EditableGameDay }) {
     <TableRow className="hover:bg-transparent align-top">
       <TableCell colSpan={6} className="p-2">
         <form action={saveAction} className="grid gap-2 sm:grid-cols-6">
+          <TimezoneOffsetInput />
           <div className="space-y-1">
             <Label className="text-xs">Day #</Label>
             <Input name="dayNumber" type="number" defaultValue={day.dayNumber} className="h-8" />
@@ -163,6 +165,7 @@ export function GameDaysSection({
         action={createAction}
         className="grid gap-3 rounded-md border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-3"
       >
+        <TimezoneOffsetInput />
         <h3 className="col-span-full text-sm font-medium">Add day</h3>
         <div className="space-y-1.5">
           <Label htmlFor="new-dayNumber">Day number</Label>

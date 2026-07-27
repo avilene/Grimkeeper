@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { LocalTime } from "@/components/local-time";
 import { WarnBanner } from "@/components/banners";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { prisma } from "@/lib/db";
+import { requireAdmin } from "@/lib/session";
 import { shortId } from "@/lib/utils";
 
 export const metadata = { title: "Reminders" };
@@ -21,6 +23,7 @@ export default async function RemindersPage({
 }: {
   searchParams: Promise<{ show?: string }>;
 }) {
+  await requireAdmin();
   const { show } = await searchParams;
   const showFired = show === "fired" || show === "all";
 
@@ -73,7 +76,7 @@ export default async function RemindersPage({
                     href={`/reminders/${reminder.id}`}
                     className="text-primary hover:underline"
                   >
-                    {reminder.fireAt.toISOString()}
+                    <LocalTime value={reminder.fireAt} />
                   </Link>
                 </TableCell>
                 <TableCell className="max-w-xs truncate text-sm">{reminder.message}</TableCell>

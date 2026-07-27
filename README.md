@@ -29,7 +29,7 @@ Discord -> Adapter -> Engine -> Events -> Projections -> Persistence
    - `DISCORD_TOKEN` — bot token
    - `DISCORD_CLIENT_ID` — application ID
    - optional access control:
-     - `ALLOWED_USER_IDS` — comma-separated Discord user IDs allowed to use commands
+     - `ADMIN_IDS` — comma-separated Discord user IDs allowed to use commands
      - `ALLOWED_ROLE_IDS` — comma-separated Discord role IDs allowed to use commands
 
 4. Push the database schema:
@@ -44,7 +44,7 @@ Discord -> Adapter -> Engine -> Events -> Projections -> Persistence
 
 6. Invite the bot to your server with the `applications.commands` scope.
 
-If both `ALLOWED_USER_IDS` and `ALLOWED_ROLE_IDS` are empty, everyone in the guild can use bot commands.
+If both `ADMIN_IDS` and `ALLOWED_ROLE_IDS` are empty, everyone in the guild can use bot commands.
 
 ## Commands
 
@@ -99,7 +99,7 @@ Enable the `admin` compose profile (separate `Grimkeeper-admin` image + shared S
 # DISCORD_CLIENT_SECRET=...
 # ADMIN_SESSION_SECRET=...
 # ADMIN_OAUTH_CALLBACK_URL=https://admin.example.com/api/auth/callback/discord
-# ALLOWED_USER_IDS=your_discord_user_id
+# ADMIN_IDS=your_discord_user_id
 
 pnpm docker:redeploy
 ```

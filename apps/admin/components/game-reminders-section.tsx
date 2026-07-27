@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { LocalTime } from "@/components/local-time";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -62,7 +63,7 @@ export function GameRemindersSection({
                     href={`/reminders/${reminder.id}`}
                     className="text-primary hover:underline"
                   >
-                    {reminder.fireAt.toISOString()}
+                    <LocalTime value={reminder.fireAt} />
                   </Link>
                 </TableCell>
                 <TableCell className="max-w-xs truncate text-sm">{reminder.message}</TableCell>

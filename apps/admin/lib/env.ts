@@ -6,7 +6,7 @@ function requireEnv(name: string): string {
   return value;
 }
 
-export function parseAllowedUserIds(value: string | undefined): Set<string> {
+export function parseAdminIds(value: string | undefined): Set<string> {
   if (!value) return new Set();
   return new Set(
     value
@@ -23,7 +23,7 @@ export const adminEnv = {
   /** Auth.js secret — prefers AUTH_SECRET, falls back to ADMIN_SESSION_SECRET. */
   authSecret: () =>
     process.env.AUTH_SECRET?.trim() || requireEnv("ADMIN_SESSION_SECRET"),
-  allowedUserIds: () => parseAllowedUserIds(process.env.ALLOWED_USER_IDS),
+  adminIds: () => parseAdminIds(process.env.ADMIN_IDS),
   /**
    * Public origin for Auth.js (e.g. https://admin.example.com).
    * Derived from ADMIN_OAUTH_CALLBACK_URL when set.

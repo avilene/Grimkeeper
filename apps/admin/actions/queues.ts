@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { auth } from "@/lib/auth";
 import {
   addQueueMember,
   closeQueueEntry,
@@ -15,12 +14,7 @@ import {
   type StQueueMemberRole,
 } from "@/lib/db";
 import { setFlash } from "@/lib/flash";
-
-async function requireSession() {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
-  return session;
-}
+import { requireAdmin } from "@/lib/session";
 
 function parseImageUrlsFromBody(value: FormDataEntryValue | null): string[] {
   const lines = String(value ?? "")
@@ -37,7 +31,7 @@ function parseMemberRole(value: FormDataEntryValue | null): StQueueMemberRole {
 }
 
 export async function saveQueueEntry(entryId: string, formData: FormData) {
-  await requireSession();
+  await requireAdmin();
   try {
     const statusRaw = String(formData.get("status") ?? "").trim();
     if (statusRaw !== "open" && statusRaw !== "closed") {
@@ -71,7 +65,7 @@ export async function saveQueueEntry(entryId: string, formData: FormData) {
 }
 
 export async function closeQueueEntryAction(entryId: string) {
-  await requireSession();
+  await requireAdmin();
   try {
     await closeQueueEntry(entryId);
     await setFlash("Queue entry closed.");
@@ -84,7 +78,7 @@ export async function closeQueueEntryAction(entryId: string) {
 }
 
 export async function addQueueMemberAction(entryId: string, formData: FormData) {
-  await requireSession();
+  await requireAdmin();
   try {
     const discordUserId = String(formData.get("discordUserId") ?? "").trim();
     if (!discordUserId) throw new Error("Discord user ID is required");
@@ -101,7 +95,7 @@ export async function addQueueMemberAction(entryId: string, formData: FormData) 
 }
 
 export async function removeQueueMemberAction(entryId: string, memberId: string) {
-  await requireSession();
+  await requireAdmin();
   try {
     const deleted = await prisma.stQueueMember.deleteMany({
       where: { id: memberId, entryId },

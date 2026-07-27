@@ -6,10 +6,13 @@ Next.js (App Router) + shadcn/ui admin for inspecting/editing live game projecti
 
 ## Features
 
-- Discord OAuth via Auth.js (`identify` scope)
-- Access limited to `ALLOWED_USER_IDS` (deny-by-default if empty)
+- Discord OAuth via Auth.js (`identify` scope) — **anyone can sign in**
+- Role-based visibility after login:
+  - **Admins** (`ADMIN_IDS`): full panel (games, reminders, aliases, queue, record/delete)
+  - **Storytellers**: games where they hold the game’s Discord ST role (`Game.stRoleId`) and/or are an engine ST
+  - **Players**: `/stats` — role history, win rates, alignment breakdown
 - Games + players edit forms
-- ST queue boards / entries / members moderation
+- ST queue boards / entries / members moderation (admins)
 - shadcn/ui (zinc dark) layout
 - Sentry (`@sentry/nextjs`) via dedicated `ADMIN_SENTRY_DSN` / admin project
 - Production source maps uploaded to Sentry during the admin Docker image build (when `SENTRY_AUTH_TOKEN` is set)
@@ -27,7 +30,7 @@ DISCORD_CLIENT_SECRET=...
 ADMIN_SESSION_SECRET=...       # long random string (also used as Auth.js secret)
 # Optional: AUTH_SECRET=...    # overrides ADMIN_SESSION_SECRET for Auth.js
 ADMIN_OAUTH_CALLBACK_URL=http://localhost:3847/api/auth/callback/discord
-ALLOWED_USER_IDS=123,456
+ADMIN_IDS=123,456
 DATABASE_URL=file:./packages/database/prisma/dev.db
 ADMIN_SENTRY_DSN=https://...@....ingest.sentry.io/...   # admin project DSN (not bot)
 # ADMIN_PORT=3847
@@ -66,7 +69,7 @@ ADMIN_OAUTH_CALLBACK_URL=https://admin.example.com/api/auth/callback/discord
 # ADMIN_OAUTH_CALLBACK_URL=http://46.101.182.124:3847/api/auth/callback/discord
 # Optional explicit Auth.js origin (defaults to origin of ADMIN_OAUTH_CALLBACK_URL):
 # AUTH_URL=http://46.101.182.124:3847
-ALLOWED_USER_IDS=YOUR_DISCORD_USER_ID
+ADMIN_IDS=YOUR_DISCORD_USER_ID
 ADMIN_SENTRY_DSN=...                   # Sentry → Projects → admin → Client Keys
 # Optional host bind / port (container always listens on 3847)
 # ADMIN_HOST_PORT=3847
@@ -80,7 +83,7 @@ pnpm docker:redeploy
 # or: docker compose --profile admin up -d
 ```
 
-4. Open the public URL and log in with Discord. Empty `ALLOWED_USER_IDS` denies everyone.
+4. Open the public URL and log in with Discord. Anyone can sign in; `ADMIN_IDS` grants full admin tools. Storyteller Discord role checks use `DISCORD_TOKEN` (same bot token as the bot service).
 
 **Source maps (readable Sentry stack traces)**
 
@@ -104,11 +107,15 @@ pnpm docker:redeploy
 |--------|------|-------------|
 | GET | `/login` | Login page |
 | GET/POST | `/api/auth/*` | Auth.js Discord OAuth |
-| GET | `/` | Redirects to `/games` |
-| GET | `/games` | Game list (`?show=all` includes ended) |
-| GET | `/games/[id]` | Game + players edit forms |
-| GET | `/queues` | ST queue boards + entries (`?show=all` includes closed) |
-| GET | `/queues/entries/[id]` | Queue entry + members edit forms |
+| GET | `/` | Redirects to `/games` (admin/ST) or `/stats` (players) |
+| GET | `/stats` | Player stats (all signed-in users) |
+| GET | `/games` | Game list — all games (admin) or ST games only |
+| GET | `/games/[id]` | Game + players edit forms (admin or ST for that game) |
+| GET | `/games/record` | Record completed game (admin) |
+| GET | `/queues` | ST queue boards + entries (admin) |
+| GET | `/queues/entries/[id]` | Queue entry + members edit forms (admin) |
+| GET | `/reminders` | Global reminders list (admin) |
+| GET | `/aliases` | Player aliases (admin) |
 | GET | `/healthz` | Liveness |
 
 Mutations use Next.js server actions (POST from the forms above).

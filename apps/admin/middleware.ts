@@ -23,7 +23,8 @@ export default auth((req) => {
 
   if (pathname === "/login") {
     if (isLoggedIn) {
-      return clearFlashCookie(req, NextResponse.redirect(new URL("/games", req.nextUrl)));
+      // Role-based home is resolved by `/` after session is available to RSC.
+      return clearFlashCookie(req, NextResponse.redirect(new URL("/", req.nextUrl)));
     }
     return clearFlashCookie(req, NextResponse.next());
   }

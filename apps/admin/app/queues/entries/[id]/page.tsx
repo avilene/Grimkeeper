@@ -8,6 +8,7 @@ import {
   saveQueueEntry,
 } from "@/actions/queues";
 import { FlashBanner, WarnBanner } from "@/components/banners";
+import { LocalTime } from "@/components/local-time";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { getQueueEntryById, parseScriptImageUrls, prisma } from "@/lib/db";
 import { consumeFlash } from "@/lib/flash";
+import { requireAdmin } from "@/lib/session";
 import { shortId } from "@/lib/utils";
 
 function Field({
@@ -51,6 +53,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 }
 
 export default async function QueueEntryPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireAdmin();
   const { id } = await params;
   const flash = await consumeFlash();
   const entry = await getQueueEntryById(id);
@@ -152,7 +155,9 @@ export default async function QueueEntryPage({ params }: { params: Promise<{ id:
                   <TableCell>
                     <Badge variant="secondary">{member.role}</Badge>
                   </TableCell>
-                  <TableCell className="text-xs">{member.createdAt.toISOString()}</TableCell>
+                  <TableCell className="text-xs">
+                    <LocalTime value={member.createdAt} />
+                  </TableCell>
                   <TableCell>
                     <form action={removeQueueMemberAction.bind(null, entry.id, member.id)}>
                       <Button type="submit" variant="secondary" size="sm">

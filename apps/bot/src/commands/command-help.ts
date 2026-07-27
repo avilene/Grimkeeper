@@ -30,7 +30,7 @@ import {
 
 const ACCESS_DENIED =
   "You are not allowed to use this bot. Ask an admin to add your user ID " +
-  "to `ALLOWED_USER_IDS` or one of your role IDs to `ALLOWED_ROLE_IDS`.";
+  "to `ADMIN_IDS` or one of your role IDs to `ALLOWED_ROLE_IDS`.";
 
 function helpReplyContext(interaction: CommandInteraction) {
   return {

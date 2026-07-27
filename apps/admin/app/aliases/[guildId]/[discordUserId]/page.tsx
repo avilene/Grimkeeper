@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { AliasForm } from "@/components/alias-form";
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
+import { requireAdmin } from "@/lib/session";
 
 export async function generateMetadata({
   params,
@@ -19,6 +20,7 @@ export default async function AliasDetailPage({
 }: {
   params: Promise<{ guildId: string; discordUserId: string }>;
 }) {
+  await requireAdmin();
   const { guildId, discordUserId } = await params;
   const aliasRow = await prisma.playerAlias.findUnique({
     where: { guildId_discordUserId: { guildId, discordUserId } },

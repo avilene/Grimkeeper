@@ -563,7 +563,7 @@ export class StCommandsMinimal {
 
   @Slash({
     name: "reset-to-setup",
-    description: "Wipe day/night back to Setup (ALLOWED_USER_IDS only)",
+    description: "Wipe day/night back to Setup (ADMIN_IDS only)",
   })
   async resetToSetupSlash(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
@@ -1572,12 +1572,12 @@ export class StCommandsMinimal {
     }
   }
 
-  /** ALLOWED_USER_IDS only: wipe day/night progress back to Setup (keeps roster). */
+  /** ADMIN_IDS only: wipe day/night progress back to Setup (keeps roster). */
   async resetToSetup(interaction: CommandInteraction): Promise<void> {
     if (!isAllowedUserId(interaction.user.id)) {
       await replyOrEditInteraction(interaction, {
         content:
-          "`reset-to-setup` is restricted to `ALLOWED_USER_IDS` (user IDs only — roles do not count).",
+          "`reset-to-setup` is restricted to `ADMIN_IDS` (user IDs only — roles do not count).",
         flags: MessageFlags.Ephemeral,
       });
       return;

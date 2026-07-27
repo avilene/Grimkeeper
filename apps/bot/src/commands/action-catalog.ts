@@ -23,7 +23,7 @@ export const ST_DO_ACTIONS: DoAction[] = [
   },
   {
     name: "reset-to-setup",
-    description: "Wipe day/night back to Setup (ALLOWED_USER_IDS only; keeps roster)",
+    description: "Wipe day/night back to Setup (ADMIN_IDS only; keeps roster)",
   },
   { name: "end", description: "End the game (strip roles, open kib)", needs: ["winner"] },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
@@ -72,7 +72,7 @@ export const ST_SLASH_SHORTCUTS: DoAction[] = [
   { name: "next-phase", description: "Advance Setup → Night 1 → Day 1 → …" },
   {
     name: "reset-to-setup",
-    description: "Wipe day/night back to Setup (ALLOWED_USER_IDS only)",
+    description: "Wipe day/night back to Setup (ADMIN_IDS only)",
   },
   {
     name: "recreate-player-thread",

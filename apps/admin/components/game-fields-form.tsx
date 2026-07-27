@@ -4,6 +4,7 @@ import { useActionState } from "react";
 
 import { saveGame, type SaveResult } from "@/actions/games";
 import { SaveStatus, SubmitButton } from "@/components/save-form";
+import { TimezoneOffsetInput } from "@/components/timezone-offset-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -77,6 +78,7 @@ export function GameFieldsForm({ gameId, game }: { gameId: string; game: GameFie
       action={action}
       className="grid gap-3 rounded-md border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-3"
     >
+      <TimezoneOffsetInput />
       <div className="space-y-1.5">
         <Label htmlFor="phase">Phase</Label>
         <select

@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 
 import { requestNomsDiscordRefresh, type SaveResult } from "@/actions/games";
+import { LocalTime } from "@/components/local-time";
 import { SaveStatus, SubmitButton } from "@/components/save-form";
 
 export function RefreshNomsButton({
@@ -23,7 +24,7 @@ export function RefreshNomsButton({
       <SaveStatus result={result} />
       {pendingSince ? (
         <span className="text-xs text-muted-foreground">
-          Refresh queued at {pendingSince.toISOString()} — waiting for bot…
+          Refresh queued at <LocalTime value={pendingSince} /> — waiting for bot…
         </span>
       ) : null}
     </form>

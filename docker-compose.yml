@@ -21,7 +21,7 @@ services:
         max-file: "3"
 
   # Optional — enable with COMPOSE_PROFILES=admin (or --profile admin).
-  # Shares the bot SQLite volume. Requires Discord OAuth + ALLOWED_USER_IDS.
+  # Shares the bot SQLite volume. Discord OAuth for sign-in; ADMIN_IDS for full admin.
   # See apps/admin/README.md (Production).
   admin:
     profiles: ["admin"]
@@ -47,6 +47,10 @@ services:
       ADMIN_SENTRY_DSN: ${ADMIN_SENTRY_DSN:-}
       # Release is baked into the admin image at build time (CI git sha). Do not override here.
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      # Bot token — used for Discord channel-name and member display-name lookups.
+      DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+      # Comma-separated Discord user IDs with full admin access.
+      ADMIN_IDS: ${ADMIN_IDS:-}
       NODE_ENV: production
     volumes:
       - grimkeeper-data:/app/data

@@ -9,7 +9,7 @@ export default async function LoginPage({
 }) {
   const params = await searchParams;
   const error = params.error;
-  const callbackUrl = params.callbackUrl ?? "/games";
+  const callbackUrl = params.callbackUrl ?? "/";
 
   return (
     <div className="mx-auto mt-16 max-w-md">
@@ -17,15 +17,14 @@ export default async function LoginPage({
         <CardHeader>
           <CardTitle>Login</CardTitle>
           <CardDescription>
-            Sign in with Discord. Only users listed in <code>ALLOWED_USER_IDS</code> can access
-            this admin UI.
+            Sign in with Discord. Admins see the full panel; storytellers see their games; everyone
+            can view their player stats.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {error ? (
             <p className="text-sm text-destructive">
-              Access denied or OAuth failed ({error}). Check that your Discord user ID is in{" "}
-              <code>ALLOWED_USER_IDS</code>.
+              Sign-in failed ({error}). Try again, or check Discord OAuth configuration.
             </p>
           ) : null}
           <form action={loginWithDiscord}>
