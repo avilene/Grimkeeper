@@ -20,6 +20,8 @@ export const GameCommandKind = {
   SetVoteVisibility: "SetVoteVisibility",
   CloseNominations: "CloseNominations",
   ResolveNomination: "ResolveNomination",
+  FailOpenNominations: "FailOpenNominations",
+  ExtendNominationDeadlines: "ExtendNominationDeadlines",
   ExecutePlayer: "ExecutePlayer",
   OpenSeats: "OpenSeats",
   CloseSeats: "CloseSeats",

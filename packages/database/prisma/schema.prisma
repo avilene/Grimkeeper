@@ -27,6 +27,11 @@ model Game {
   endedAt              DateTime?
   /** When set, bot should push nomination/vote projection state to Discord and clear. */
   discordNomsRefreshRequestedAt DateTime?
+  /** When set, bot should delete+repost open nomination embeds in kib and clear. */
+  discordKibNomsRepostRequestedAt DateTime?
+  /** When set with discordPingMissingNominationId, bot pings missing voters for that nom. */
+  discordPingMissingRequestedAt DateTime?
+  discordPingMissingNominationId String?
   stRoleId             String?
   playerRoleId         String?
   kibRoleId            String?

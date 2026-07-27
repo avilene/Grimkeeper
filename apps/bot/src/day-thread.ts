@@ -535,6 +535,10 @@ export async function postNominationToChannelDetailed(
   options?: {
     privateBallot?: boolean;
     pingRoleId?: string | null;
+    /** When true, post embed only (no Vote row) — e.g. kib ST read-through copies. */
+    omitVoteButtons?: boolean;
+    /** When true, skip the "**New nomination**" announcement content. */
+    omitAnnouncement?: boolean;
   },
 ): Promise<PostNominationResult> {
   const nomination = engine.getNominationById(nominationId);
@@ -552,7 +556,7 @@ export async function postNominationToChannelDetailed(
       `${embed.data.description ?? ""}\n\n_Private ballot — your vote confirmation stays in this thread._`,
     );
   }
-  const row = buildVoteActionRow(gameId, nomination);
+  const row = options?.omitVoteButtons ? null : buildVoteActionRow(gameId, nomination);
 
   const mentionUsers = [nominator?.discordUserId, nominee?.discordUserId].filter(
     (id): id is string => Boolean(id),
@@ -560,7 +564,7 @@ export async function postNominationToChannelDetailed(
   const pingRoleId = options?.pingRoleId ?? null;
   const contentParts: string[] = [];
   if (pingRoleId) contentParts.push(`<@&${pingRoleId}>`);
-  if (!options?.privateBallot) {
+  if (!options?.privateBallot && !options?.omitAnnouncement) {
     contentParts.push("**New nomination** — vote below, `/vote` (public), or `/privatevote`.");
   }
   const content = contentParts.length > 0 ? contentParts.join(" ") : undefined;
@@ -573,7 +577,7 @@ export async function postNominationToChannelDetailed(
       components,
       allowedMentions: {
         roles: pingRoleId ? [pingRoleId] : [],
-        users: mentionUsers,
+        users: options?.omitAnnouncement ? [] : mentionUsers,
       },
     });
     return { message };
@@ -583,9 +587,10 @@ export async function postNominationToChannelDetailed(
     // Role/user mention permission failures are a common reason the whole send is rejected.
     try {
       const message = await channel.send({
-        content: options?.privateBallot
-          ? undefined
-          : "**New nomination** — vote below, `/vote` (public), or `/privatevote`.",
+        content:
+          options?.privateBallot || options?.omitAnnouncement
+            ? undefined
+            : "**New nomination** — vote below, `/vote` (public), or `/privatevote`.",
         embeds: [embed],
         components,
         allowedMentions: { parse: [] },

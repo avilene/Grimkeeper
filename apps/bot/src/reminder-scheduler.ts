@@ -8,7 +8,7 @@ import {
 import { buildReminderPingMention, buildReminderFireContent } from "./commands/command-context.js";
 import { logReminderAction } from "./action-log.js";
 import { unwrapSuppressedDiscordChannelLinks } from "./discord-links.js";
-import { processPendingDiscordNomsRefresh } from "./discord-noms-refresh-scheduler.js";
+import { processPendingDiscordNomsRefresh, processPendingDiscordKibNomsRepost, processPendingDiscordPingMissing } from "./discord-noms-refresh-scheduler.js";
 import { reportError } from "./error-reporter.js";
 
 let schedulerStarted = false;
@@ -103,12 +103,24 @@ export function startReminderScheduler(client: Client, intervalMs = 30_000): voi
   void processPendingDiscordNomsRefresh(client).catch((error: unknown) => {
     void reportError("discord.noms.refresh.tick.failed", error);
   });
+  void processPendingDiscordKibNomsRepost(client).catch((error: unknown) => {
+    void reportError("discord.noms.kibRepost.tick.failed", error);
+  });
+  void processPendingDiscordPingMissing(client).catch((error: unknown) => {
+    void reportError("discord.noms.pingMissing.tick.failed", error);
+  });
   setInterval(() => {
     void processDueReminders(client).catch((error: unknown) => {
       void reportError("reminder.scheduler.tick.failed", error);
     });
     void processPendingDiscordNomsRefresh(client).catch((error: unknown) => {
       void reportError("discord.noms.refresh.tick.failed", error);
+    });
+    void processPendingDiscordKibNomsRepost(client).catch((error: unknown) => {
+      void reportError("discord.noms.kibRepost.tick.failed", error);
+    });
+    void processPendingDiscordPingMissing(client).catch((error: unknown) => {
+      void reportError("discord.noms.pingMissing.tick.failed", error);
     });
   }, intervalMs);
 }

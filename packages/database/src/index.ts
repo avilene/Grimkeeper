@@ -31,6 +31,12 @@ export {
   requestDiscordNomsRefresh,
   listGamesPendingDiscordNomsRefresh,
   clearDiscordNomsRefreshRequest,
+  requestDiscordKibNomsRepost,
+  listGamesPendingDiscordKibNomsRepost,
+  clearDiscordKibNomsRepostRequest,
+  requestDiscordPingMissing,
+  listGamesPendingDiscordPingMissing,
+  clearDiscordPingMissingRequest,
   loadDayProjectionForRefresh,
 } from "./discord-noms-refresh.js";
 export {

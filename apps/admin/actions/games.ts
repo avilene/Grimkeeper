@@ -7,7 +7,9 @@ import { redirect } from "next/navigation";
 import {
   isStatsOnlyGame,
   recordCompletedGame,
+  requestDiscordKibNomsRepost,
   requestDiscordNomsRefresh,
+  requestDiscordPingMissing,
   STATS_ONLY_CHANNEL_ID,
 } from "@grimkeeper/database";
 import { getBotcRole } from "@grimkeeper/engine";
@@ -642,6 +644,165 @@ export async function requestNomsDiscordRefresh(
       ok: true,
       message:
         "Discord refresh queued. The bot will post missing nominations and update embeds within about 30 seconds (or run /st refresh-noms now).",
+    };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Force-fail every open nomination on a game day, then queue Discord refresh. */
+export async function failOpenNominationsForDay(
+  gameId: string,
+  _prev: SaveResult | null,
+  formData: FormData,
+): Promise<SaveResult> {
+  await requireGameAccess(gameId);
+  try {
+    const gameDayId = String(formData.get("gameDayId") ?? "").trim();
+    await assertGameDay(gameId, gameDayId);
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      select: { source: true },
+    });
+    if (!game) return { ok: false, message: "Game not found." };
+
+    const result = await prisma.nomination.updateMany({
+      where: { gameDayId, status: "open" },
+      data: { status: "resolved_fail" },
+    });
+    if (result.count === 0) {
+      return { ok: false, message: "No open nominations on that day." };
+    }
+    if (!isStatsOnlyGame(game.source)) {
+      await requestDiscordNomsRefresh(gameId);
+    }
+    revalidatePath(`/games/${gameId}`);
+    return {
+      ok: true,
+      message: `Failed ${result.count} open nomination${result.count === 1 ? "" : "s"}.${
+        isStatsOnlyGame(game.source) ? "" : " Discord refresh queued."
+      }`,
+    };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Extend every nomination deadline on a day by X hours, then queue Discord refresh. */
+export async function extendNominationsForDay(
+  gameId: string,
+  _prev: SaveResult | null,
+  formData: FormData,
+): Promise<SaveResult> {
+  await requireGameAccess(gameId);
+  try {
+    const gameDayId = String(formData.get("gameDayId") ?? "").trim();
+    await assertGameDay(gameId, gameDayId);
+    const hours = Number(formData.get("hours"));
+    if (!Number.isFinite(hours) || hours <= 0) {
+      return { ok: false, message: "Hours must be a positive number." };
+    }
+
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      select: { source: true },
+    });
+    if (!game) return { ok: false, message: "Game not found." };
+
+    const nominations = await prisma.nomination.findMany({
+      where: { gameDayId },
+      select: { id: true, voteDeadlineAt: true },
+    });
+    if (nominations.length === 0) {
+      return { ok: false, message: "No nominations on that day." };
+    }
+
+    const nowMs = Date.now();
+    const deltaMs = hours * 3_600_000;
+    await prisma.$transaction(
+      nominations.map((nomination) => {
+        const oldMs = nomination.voteDeadlineAt?.getTime() ?? nowMs;
+        const baseMs = Number.isFinite(oldMs) ? Math.max(nowMs, oldMs) : nowMs;
+        return prisma.nomination.update({
+          where: { id: nomination.id },
+          data: { voteDeadlineAt: new Date(baseMs + deltaMs) },
+        });
+      }),
+    );
+
+    if (!isStatsOnlyGame(game.source)) {
+      await requestDiscordNomsRefresh(gameId);
+    }
+    revalidatePath(`/games/${gameId}`);
+    return {
+      ok: true,
+      message: `Extended ${nominations.length} nomination deadline${nominations.length === 1 ? "" : "s"} by ${hours} hour${hours === 1 ? "" : "s"}.${
+        isStatsOnlyGame(game.source) ? "" : " Discord refresh queued."
+      }`,
+    };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Queue kib delete+repost of open nomination embeds. */
+export async function requestKibNomsRepost(
+  gameId: string,
+  _prev: SaveResult | null,
+  _formData: FormData,
+): Promise<SaveResult> {
+  await requireGameAccess(gameId);
+  try {
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      select: { id: true, source: true },
+    });
+    if (!game) return { ok: false, message: "Game not found." };
+    if (isStatsOnlyGame(game.source)) {
+      return { ok: false, message: "Stats-only games cannot push nominations to Discord." };
+    }
+    await requestDiscordKibNomsRepost(gameId);
+    revalidatePath(`/games/${gameId}`);
+    return {
+      ok: true,
+      message:
+        "Kib nom repost queued. The bot will refresh open nomination copies in kib within about 30 seconds (or run /st repost-kib-noms now).",
+    };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Queue a Town Voting ping for players missing votes on one nomination. */
+export async function requestPingMissingVoters(
+  gameId: string,
+  nominationId: string,
+  _prev: SaveResult | null,
+  _formData: FormData,
+): Promise<SaveResult> {
+  await requireGameAccess(gameId);
+  try {
+    const nomination = await prisma.nomination.findFirst({
+      where: { id: nominationId, gameDay: { gameId }, status: "open" },
+      select: { id: true },
+    });
+    if (!nomination) {
+      return { ok: false, message: "Open nomination not found on this game." };
+    }
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      select: { source: true },
+    });
+    if (!game) return { ok: false, message: "Game not found." };
+    if (isStatsOnlyGame(game.source)) {
+      return { ok: false, message: "Stats-only games cannot ping Discord voters." };
+    }
+    await requestDiscordPingMissing(gameId, nominationId);
+    revalidatePath(`/games/${gameId}`);
+    return {
+      ok: true,
+      message:
+        "Missing-voter ping queued. The bot will mention them in Town Voting within about 30 seconds (or run /st ping-missing).",
     };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : String(err) };

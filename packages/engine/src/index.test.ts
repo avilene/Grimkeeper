@@ -1963,6 +1963,120 @@ describe("GameEngine", () => {
     expect(stRoll).toContain(`**no**`);
     expect(stRoll).toContain("(public: yes)");
   });
+
+  it("force-fails every open nomination regardless of tally", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "First.",
+    })) {
+      engine.apply(event);
+    }
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[2]!.id,
+      nomineeId: players[0]!.id,
+      accusation: "Second.",
+    })) {
+      engine.apply(event);
+    }
+    const first = engine.getState().day!.nominations[0]!;
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: first.id,
+      voterId: players[0]!.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: first.id,
+      voterId: players[2]!.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
+
+    const events = engine.handle({ kind: GameCommandKind.FailOpenNominations, gameId });
+    expect(events).toHaveLength(2);
+    expect(events.every((event) => event.type === GameEventType.NominationResolved)).toBe(true);
+    expect(
+      events.every(
+        (event) => event.type === GameEventType.NominationResolved && event.passed === false,
+      ),
+    ).toBe(true);
+    for (const event of events) engine.apply(event);
+
+    expect(engine.getState().day?.nominations.every((n) => n.status === "resolved_fail")).toBe(
+      true,
+    );
+  });
+
+  it("extends all nomination deadlines from max(now, old) and unlocks locked open noms", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-27T12:00:00.000Z"));
+    try {
+      const engine = setupTownEngine(3);
+      const players = engine.getState().players;
+      for (const event of engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId,
+        nominatorId: players[0]!.id,
+        nomineeId: players[1]!.id,
+        accusation: "Extend me.",
+      })) {
+        engine.apply(event);
+      }
+      const nomination = engine.getState().day!.nominations[0]!;
+      // Past deadline
+      engine.apply({
+        type: GameEventType.NominationVoteDeadlineUpdated,
+        gameId,
+        nominationId: nomination.id,
+        voteDeadlineAt: "2026-07-27T10:00:00.000Z",
+        timestamp: new Date().toISOString(),
+      });
+      for (const event of engine.handle({
+        kind: GameCommandKind.LockNominationVotes,
+        gameId,
+        nominationId: nomination.id,
+      })) {
+        engine.apply(event);
+      }
+
+      const events = engine.handle({
+        kind: GameCommandKind.ExtendNominationDeadlines,
+        gameId,
+        hours: 2,
+      });
+      expect(events.some((event) => event.type === GameEventType.NominationVotesUnlocked)).toBe(
+        true,
+      );
+      const deadlineEvent = events.find(
+        (event) => event.type === GameEventType.NominationVoteDeadlineUpdated,
+      );
+      expect(deadlineEvent?.type).toBe(GameEventType.NominationVoteDeadlineUpdated);
+      if (deadlineEvent?.type === GameEventType.NominationVoteDeadlineUpdated) {
+        expect(deadlineEvent.voteDeadlineAt).toBe("2026-07-27T14:00:00.000Z");
+      }
+      for (const event of events) engine.apply(event);
+
+      expect(engine.getNominationById(nomination.id)?.votesLocked).toBe(false);
+      expect(engine.getNominationById(nomination.id)?.voteDeadlineAt).toBe(
+        "2026-07-27T14:00:00.000Z",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("vote thresholds", () => {

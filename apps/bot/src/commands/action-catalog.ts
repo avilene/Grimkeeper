@@ -27,7 +27,22 @@ export const ST_DO_ACTIONS: DoAction[] = [
   },
   { name: "end", description: "End the game (strip roles, open kib)", needs: ["winner"] },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
+  { name: "fail-open-noms", description: "Force-fail every open nomination" },
   { name: "close-nominations", description: "Close nominations for the day (no new noms until next day)" },
+  {
+    name: "extend-noms",
+    description: "Extend every current-day nomination vote deadline by N hours",
+    needs: ["hours"],
+  },
+  {
+    name: "repost-kib-noms",
+    description: "Delete+repost open nomination embeds at the bottom of kib",
+  },
+  {
+    name: "ping-missing",
+    description: "Ping all players who have not voted on a specific open nomination",
+    needs: ["nominee"],
+  },
   { name: "next-phase", description: "Advance Setup → Night 1 → Day 1 → Night 2 …; renames town channel" },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
   { name: "mark-dead", description: "Mark a player dead or alive", needs: ["player", "alive?"] },
@@ -90,6 +105,21 @@ export const ST_SLASH_SHORTCUTS: DoAction[] = [
     description: "Push nomination/vote DB state to Discord (recreate missing open embeds, update votes)",
   },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
+  { name: "fail-open-noms", description: "Force-fail every open nomination" },
+  {
+    name: "extend-noms",
+    description: "Extend every current-day nomination vote deadline by N hours",
+    needs: ["hours"],
+  },
+  {
+    name: "repost-kib-noms",
+    description: "Delete+repost open nomination embeds at the bottom of kib",
+  },
+  {
+    name: "ping-missing",
+    description: "Ping all players who have not voted on a specific open nomination",
+    needs: ["nominee"],
+  },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
   { name: "mark-dead", description: "Mark a player dead or alive", needs: ["player", "alive?"] },
 ];

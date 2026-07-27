@@ -494,6 +494,19 @@ export interface ResolveNominationCommand {
   nominationId?: string;
 }
 
+/** Force-fail every open nomination (ignores vote tally). */
+export interface FailOpenNominationsCommand {
+  kind: typeof GameCommandKind.FailOpenNominations;
+  gameId: string;
+}
+
+/** Bump every current-day nomination deadline by `hours` (from max(now, old)). */
+export interface ExtendNominationDeadlinesCommand {
+  kind: typeof GameCommandKind.ExtendNominationDeadlines;
+  gameId: string;
+  hours: number;
+}
+
 export interface ExecutePlayerCommand {
   kind: typeof GameCommandKind.ExecutePlayer;
   gameId: string;
@@ -624,6 +637,8 @@ export type GameCommand =
   | SetVoteVisibilityCommand
   | CloseNominationsCommand
   | ResolveNominationCommand
+  | FailOpenNominationsCommand
+  | ExtendNominationDeadlinesCommand
   | ExecutePlayerCommand
   | OpenSeatsCommand
   | CloseSeatsCommand
@@ -1241,6 +1256,25 @@ export class GameEngine {
         }
         break;
       }
+      case GameCommandKind.FailOpenNominations: {
+        this.assertPhase("day", "Nominations can only be resolved during the day.");
+        this.assertDayState();
+        if (!this.getNextOpenNomination()) {
+          throw new GameEngineError("No open nominations remain to fail.");
+        }
+        break;
+      }
+      case GameCommandKind.ExtendNominationDeadlines: {
+        this.assertPhase("day", "Nomination deadlines can only be extended during the day.");
+        this.assertDayState();
+        if (!Number.isFinite(command.hours) || command.hours <= 0) {
+          throw new GameEngineError("Hours must be a positive number.");
+        }
+        if ((this.state.day!.nominations.length ?? 0) === 0) {
+          throw new GameEngineError("No nominations today to extend.");
+        }
+        break;
+      }
       case GameCommandKind.ExecutePlayer: {
         this.assertPhase("day", "Executions can only happen during the day.");
         this.assertDayState();
@@ -1697,6 +1731,52 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
+      }
+      case GameCommandKind.FailOpenNominations: {
+        const open =
+          this.state.day?.nominations.filter((nomination) => nomination.status === "open") ?? [];
+        const livingCount = this.countLivingPlayers();
+        const timestamp = new Date().toISOString();
+        return open.map(
+          (nomination): NominationResolvedEvent => ({
+            type: GameEventType.NominationResolved,
+            gameId: command.gameId,
+            nominationId: nomination.id,
+            passed: false,
+            yesVotes: this.getEffectiveYesVotes(nomination.id),
+            livingCount,
+            timestamp,
+          }),
+        );
+      }
+      case GameCommandKind.ExtendNominationDeadlines: {
+        const nominations = this.state.day?.nominations ?? [];
+        const nowMs = Date.now();
+        const deltaMs = command.hours * 3_600_000;
+        const timestamp = new Date().toISOString();
+        const events: GameEvent[] = [];
+        for (const nomination of nominations) {
+          if (nomination.status === "open" && (nomination.votesLocked || nomination.countHandIndex != null)) {
+            events.push({
+              type: GameEventType.NominationVotesUnlocked,
+              gameId: command.gameId,
+              nominationId: nomination.id,
+              timestamp,
+            });
+          }
+          const oldMs = nomination.voteDeadlineAt
+            ? new Date(nomination.voteDeadlineAt).getTime()
+            : nowMs;
+          const baseMs = Number.isFinite(oldMs) ? Math.max(nowMs, oldMs) : nowMs;
+          events.push({
+            type: GameEventType.NominationVoteDeadlineUpdated,
+            gameId: command.gameId,
+            nominationId: nomination.id,
+            voteDeadlineAt: new Date(baseMs + deltaMs).toISOString(),
+            timestamp,
+          });
+        }
+        return events;
       }
       case GameCommandKind.ExecutePlayer:
         return [

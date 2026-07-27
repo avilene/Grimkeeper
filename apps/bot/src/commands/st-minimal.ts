@@ -134,7 +134,7 @@ export class StCommandsMinimal {
     voter: User | undefined,
     @SlashOption({
       name: "nominee",
-      description: "For set-vote / nominate: nominated player",
+      description: "For set-vote / nominate / ping-missing: nominated player",
       type: ApplicationCommandOptionType.User,
       required: false,
     })
@@ -167,6 +167,13 @@ export class StCommandsMinimal {
       required: false,
     })
     reason: string | undefined,
+    @SlashOption({
+      name: "hours",
+      description: "For extend-noms: hours to add to every nomination deadline",
+      type: ApplicationCommandOptionType.Number,
+      required: false,
+    })
+    hours: number | undefined,
     @SlashOption({
       name: "message",
       description: "For broadcast/say: text to send to all player threads",
@@ -272,6 +279,26 @@ export class StCommandsMinimal {
         return;
       case "resolve-next":
         await this.resolveNext(interaction);
+        return;
+      case "fail-open-noms":
+        await this.failOpenNoms(interaction);
+        return;
+      case "extend-noms":
+        if (hours == null || !Number.isFinite(hours) || hours <= 0) {
+          await missingOption(interaction, "hours", "extend-noms");
+          return;
+        }
+        await this.extendNoms(hours, interaction);
+        return;
+      case "repost-kib-noms":
+        await this.repostKibNoms(interaction);
+        return;
+      case "ping-missing":
+        if (!nominee) {
+          await missingOption(interaction, "nominee", "ping-missing");
+          return;
+        }
+        await this.pingMissing(nominee, interaction);
         return;
       case "close-nominations":
         await this.closeNominations(interaction);
@@ -652,6 +679,60 @@ export class StCommandsMinimal {
   async resolveNextSlash(interaction: CommandInteraction): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     await this.resolveNext(interaction);
+  }
+
+  @Slash({
+    name: "fail-open-noms",
+    description: "Force-fail every open nomination (same as /st do fail-open-noms)",
+  })
+  async failOpenNomsSlash(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.failOpenNoms(interaction);
+  }
+
+  @Slash({
+    name: "extend-noms",
+    description: "Extend every nomination deadline by N hours (same as /st do extend-noms)",
+  })
+  async extendNomsSlash(
+    @SlashOption({
+      name: "hours",
+      description: "Hours to add (from max of now and the current deadline)",
+      type: ApplicationCommandOptionType.Number,
+      required: true,
+    })
+    hours: number,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.extendNoms(hours, interaction);
+  }
+
+  @Slash({
+    name: "repost-kib-noms",
+    description: "Repost open nomination embeds at the bottom of kib",
+  })
+  async repostKibNomsSlash(interaction: CommandInteraction): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.repostKibNoms(interaction);
+  }
+
+  @Slash({
+    name: "ping-missing",
+    description: "Ping all players who have not voted on a nomination",
+  })
+  async pingMissingSlash(
+    @SlashOption({
+      name: "nominee",
+      description: "Open nominee whose missing voters to ping",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    nominee: User,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.pingMissing(nominee, interaction);
   }
 
   @Slash({
@@ -1687,6 +1768,149 @@ export class StCommandsMinimal {
         content:
           `${nom} ${passed ? "passed" : "failed"}. ${tally}` +
           (passed ? " Use **Execute…** on the control panel if needed." : ""),
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async failOpenNoms(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    if (!interaction.guild) {
+      await replyOrEditInteraction(interaction, {
+        content: "Run this in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      const engine = await loadEngine(game.id);
+      const { failAllOpenNominations } = await import("../bulk-nomination-actions.js");
+      const result = await failAllOpenNominations(
+        interaction.guild,
+        game,
+        engine,
+        interaction.user.id,
+      );
+      await replyOrEditInteraction(interaction, {
+        content: result.message,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async extendNoms(hours: number, interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    if (!interaction.guild) {
+      await replyOrEditInteraction(interaction, {
+        content: "Run this in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    if (!Number.isFinite(hours) || hours <= 0) {
+      await replyOrEditInteraction(interaction, {
+        content: "`hours` must be a positive number.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      const engine = await loadEngine(game.id);
+      const { extendAllNominationDeadlines } = await import("../bulk-nomination-actions.js");
+      const result = await extendAllNominationDeadlines(
+        interaction.guild,
+        game,
+        engine,
+        hours,
+        interaction.user.id,
+      );
+      await replyOrEditInteraction(interaction, {
+        content: result.message,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async repostKibNoms(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    if (!interaction.guild) {
+      await replyOrEditInteraction(interaction, {
+        content: "Run this in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      const engine = await loadEngine(game.id);
+      const { repostOpenNominationsToKib } = await import("../bulk-nomination-actions.js");
+      const result = await repostOpenNominationsToKib(interaction.guild, game, engine);
+      await replyOrEditInteraction(interaction, {
+        content: result.message,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async pingMissing(nomineeUser: User, interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    if (!interaction.guild) {
+      await replyOrEditInteraction(interaction, {
+        content: "Run this in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      const engine = await loadEngine(game.id);
+      const target = engine.getPlayerByDiscordId(nomineeUser.id);
+      if (!target) {
+        await replyOrEditInteraction(interaction, {
+          content: "That nominee is not in this game.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      const open =
+        engine
+          .getState()
+          .day?.nominations.filter(
+            (candidate) => candidate.nomineeId === target.id && candidate.status === "open",
+          ) ?? [];
+      if (open.length === 0) {
+        await replyOrEditInteraction(interaction, {
+          content: "That player has no open nomination today.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (open.length > 1) {
+        await replyOrEditInteraction(interaction, {
+          content: "Multiple open nominations for that nominee — use the kib vote tracker **Ping missing** button.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const { pingMissingVoters } = await import("../interactions/lock-votes.js");
+      const message = await pingMissingVoters(interaction.guild, game, engine, open[0]!.id);
+      await replyOrEditInteraction(interaction, {
+        content: message,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

@@ -311,7 +311,7 @@ async function runVoteTrackerAction(
   return `Updated ${nom}.`;
 }
 
-async function pingMissingVoters(
+export async function pingMissingVoters(
   guild: Guild,
   game: { id: string; channelId: string },
   engine: GameEngine,

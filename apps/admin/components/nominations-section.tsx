@@ -5,6 +5,10 @@ import { useActionState, useMemo, useState } from "react";
 import {
   deleteNomination,
   deleteVote,
+  extendNominationsForDay,
+  failOpenNominationsForDay,
+  requestKibNomsRepost,
+  requestPingMissingVoters,
   saveNomination,
   saveVote,
   type SaveResult,
@@ -382,6 +386,10 @@ function NominationAccordionItem({
     deleteNomination.bind(null, gameId, nomination.id),
     null,
   );
+  const [pingResult, pingAction] = useActionState<SaveResult | null, FormData>(
+    requestPingMissingVoters.bind(null, gameId, nomination.id),
+    null,
+  );
   const voteRoster = useMemo(
     () => buildVoteRoster(nomination, players),
     [nomination, players],
@@ -515,6 +523,11 @@ function NominationAccordionItem({
           </form>
 
           <div className="flex flex-wrap items-center gap-2">
+            {nomination.status === "open" ? (
+              <form action={pingAction}>
+                <SubmitButton pendingLabel="Queueing…">Ping missing voters</SubmitButton>
+              </form>
+            ) : null}
             <form action={deleteAction}>
               <Button
                 type="submit"
@@ -531,6 +544,7 @@ function NominationAccordionItem({
               </Button>
             </form>
             <SaveStatus result={deleteResult} />
+            {nomination.status === "open" ? <SaveStatus result={pingResult} /> : null}
           </div>
 
           <div className="space-y-3">
@@ -595,6 +609,18 @@ export function NominationsSection({
     saveNomination.bind(null, gameId, null),
     null,
   );
+  const [failResult, failAction] = useActionState<SaveResult | null, FormData>(
+    failOpenNominationsForDay.bind(null, gameId),
+    null,
+  );
+  const [extendResult, extendAction] = useActionState<SaveResult | null, FormData>(
+    extendNominationsForDay.bind(null, gameId),
+    null,
+  );
+  const [repostResult, repostAction] = useActionState<SaveResult | null, FormData>(
+    requestKibNomsRepost.bind(null, gameId),
+    null,
+  );
   const [openId, setOpenId] = useState<string | null>(null);
 
   const sortedNominations = useMemo(
@@ -607,6 +633,7 @@ export function NominationsSection({
 
   const nextOrder =
     sortedNominations.reduce((max, nomination) => Math.max(max, nomination.order), 0) + 1;
+  const defaultDayId = days[days.length - 1]?.id ?? "";
 
   return (
     <div className="space-y-6">
@@ -625,6 +652,87 @@ export function NominationsSection({
           <RefreshNomsButton gameId={gameId} pendingSince={discordRefreshPendingSince} />
         </>
       )}
+
+      {days.length > 0 ? (
+        <div className="space-y-3 rounded-md border border-border bg-card p-4">
+          <h3 className="text-sm font-medium">Bulk day actions</h3>
+          <div className="flex flex-wrap items-end gap-3">
+            <form
+              action={failAction}
+              className="flex flex-wrap items-end gap-2"
+              onSubmit={(event) => {
+                if (
+                  !window.confirm(
+                    "Force-fail every open nomination on this day? This cannot be undone from Discord alone.",
+                  )
+                ) {
+                  event.preventDefault();
+                }
+              }}
+            >
+              <div className="space-y-1.5">
+                <Label htmlFor="fail-gameDayId">Day</Label>
+                <select
+                  id="fail-gameDayId"
+                  name="gameDayId"
+                  required
+                  defaultValue={defaultDayId}
+                  className={formSelectClassName}
+                >
+                  {days.map((day) => (
+                    <option key={day.id} value={day.id}>
+                      Day {day.dayNumber}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <SubmitButton pendingLabel="Failing…">Fail all open</SubmitButton>
+            </form>
+            <form action={extendAction} className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="extend-gameDayId">Day</Label>
+                <select
+                  id="extend-gameDayId"
+                  name="gameDayId"
+                  required
+                  defaultValue={defaultDayId}
+                  className={formSelectClassName}
+                >
+                  {days.map((day) => (
+                    <option key={day.id} value={day.id}>
+                      Day {day.dayNumber}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="extend-hours">Hours</Label>
+                <Input
+                  id="extend-hours"
+                  name="hours"
+                  type="number"
+                  min={0.25}
+                  step={0.25}
+                  defaultValue={2}
+                  required
+                  className="w-24"
+                />
+              </div>
+              <SubmitButton pendingLabel="Extending…">Extend deadlines</SubmitButton>
+            </form>
+            {!discordPushDisabled ? (
+              <form action={repostAction}>
+                <SubmitButton pendingLabel="Queueing…">Repost open noms in kib</SubmitButton>
+              </form>
+            ) : null}
+          </div>
+          <div className="flex flex-col gap-1">
+            <SaveStatus result={failResult} />
+            <SaveStatus result={extendResult} />
+            <SaveStatus result={repostResult} />
+          </div>
+        </div>
+      ) : null}
 
       {sortedNominations.length === 0 ? (
         <p className="text-sm text-muted-foreground">No nominations recorded.</p>

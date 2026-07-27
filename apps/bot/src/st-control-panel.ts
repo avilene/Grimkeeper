@@ -23,6 +23,8 @@ export type StPanelAction =
   | "vis-secret"
   | "refresh"
   | "close-noms"
+  | "fail-open-noms"
+  | "repost-kib-noms"
   | "next-phase"
   /** Legacy control-panel button id — still handled. */
   | "next-day";
@@ -98,7 +100,7 @@ export function buildStControlPanelEmbed(engine: GameEngine): EmbedBuilder {
       [
         "Live storyteller controls for this game.",
         "Type fewer slash commands — use these buttons, or mobile-friendly `/st next-phase` / `/st resolve-next` / … (full catalog: `/st do`).",
-        "Panel: resolve · execute · votes · close nominations · next phase · mark dead/alive · visibility.",
+        "Panel: resolve · execute · votes · close nominations · fail open · repost kib noms · next phase · mark dead/alive · visibility.",
         "",
         `${phaseLabel} · Nominations: **${state.phase === "day" && nominationsOpen ? "open" : "closed"}**`,
         `Open nominations: **${open}** · Passed (awaiting execute): **${passed}**`,
@@ -161,6 +163,16 @@ export function buildStControlPanelComponents(
         .setCustomId(stPanelButtonCustomId("close-noms", gameId))
         .setLabel("Close nominations")
         .setStyle(ButtonStyle.Danger)
+        .setDisabled(state.phase !== "day"),
+      new ButtonBuilder()
+        .setCustomId(stPanelButtonCustomId("fail-open-noms", gameId))
+        .setLabel("Fail all open")
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(state.phase !== "day"),
+      new ButtonBuilder()
+        .setCustomId(stPanelButtonCustomId("repost-kib-noms", gameId))
+        .setLabel("Repost kib noms")
+        .setStyle(ButtonStyle.Secondary)
         .setDisabled(state.phase !== "day"),
       new ButtonBuilder()
         .setCustomId(stPanelButtonCustomId("next-phase", gameId))

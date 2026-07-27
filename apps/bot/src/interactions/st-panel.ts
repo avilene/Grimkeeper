@@ -237,6 +237,20 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       return true;
     }
 
+    if (action === "fail-open-noms") {
+      const { failAllOpenNominations } = await import("../bulk-nomination-actions.js");
+      const result = await failAllOpenNominations(guild, game, engine, interaction.user.id);
+      await interaction.editReply({ content: result.message });
+      return true;
+    }
+
+    if (action === "repost-kib-noms") {
+      const { repostOpenNominationsToKib } = await import("../bulk-nomination-actions.js");
+      const result = await repostOpenNominationsToKib(guild, game, engine);
+      await interaction.editReply({ content: result.message });
+      return true;
+    }
+
     if (action === "next-phase" || action === "next-day") {
       const { advanceTownPhase } = await import("../town-day.js");
       const { phase, phaseNumber } = await advanceTownPhase(
