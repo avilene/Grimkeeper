@@ -721,8 +721,9 @@ export async function extendNominationsForDay(
     const deltaMs = hours * 3_600_000;
     await prisma.$transaction(
       nominations.map((nomination) => {
-        const oldMs = nomination.voteDeadlineAt?.getTime() ?? nowMs;
-        const baseMs = Number.isFinite(oldMs) ? Math.max(nowMs, oldMs) : nowMs;
+        const oldMs = nomination.voteDeadlineAt?.getTime() ?? NaN;
+        // Add hours to the existing deadline (even if past). Missing deadline → from now.
+        const baseMs = Number.isFinite(oldMs) ? oldMs : nowMs;
         return prisma.nomination.update({
           where: { id: nomination.id },
           data: { voteDeadlineAt: new Date(baseMs + deltaMs) },

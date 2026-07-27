@@ -500,7 +500,7 @@ export interface FailOpenNominationsCommand {
   gameId: string;
 }
 
-/** Bump every current-day nomination deadline by `hours` (from max(now, old)). */
+/** Bump every current-day nomination deadline by `hours` (from the existing deadline). */
 export interface ExtendNominationDeadlinesCommand {
   kind: typeof GameCommandKind.ExtendNominationDeadlines;
   gameId: string;
@@ -1766,8 +1766,9 @@ export class GameEngine {
           }
           const oldMs = nomination.voteDeadlineAt
             ? new Date(nomination.voteDeadlineAt).getTime()
-            : nowMs;
-          const baseMs = Number.isFinite(oldMs) ? Math.max(nowMs, oldMs) : nowMs;
+            : NaN;
+          // Add hours to the existing deadline (even if past). Missing deadline → from now.
+          const baseMs = Number.isFinite(oldMs) ? oldMs : nowMs;
           events.push({
             type: GameEventType.NominationVoteDeadlineUpdated,
             gameId: command.gameId,

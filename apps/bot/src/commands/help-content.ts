@@ -681,7 +681,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "`/st resolve-next` (or panel) — resolve oldest open nomination",
             "`/st fail-open-noms` (or panel) — force-fail every open nomination",
             "`/st ping-missing` `nominee:` — ping everyone still missing a vote on that nom",
-            "`/st extend-noms` `hours:` — bump all today’s deadlines (even past ones)",
+            "`/st extend-noms` `hours:` — add hours to each nom’s existing deadline (even if past)",
             "`/st repost-kib-noms` (or panel) — delete+repost open nom embeds at the bottom of kib",
             "If it passed: `/st execute` `player:` (or panel)",
             "Other deaths: `/st mark-dead` `player:` (`alive:` if reviving)",

@@ -697,7 +697,7 @@ export class StCommandsMinimal {
   async extendNomsSlash(
     @SlashOption({
       name: "hours",
-      description: "Hours to add (from max of now and the current deadline)",
+      description: "Hours to add to each nomination's current deadline",
       type: ApplicationCommandOptionType.Number,
       required: true,
     })

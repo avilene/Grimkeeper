@@ -2020,7 +2020,7 @@ describe("GameEngine", () => {
     );
   });
 
-  it("extends all nomination deadlines from max(now, old) and unlocks locked open noms", () => {
+  it("extends all nomination deadlines from the old deadline and unlocks locked open noms", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-27T12:00:00.000Z"));
     try {
@@ -2036,7 +2036,7 @@ describe("GameEngine", () => {
         engine.apply(event);
       }
       const nomination = engine.getState().day!.nominations[0]!;
-      // Past deadline
+      // Past deadline — extend still adds hours to that timestamp, not now.
       engine.apply({
         type: GameEventType.NominationVoteDeadlineUpdated,
         gameId,
@@ -2065,13 +2065,13 @@ describe("GameEngine", () => {
       );
       expect(deadlineEvent?.type).toBe(GameEventType.NominationVoteDeadlineUpdated);
       if (deadlineEvent?.type === GameEventType.NominationVoteDeadlineUpdated) {
-        expect(deadlineEvent.voteDeadlineAt).toBe("2026-07-27T14:00:00.000Z");
+        expect(deadlineEvent.voteDeadlineAt).toBe("2026-07-27T12:00:00.000Z");
       }
       for (const event of events) engine.apply(event);
 
       expect(engine.getNominationById(nomination.id)?.votesLocked).toBe(false);
       expect(engine.getNominationById(nomination.id)?.voteDeadlineAt).toBe(
-        "2026-07-27T14:00:00.000Z",
+        "2026-07-27T12:00:00.000Z",
       );
     } finally {
       vi.useRealTimers();
