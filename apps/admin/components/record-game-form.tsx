@@ -38,9 +38,12 @@ type PlayerDraft = {
   team: string;
 };
 
+let playerKeySeq = 0;
+
 function newPlayer(): PlayerDraft {
+  playerKeySeq += 1;
   return {
-    key: crypto.randomUUID(),
+    key: `player-${playerKeySeq}-${Date.now()}`,
     discordUserId: "",
     displayName: "",
     seat: "",

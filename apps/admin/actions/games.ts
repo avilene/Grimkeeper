@@ -1,5 +1,7 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
@@ -464,7 +466,7 @@ export async function saveNomination(
     } else {
       await prisma.nomination.create({
         data: {
-          id: crypto.randomUUID(),
+          id: randomUUID(),
           gameDayId,
           nominatorId,
           nomineeId,
