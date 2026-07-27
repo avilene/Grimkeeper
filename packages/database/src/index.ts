@@ -13,9 +13,11 @@ export { backfillGameWinnersFromEvents } from "./backfill-winners.js";
 export {
   getPlayerStats,
   getPlayerStatsOverview,
+  listPlayersForStats,
   aggregatePlayerStats,
   type PlayerStats,
   type PlayerStatsOverview,
+  type PlayerStatsListEntry,
   type GuildPlayerStats,
   type PlayerRoleHistoryEntry,
   type CharacterStat,

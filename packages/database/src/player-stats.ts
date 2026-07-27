@@ -243,3 +243,85 @@ export async function getPlayerStatsOverview(
     evilWinRate: winRateForTeam(rows, "evil"),
   };
 }
+
+export type PlayerStatsListEntry = {
+  discordUserId: string;
+  displayName: string;
+  gamesPlayed: number;
+};
+
+/**
+ * Distinct Discord users with scored seats, for admin player-stats browsing.
+ * Optional `search` matches display name or Discord user id (case-insensitive).
+ */
+export async function listPlayersForStats(options?: {
+  search?: string;
+}): Promise<PlayerStatsListEntry[]> {
+  const seats = await prisma.player.findMany({
+    where: {
+      game: {
+        phase: "ended",
+        winner: { in: ["good", "evil"] },
+      },
+    },
+    select: {
+      discordUserId: true,
+      displayName: true,
+    },
+  });
+
+  const byUser = new Map<string, { nameCounts: Map<string, number>; gamesPlayed: number }>();
+  for (const seat of seats) {
+    const existing = byUser.get(seat.discordUserId);
+    if (existing) {
+      existing.gamesPlayed += 1;
+      existing.nameCounts.set(
+        seat.displayName,
+        (existing.nameCounts.get(seat.displayName) ?? 0) + 1,
+      );
+    } else {
+      byUser.set(seat.discordUserId, {
+        gamesPlayed: 1,
+        nameCounts: new Map([[seat.displayName, 1]]),
+      });
+    }
+  }
+
+  const aliases = await prisma.playerAlias.findMany({
+    where: { discordUserId: { in: [...byUser.keys()] } },
+    select: { discordUserId: true, alias: true },
+  });
+  const aliasByUser = new Map<string, string>();
+  for (const row of aliases) {
+    if (!aliasByUser.has(row.discordUserId)) {
+      aliasByUser.set(row.discordUserId, row.alias);
+    }
+  }
+
+  const query = options?.search?.trim().toLowerCase() ?? "";
+
+  const entries: PlayerStatsListEntry[] = [];
+  for (const [discordUserId, data] of byUser) {
+    const preferredName =
+      [...data.nameCounts.entries()].sort(
+        (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+      )[0]?.[0] ?? discordUserId;
+    const displayName = aliasByUser.get(discordUserId) ?? preferredName;
+
+    if (
+      query &&
+      !displayName.toLowerCase().includes(query) &&
+      !preferredName.toLowerCase().includes(query) &&
+      !discordUserId.toLowerCase().includes(query)
+    ) {
+      continue;
+    }
+
+    entries.push({ discordUserId, displayName, gamesPlayed: data.gamesPlayed });
+  }
+
+  return entries.sort(
+    (a, b) =>
+      b.gamesPlayed - a.gamesPlayed || a.displayName.localeCompare(b.displayName),
+  );
+}

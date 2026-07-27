@@ -15,8 +15,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <body>
-        <AppNav />
-        <main className="mx-auto max-w-6xl px-6 py-6">{children}</main>
+        <div className="flex min-h-screen">
+          <AppNav />
+          <main className="min-w-0 flex-1 px-6 py-6">
+            <div className="mx-auto max-w-6xl">{children}</div>
+          </main>
+        </div>
       </body>
     </html>
   );
