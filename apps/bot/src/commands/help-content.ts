@@ -526,7 +526,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
         value: [
           cmd(
             "/st … shortcuts",
-            "Common actions as first-class subcommands (setup-town, broadcast, log, end, next-phase, close-nominations, nominate, refresh-noms, resolve-next, fail-open-noms, extend-noms, repost-kib-noms, ping-missing, execute, mark-dead).",
+            "Common actions as first-class subcommands (setup-town, broadcast, log, end, next-phase, close-nominations, nominate, refresh-noms, resolve-next, extend-noms, ping-missing, execute, mark-dead). Fail-all / kib repost: panel or `/st do`.",
           ),
           cmd(
             "/st do",
@@ -679,10 +679,10 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "Watch kib vote tracker — refresh with `/st do votes` if needed (also refreshes Town Voting nomination embeds)",
             "Lock / count / announce from Town Voting or the panel",
             "`/st resolve-next` (or panel) — resolve oldest open nomination",
-            "`/st fail-open-noms` (or panel) — force-fail every open nomination",
+            "`/st do fail-open-noms` (or panel) — force-fail every open nomination",
             "`/st ping-missing` `nominee:` — ping everyone still missing a vote on that nom",
             "`/st extend-noms` `hours:` — add hours to each nom’s existing deadline (even if past)",
-            "`/st repost-kib-noms` (or panel) — delete+repost open nom embeds at the bottom of kib",
+            "`/st do repost-kib-noms` (or panel) — delete+repost open nom embeds at the bottom of kib",
             "If it passed: `/st execute` `player:` (or panel)",
             "Other deaths: `/st mark-dead` `player:` (`alive:` if reviving)",
             "Fix a ballot: `/st do set-vote` — or nominate for someone: `/st nominate`",

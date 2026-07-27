@@ -78,14 +78,16 @@ describe("ST_SLASH_SHORTCUTS", () => {
         "nominate",
         "refresh-noms",
         "resolve-next",
-        "fail-open-noms",
         "extend-noms",
-        "repost-kib-noms",
         "ping-missing",
         "execute",
         "mark-dead",
       ]),
     );
+    // Panel-backed; stay on /st do only so /st stays under Discord's 25-option cap.
+    const shortcutNames = ST_SLASH_SHORTCUTS.map((a) => a.name);
+    expect(shortcutNames).not.toContain("fail-open-noms");
+    expect(shortcutNames).not.toContain("repost-kib-noms");
   });
 });
 

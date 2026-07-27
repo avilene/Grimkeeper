@@ -682,15 +682,6 @@ export class StCommandsMinimal {
   }
 
   @Slash({
-    name: "fail-open-noms",
-    description: "Force-fail every open nomination (same as /st do fail-open-noms)",
-  })
-  async failOpenNomsSlash(interaction: CommandInteraction): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
-    await this.failOpenNoms(interaction);
-  }
-
-  @Slash({
     name: "extend-noms",
     description: "Extend every nomination deadline by N hours (same as /st do extend-noms)",
   })
@@ -706,15 +697,6 @@ export class StCommandsMinimal {
   ): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     await this.extendNoms(hours, interaction);
-  }
-
-  @Slash({
-    name: "repost-kib-noms",
-    description: "Repost open nomination embeds at the bottom of kib",
-  })
-  async repostKibNomsSlash(interaction: CommandInteraction): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
-    await this.repostKibNoms(interaction);
   }
 
   @Slash({

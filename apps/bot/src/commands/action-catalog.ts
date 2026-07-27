@@ -78,6 +78,9 @@ export const ST_DO_ACTIONS: DoAction[] = [
  * First-class `/st <name>` shortcuts for mobile (same handlers as `/st do <name>`).
  * Prefer actions that are frequent and/or need options (harder via kib panel alone).
  * Keep `/st do` for the full catalog — do not remove actions from ST_DO_ACTIONS.
+ *
+ * Discord allows at most 25 options on `/st` (subcommands + subcommand groups combined,
+ * including `help`, `guide`, `reminder`, and `queue` from other modules). Stay under that.
  */
 export const ST_SLASH_SHORTCUTS: DoAction[] = [
   { name: "setup-town", description: "Set roster + seats from ordered @mentions", needs: ["players"] },
@@ -105,15 +108,10 @@ export const ST_SLASH_SHORTCUTS: DoAction[] = [
     description: "Push nomination/vote DB state to Discord (recreate missing open embeds, update votes)",
   },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
-  { name: "fail-open-noms", description: "Force-fail every open nomination" },
   {
     name: "extend-noms",
     description: "Extend every current-day nomination vote deadline by N hours",
     needs: ["hours"],
-  },
-  {
-    name: "repost-kib-noms",
-    description: "Delete+repost open nomination embeds at the bottom of kib",
   },
   {
     name: "ping-missing",
