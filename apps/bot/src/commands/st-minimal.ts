@@ -38,19 +38,20 @@ import { respondDoAutocomplete, resolveDoActionName, ST_DO_ACTIONS } from "./act
 import { resolveOrCreatePlayerAlias } from "./alias.js";
 import {
   addRoleToUser,
+  addUserToPlayerStThreads,
   broadcastToPlayerThreads,
   createPlayerStThreads,
   createTownVoteThread,
   ensurePlayerStThread,
   finalizeMinimalGameEnd,
   getKibThreadForGame,
-  listPersonalPlayerThreads,
   loadEngine,
   persistEvents,
   postNominationEverywhere,
   refreshNominationEverywhere,
   refreshAllNominationEverywhere,
   removeRoleFromUser,
+  removeUserFromPlayerStThreads,
   replyEngineError,
   replyOrEditInteraction,
   requireCommandAccess,
@@ -90,7 +91,7 @@ export class StCommandsMinimal {
     player: User | undefined,
     @SlashOption({
       name: "user",
-      description: "Target user (add/remove-st, add/remove spectator)",
+      description: "Target user (add/remove-st, spectator)",
       type: ApplicationCommandOptionType.User,
       required: false,
     })
@@ -1266,16 +1267,13 @@ export class StCommandsMinimal {
         }
       }
 
-      const playerThreads = await listPersonalPlayerThreads(guild, game, engine, {
-        includeArchived: true,
-      });
-      for (const thread of playerThreads) {
-        if (!thread.isThread()) continue;
-        if (thread.archived) {
-          await thread.setArchived(false, "Adding co-ST to player ST thread.").catch(() => undefined);
-        }
-        await thread.members.add(user.id).catch(() => undefined);
-      }
+      const playerThreads = await addUserToPlayerStThreads(
+        guild,
+        game,
+        engine,
+        user.id,
+        "Adding co-ST to player ST thread.",
+      );
 
       const whisperThreads = await addUserToGameWhispers(guild, game.id, user.id);
 
@@ -1289,8 +1287,8 @@ export class StCommandsMinimal {
         gameRoles ? "ST role assigned" : "ST role missing — run `/game setup` with roles",
         kib ? `added to <#${kib.id}>` : null,
         game.logThreadId ? `added to <#${game.logThreadId}>` : null,
-        playerThreads.length > 0
-          ? `added to ${playerThreads.length} player ST thread${playerThreads.length === 1 ? "" : "s"}`
+        playerThreads.attempted > 0
+          ? `added to ${playerThreads.added} player ST thread${playerThreads.added === 1 ? "" : "s"}`
           : null,
         whisperThreads > 0
           ? `added to ${whisperThreads} whisper thread${whisperThreads === 1 ? "" : "s"}`
@@ -1366,20 +1364,13 @@ export class StCommandsMinimal {
         }
       }
 
-      const playerThreads = await listPersonalPlayerThreads(guild, game, engine, {
-        includeArchived: true,
-      });
-      let playerThreadRemovals = 0;
-      for (const thread of playerThreads) {
-        if (!thread.isThread()) continue;
-        if (thread.archived) {
-          await thread
-            .setArchived(false, "Removing co-ST from player ST thread.")
-            .catch(() => undefined);
-        }
-        const ok = await thread.members.remove(user.id).then(() => true).catch(() => false);
-        if (ok) playerThreadRemovals++;
-      }
+      const playerThreads = await removeUserFromPlayerStThreads(
+        guild,
+        game,
+        engine,
+        user.id,
+        "Removing co-ST from player ST thread.",
+      );
 
       const whisperThreads = await removeUserFromGameWhispers(guild, game.id, user.id);
 
@@ -1394,8 +1385,8 @@ export class StCommandsMinimal {
         gameRoles ? "ST role removed" : null,
         kib?.isThread() ? `removed from <#${kib.id}>` : null,
         game.logThreadId ? `removed from <#${game.logThreadId}>` : null,
-        playerThreadRemovals > 0
-          ? `removed from ${playerThreadRemovals} player ST thread${playerThreadRemovals === 1 ? "" : "s"}`
+        playerThreads.removed > 0
+          ? `removed from ${playerThreads.removed} player ST thread${playerThreads.removed === 1 ? "" : "s"}`
           : null,
         whisperThreads > 0
           ? `removed from ${whisperThreads} whisper thread${whisperThreads === 1 ? "" : "s"}`
