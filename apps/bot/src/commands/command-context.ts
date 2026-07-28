@@ -879,10 +879,28 @@ export async function resolveGameRoles(
     if (stRole && playersRole && spectatorRole) {
       return { stRole, playersRole, spectatorRole };
     }
-    return null;
+    // Stored IDs can be stale after role recreate — fall through to name lookup.
   }
 
   return getGameRoles(guild, game.channelId);
+}
+
+/** Player Discord role id for a game (DB id if still valid, else resolveGameRoles). */
+export async function resolvePlayerRoleId(
+  guild: Guild | null,
+  game: GameRoleIds,
+): Promise<string | null> {
+  if (!guild) return null;
+
+  if (game.playerRoleId) {
+    const cached = guild.roles.cache.get(game.playerRoleId);
+    if (cached) return cached.id;
+    const fetched = await guild.roles.fetch(game.playerRoleId).catch(() => null);
+    if (fetched) return fetched.id;
+  }
+
+  const roles = await resolveGameRoles(guild, game);
+  return roles?.playersRole.id ?? null;
 }
 
 export function roleSlugFromChannelName(name: string): string {
@@ -926,15 +944,112 @@ export async function getGameRolesByName(
 /**
  * Assign a role via REST (no guild.members.fetch).
  * Avoids hanging interaction handlers when member cache/gateway is incomplete.
+ * Returns false when Discord rejects the assign (permissions, unknown role, …).
  */
-export async function addRoleToUser(guild: Guild | null, userId: string, roleId: string): Promise<void> {
-  if (!guild) return;
-  await guild.members.addRole({ user: userId, role: roleId }).catch(() => undefined);
+export async function addRoleToUser(
+  guild: Guild | null,
+  userId: string,
+  roleId: string,
+  context: Record<string, unknown> = {},
+): Promise<boolean> {
+  if (!guild) return false;
+  try {
+    await guild.members.addRole({ user: userId, role: roleId });
+    return true;
+  } catch (error) {
+    log("warn", "discord.role.add.failed", {
+      guildId: guild.id,
+      userId,
+      roleId,
+      ...serializeError(error),
+      ...context,
+    });
+    void reportError("discord.role.add.failed", error, {
+      guildId: guild.id,
+      userId,
+      roleId,
+      ...context,
+    });
+    return false;
+  }
 }
 
-export async function removeRoleFromUser(guild: Guild | null, userId: string, roleId: string): Promise<void> {
-  if (!guild) return;
-  await guild.members.removeRole({ user: userId, role: roleId }).catch(() => undefined);
+export async function removeRoleFromUser(
+  guild: Guild | null,
+  userId: string,
+  roleId: string,
+  context: Record<string, unknown> = {},
+): Promise<boolean> {
+  if (!guild) return false;
+  try {
+    await guild.members.removeRole({ user: userId, role: roleId });
+    return true;
+  } catch (error) {
+    log("warn", "discord.role.remove.failed", {
+      guildId: guild.id,
+      userId,
+      roleId,
+      ...serializeError(error),
+      ...context,
+    });
+    void reportError("discord.role.remove.failed", error, {
+      guildId: guild.id,
+      userId,
+      roleId,
+      ...context,
+    });
+    return false;
+  }
+}
+
+export type TransferGamePlayerRoleResult =
+  | { status: "transferred"; roleId: string }
+  | { status: "missing" }
+  | { status: "failed"; roleId: string; added: boolean; removed: boolean };
+
+/**
+ * Move the game player role from one Discord user to another.
+ * Adds to the new user first; only removes from the old user after a successful add.
+ */
+export async function transferGamePlayerRole(
+  guild: Guild,
+  game: GameRoleIds,
+  oldDiscordUserId: string,
+  newDiscordUserId: string,
+): Promise<TransferGamePlayerRoleResult> {
+  const roleId = await resolvePlayerRoleId(guild, game);
+  if (!roleId) {
+    void reportError(
+      "discord.role.player.missing",
+      new Error("Could not resolve player role for game"),
+      {
+        guildId: guild.id,
+        channelId: game.channelId,
+        playerRoleId: game.playerRoleId ?? null,
+        oldDiscordUserId,
+        newDiscordUserId,
+      },
+    );
+    return { status: "missing" };
+  }
+
+  const context = {
+    channelId: game.channelId,
+    oldDiscordUserId,
+    newDiscordUserId,
+    operation: "transferGamePlayerRole",
+  };
+
+  const added = await addRoleToUser(guild, newDiscordUserId, roleId, context);
+  if (!added) {
+    return { status: "failed", roleId, added: false, removed: false };
+  }
+
+  const removed = await removeRoleFromUser(guild, oldDiscordUserId, roleId, context);
+  if (!removed) {
+    return { status: "failed", roleId, added: true, removed: false };
+  }
+  return { status: "transferred", roleId };
 }
 
 export async function applyGameChannelPermissions(
@@ -1275,6 +1390,61 @@ export async function syncStorytellersToPlayerThreads(
     await addStorytellersToPlayerThread(guild, thread, engine, game.stRoleId);
   }
   return { threads: threads.filter((thread) => thread.isThread()).length };
+}
+
+/**
+ * Mass-add a Discord user to every personal player ST thread (backpacker / follower access).
+ * Does not assign roles or touch whispers/kib.
+ */
+export async function addUserToPlayerStThreads(
+  guild: Guild,
+  game: GameRoleIds & { id: string; channelId: string },
+  engine: GameEngine,
+  userId: string,
+  reason = "Adding backpacker to player ST thread.",
+): Promise<{ attempted: number; added: number }> {
+  const threads = await listPersonalPlayerThreads(guild, game, engine, {
+    includeArchived: true,
+  });
+  let added = 0;
+  let attempted = 0;
+  for (const thread of threads) {
+    if (!thread.isThread()) continue;
+    attempted++;
+    if (thread.archived) {
+      await thread.setArchived(false, reason).catch(() => undefined);
+    }
+    const ok = await thread.members.add(userId).then(() => true).catch(() => false);
+    if (ok) added++;
+  }
+  return { attempted, added };
+}
+
+/**
+ * Mass-remove a Discord user from every personal player ST thread.
+ */
+export async function removeUserFromPlayerStThreads(
+  guild: Guild,
+  game: GameRoleIds & { id: string; channelId: string },
+  engine: GameEngine,
+  userId: string,
+  reason = "Removing backpacker from player ST thread.",
+): Promise<{ attempted: number; removed: number }> {
+  const threads = await listPersonalPlayerThreads(guild, game, engine, {
+    includeArchived: true,
+  });
+  let removed = 0;
+  let attempted = 0;
+  for (const thread of threads) {
+    if (!thread.isThread()) continue;
+    attempted++;
+    if (thread.archived) {
+      await thread.setArchived(false, reason).catch(() => undefined);
+    }
+    const ok = await thread.members.remove(userId).then(() => true).catch(() => false);
+    if (ok) removed++;
+  }
+  return { attempted, removed };
 }
 
 /**

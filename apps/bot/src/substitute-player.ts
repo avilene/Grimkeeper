@@ -2,21 +2,20 @@ import type { Guild, User } from "discord.js";
 import { prisma, substituteDiscordIdInGameWhispers } from "@grimkeeper/database";
 import { GameCommandKind } from "@grimkeeper/engine";
 
+import { fetchGuildMemberWithTimeout } from "./access.js";
 import { resolveOrCreatePlayerAlias } from "./commands/alias.js";
 import {
-  addRoleToUser,
   listPersonalPlayerThreads,
   loadEngine,
   persistEvents,
   refreshAllNominationEverywhere,
-  removeRoleFromUser,
-  resolveGameRoles,
   resolveVotingChannel,
   stPlayerThreadName,
   syncGameProjection,
+  transferGamePlayerRole,
   type GameRoleIds,
 } from "./commands/command-context.js";
-import { postGameLog } from "./game-log-thread.js";
+import { postGameLog, postGameLogRoleChange } from "./game-log-thread.js";
 import { upsertStControlPanel } from "./st-control-panel.js";
 import { upsertStVoteTracker } from "./st-vote-tracker.js";
 
@@ -69,7 +68,8 @@ export async function substitutePlayerInGame(
     return { ok: false, message: "That user is already in this game." };
   }
 
-  const member = await guild.members.fetch(newUser.id).catch(() => null);
+  // Force REST — without Guild Members intent the cache is often incomplete/stale.
+  const member = await fetchGuildMemberWithTimeout(guild, newUser.id, undefined, { force: true });
   if (!member) {
     return { ok: false, message: "Could not find that user in this server." };
   }
@@ -112,11 +112,47 @@ export async function substitutePlayerInGame(
   await persistEvents(engine, events);
   await syncGameProjection(game.id, engine);
 
-  const gameRoles = await resolveGameRoles(guild, game);
-  const playerRoleId = gameRoles?.playersRole.id ?? game.playerRoleId ?? null;
-  if (playerRoleId) {
-    await removeRoleFromUser(guild, oldDiscordUserId, playerRoleId);
-    await addRoleToUser(guild, newUser.id, playerRoleId);
+  const roleTransfer = await transferGamePlayerRole(
+    guild,
+    game,
+    oldDiscordUserId,
+    newUser.id,
+  );
+  let roleNote: string;
+  if (roleTransfer.status === "transferred") {
+    roleNote = "player role transferred";
+    await postGameLogRoleChange(
+      guild,
+      game,
+      "added",
+      newUser.id,
+      `<@&${roleTransfer.roleId}> (player)`,
+      actorDiscordId,
+    );
+    await postGameLogRoleChange(
+      guild,
+      game,
+      "removed",
+      oldDiscordUserId,
+      `<@&${roleTransfer.roleId}> (player)`,
+      actorDiscordId,
+    );
+  } else if (roleTransfer.status === "missing") {
+    roleNote = "player role missing — run `/game setup` with roles";
+  } else if (roleTransfer.added) {
+    roleNote =
+      "player role added (could not remove from old user — check Manage Roles / role hierarchy)";
+    await postGameLogRoleChange(
+      guild,
+      game,
+      "added",
+      newUser.id,
+      `<@&${roleTransfer.roleId}> (player)`,
+      actorDiscordId,
+    );
+  } else {
+    roleNote =
+      "player role **not** added — check bot Manage Roles permission and that the player role is below the bot’s highest role";
   }
 
   // Personal ST thread: swap members, rename if needed, keep stThreadId on the same seat.
@@ -205,7 +241,7 @@ export async function substitutePlayerInGame(
       `Substituted <@${oldDiscordUserId}> → <@${newUser.id}> (${seatLabel}, now **${displayName}**).`,
       stThreadNote,
       whisperNote,
-      playerRoleId ? "player role transferred" : "player role missing",
+      roleNote,
     ].join(" · "),
   };
 }
