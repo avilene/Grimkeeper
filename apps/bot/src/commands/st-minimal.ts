@@ -60,6 +60,7 @@ import {
   resolveGameRoles,
   resolveVotingChannel,
   setInteractionProgress,
+  syncGamePlayerRoles,
   syncGameProjection,
   syncStorytellersToPlayerThreads,
 } from "./command-context.js";
@@ -260,6 +261,9 @@ export class StCommandsMinimal {
         return;
       case "sync-st-threads":
         await this.syncStThreads(interaction);
+        return;
+      case "sync-player-roles":
+        await this.syncPlayerRoles(interaction);
         return;
       case "setup-town":
         if (!players?.trim()) {
@@ -1449,6 +1453,77 @@ export class StCommandsMinimal {
           parts.length > 0
             ? `Added ST role holders (and engine storytellers) to ${parts.join(" and ")}.`
             : "No player ST or whisper threads found. Run `/st setup-town` (and open whispers) first.",
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  /** Add the game player role to seated players who are missing it on Discord. */
+  async syncPlayerRoles(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      await setInteractionProgress(interaction, "Checking seated players for missing player roles…");
+      const engine = await loadEngine(game.id);
+      const result = await syncGamePlayerRoles(guild, game, engine);
+
+      if (!result) {
+        await replyOrEditInteraction(interaction, {
+          content: "This game has no player role linked. Run `/game setup` with a `player_role:` first.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      for (const userId of result.addedUserIds) {
+        await postGameLogRoleChange(
+          guild,
+          game,
+          "added",
+          userId,
+          `<@&${result.roleId}> (player)`,
+          interaction.user.id,
+        );
+      }
+
+      if (result.addedUserIds.length > 0) {
+        await postGameLog(
+          guild,
+          game,
+          `<@${interaction.user.id}> synced player roles — added <@&${result.roleId}> to **${result.addedUserIds.length}** seated player${result.addedUserIds.length === 1 ? "" : "s"}.`,
+        );
+      }
+
+      const parts: string[] = [];
+      if (result.addedUserIds.length > 0) {
+        parts.push(
+          `added role to **${result.addedUserIds.length}** player${result.addedUserIds.length === 1 ? "" : "s"}`,
+        );
+      }
+      if (result.alreadyHad > 0) {
+        parts.push(`**${result.alreadyHad}** already had the role`);
+      }
+      if (result.failedUserIds.length > 0) {
+        parts.push(
+          `**${result.failedUserIds.length}** failed (check Manage Roles / hierarchy)`,
+        );
+      }
+      if (result.notInGuildUserIds.length > 0) {
+        parts.push(`**${result.notInGuildUserIds.length}** not in this server`);
+      }
+
+      await replyOrEditInteraction(interaction, {
+        content:
+          result.seated === 0
+            ? "No real seated players to check (only fake/dev seats?)."
+            : parts.length > 0
+              ? `Synced player roles for **${result.seated}** seated player${result.seated === 1 ? "" : "s"}: ${parts.join("; ")}.`
+              : `Checked **${result.seated}** seated player${result.seated === 1 ? "" : "s"}; nothing to change.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

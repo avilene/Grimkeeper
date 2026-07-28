@@ -76,6 +76,10 @@ export const ST_DO_ACTIONS: DoAction[] = [
     name: "sync-st-threads",
     description: "Add everyone with the ST role to all player ST and whisper threads",
   },
+  {
+    name: "sync-player-roles",
+    description: "Add the game player role to seated players who are missing it on Discord",
+  },
   { name: "start", description: "Legacy start (prefer setup-town)" },
 ];
 

@@ -1052,6 +1052,85 @@ export async function transferGamePlayerRole(
   return { status: "transferred", roleId };
 }
 
+export type SyncGamePlayerRolesResult = {
+  roleId: string;
+  seated: number;
+  alreadyHad: number;
+  addedUserIds: string[];
+  failedUserIds: string[];
+  notInGuildUserIds: string[];
+  skippedFake: number;
+};
+
+/**
+ * Add the game player role to every seated real player who does not already have it.
+ */
+export async function syncGamePlayerRoles(
+  guild: Guild,
+  game: GameRoleIds,
+  engine: GameEngine,
+): Promise<SyncGamePlayerRolesResult | null> {
+  const roleId = await resolvePlayerRoleId(guild, game);
+  if (!roleId) {
+    void reportError(
+      "discord.role.player.missing",
+      new Error("Could not resolve player role for game"),
+      {
+        guildId: guild.id,
+        channelId: game.channelId,
+        playerRoleId: game.playerRoleId ?? null,
+        operation: "syncGamePlayerRoles",
+      },
+    );
+    return null;
+  }
+
+  let seated = 0;
+  let alreadyHad = 0;
+  const addedUserIds: string[] = [];
+  const failedUserIds: string[] = [];
+  const notInGuildUserIds: string[] = [];
+  let skippedFake = 0;
+
+  for (const player of engine.getState().players) {
+    if (player.isFake || isFakePlayer(player.discordUserId) || player.discordUserId.startsWith("dev:")) {
+      skippedFake++;
+      continue;
+    }
+    seated++;
+
+    const member = await fetchGuildMemberWithTimeout(guild, player.discordUserId, undefined, {
+      force: true,
+    });
+    if (!member) {
+      notInGuildUserIds.push(player.discordUserId);
+      continue;
+    }
+    if (member.roles.cache.has(roleId)) {
+      alreadyHad++;
+      continue;
+    }
+
+    const ok = await addRoleToUser(guild, player.discordUserId, roleId, {
+      channelId: game.channelId,
+      operation: "syncGamePlayerRoles",
+      playerId: player.id,
+    });
+    if (ok) addedUserIds.push(player.discordUserId);
+    else failedUserIds.push(player.discordUserId);
+  }
+
+  return {
+    roleId,
+    seated,
+    alreadyHad,
+    addedUserIds,
+    failedUserIds,
+    notInGuildUserIds,
+    skippedFake,
+  };
+}
+
 export async function applyGameChannelPermissions(
   guild: Guild,
   channelId: string,

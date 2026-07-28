@@ -123,3 +123,10 @@ describe("backpacker discoverability", () => {
     expect(PLAYER_DAY_ACTIONS.some((a) => a.name === "backpack remove")).toBe(true);
   });
 });
+
+describe("sync-player-roles discoverability", () => {
+  it("is in /st do but not a first-class shortcut", () => {
+    expect(ST_DO_ACTIONS.some((a) => a.name === "sync-player-roles")).toBe(true);
+    expect(ST_SLASH_SHORTCUTS.some((a) => a.name === "sync-player-roles")).toBe(false);
+  });
+});
