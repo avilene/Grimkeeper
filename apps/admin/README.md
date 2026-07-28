@@ -101,8 +101,12 @@ The admin container listens on **3847**. Browsers hit **80/443** for a bare doma
    COMPOSE_PROFILES=admin,proxy
    ADMIN_DOMAIN=your.domain
    ADMIN_OAUTH_CALLBACK_URL=https://your.domain/api/auth/callback/discord
+   AUTH_URL=https://your.domain
    ADMIN_COOKIE_SECURE=true
    ```
+   If the browser redirects to `http://IP:3847` after login, an old IP-based `AUTH_URL` or
+   `ADMIN_OAUTH_CALLBACK_URL` is still in `.env` — remove those and use the domain URLs above
+   (`AUTH_URL` is not auto-derived when already set).
 4. Discord Developer Portal → OAuth2 → Redirects: add  
    `https://your.domain/api/auth/callback/discord`
 5. Pull the latest compose/Caddyfile (git pull), then:

@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import type { Metadata } from "next";
 
 import { AppNav } from "@/components/app-nav";
@@ -8,6 +9,9 @@ export const metadata: Metadata = {
   title: {
     default: "Grimkeeper Admin",
     template: "%s · Grimkeeper Admin",
+  },
+  other: {
+    ...Sentry.getTraceData(),
   },
 };
 
