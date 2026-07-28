@@ -32,4 +32,22 @@ if (dsn) {
           integration.name !== "OnUnhandledRejection",
       ),
   });
+  // Logger is not loaded yet — console is intentional for boot confirmation.
+  console.info(
+    JSON.stringify({
+      level: "info",
+      msg: "sentry.init.ok",
+      environment: process.env.SENTRY_ENVIRONMENT?.trim() || process.env.NODE_ENV || "development",
+      release: process.env.SENTRY_RELEASE?.trim() || null,
+    }),
+  );
+} else {
+  console.info(
+    JSON.stringify({
+      level: "info",
+      msg: "sentry.init.skipped",
+      reason: "SENTRY_DSN unset",
+      nodeEnv: process.env.NODE_ENV || null,
+    }),
+  );
 }

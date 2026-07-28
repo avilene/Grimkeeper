@@ -341,7 +341,19 @@ function captureInSentry(
   error: unknown,
   context: Record<string, unknown>,
 ): void {
-  if (!Sentry.getClient()) return;
+  if (!Sentry.getClient()) {
+    // Loud signal when reporting was attempted but Sentry never initialized (missing DSN / init fail).
+    const dsnConfigured = Boolean(process.env.SENTRY_DSN?.trim());
+    if (process.env.NODE_ENV === "production" || dsnConfigured) {
+      log("error", "sentry.client.missing", {
+        source,
+        dsnConfigured,
+        nodeEnv: process.env.NODE_ENV ?? null,
+        ...context,
+      });
+    }
+    return;
+  }
 
   Sentry.withScope((scope) => {
     scope.setTag("source", source);

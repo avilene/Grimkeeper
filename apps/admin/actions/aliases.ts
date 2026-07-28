@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import type { SaveResult } from "@/lib/action-result";
 import { prisma } from "@/lib/db";
+import { captureAdminException } from "@/lib/sentry";
 import { requireAdmin } from "@/lib/session";
 
 export type { SaveResult };
@@ -53,6 +54,7 @@ export async function saveAlias(
     revalidatePath("/aliases");
     return { ok: true, message: isEdit ? "Alias saved." : "Alias created." };
   } catch (err) {
+    captureAdminException(err, { action: "saveAlias" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -71,6 +73,7 @@ export async function deleteAlias(
     revalidatePath("/aliases");
     return { ok: true, message: "Alias deleted." };
   } catch (err) {
+    captureAdminException(err, { action: "deleteAlias" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }

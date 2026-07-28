@@ -14,6 +14,7 @@ import {
   type StQueueMemberRole,
 } from "@/lib/db";
 import { setFlash } from "@/lib/flash";
+import { captureAdminException } from "@/lib/sentry";
 import { requireAdmin } from "@/lib/session";
 
 function parseImageUrlsFromBody(value: FormDataEntryValue | null): string[] {
@@ -57,6 +58,7 @@ export async function saveQueueEntry(entryId: string, formData: FormData) {
     });
     await setFlash("Queue entry saved.");
   } catch (err) {
+    captureAdminException(err, { action: "saveQueueEntry", entryId });
     await setFlash(err instanceof Error ? err.message : String(err));
   }
   revalidatePath(`/queues/entries/${entryId}`);
@@ -70,6 +72,7 @@ export async function closeQueueEntryAction(entryId: string) {
     await closeQueueEntry(entryId);
     await setFlash("Queue entry closed.");
   } catch (err) {
+    captureAdminException(err, { action: "closeQueueEntryAction", entryId });
     await setFlash(err instanceof Error ? err.message : String(err));
   }
   revalidatePath(`/queues/entries/${entryId}`);
@@ -88,6 +91,7 @@ export async function addQueueMemberAction(entryId: string, formData: FormData) 
     await addQueueMember(entryId, discordUserId, role);
     await setFlash("Member added.");
   } catch (err) {
+    captureAdminException(err, { action: "addQueueMemberAction", entryId });
     await setFlash(err instanceof Error ? err.message : String(err));
   }
   revalidatePath(`/queues/entries/${entryId}`);
@@ -103,6 +107,7 @@ export async function removeQueueMemberAction(entryId: string, memberId: string)
     if (deleted.count === 0) throw new Error("Member not found on this entry");
     await setFlash("Member removed.");
   } catch (err) {
+    captureAdminException(err, { action: "removeQueueMemberAction", entryId });
     await setFlash(err instanceof Error ? err.message : String(err));
   }
   revalidatePath(`/queues/entries/${entryId}`);

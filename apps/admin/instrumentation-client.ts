@@ -13,10 +13,12 @@ if (dsn) {
     dsn,
     environment: adminSentryEnvironment(),
     release: adminSentryRelease(),
+    // Drives performance tracing + Web Vitals in @sentry/nextjs.
     tracesSampleRate: adminTracesSampleRate(),
-    // Keep replay off by default for a small internal admin UI.
+    // Session replay only when an error occurs (internal admin UI).
     replaysSessionSampleRate: 0,
-    replaysOnErrorSampleRate: 0,
+    replaysOnErrorSampleRate: 1.0,
+    integrations: [Sentry.replayIntegration()],
     debug: process.env.SENTRY_DEBUG === "1",
   });
 }

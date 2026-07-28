@@ -22,6 +22,7 @@ import {
   parseTimezoneOffsetMinutes,
 } from "@/lib/datetime";
 import { emptyToNull, parseOptionalInt } from "@/lib/utils";
+import { captureAdminException } from "@/lib/sentry";
 import { requireAdmin, requireGameAccess } from "@/lib/session";
 
 export type { SaveResult };
@@ -140,6 +141,7 @@ export async function recordCompletedGameAction(
     redirect(`/games/${gameId}`);
   } catch (err) {
     if (err && typeof err === "object" && "digest" in err) throw err;
+    captureAdminException(err, { action: "recordCompletedGameAction" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -190,6 +192,7 @@ export async function saveGame(
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: "Game saved." };
   } catch (err) {
+    captureAdminException(err, { action: "saveGame" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -210,6 +213,7 @@ export async function deleteGame(
     redirect("/games");
   } catch (err) {
     if (err && typeof err === "object" && "digest" in err) throw err;
+    captureAdminException(err, { action: "deleteGame" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -259,6 +263,7 @@ export async function savePlayers(
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: `Saved ${playerIds.length} player${playerIds.length === 1 ? "" : "s"}.` };
   } catch (err) {
+    captureAdminException(err, { action: "savePlayers" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -293,6 +298,7 @@ export async function addPlayer(
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: "Player added." };
   } catch (err) {
+    captureAdminException(err, { action: "addPlayer" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -315,6 +321,7 @@ export async function deletePlayer(
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: "Player deleted." };
   } catch (err) {
+    captureAdminException(err, { action: "deletePlayer" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -360,6 +367,7 @@ export async function saveGameDay(
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: dayId ? "Day saved." : "Day created." };
   } catch (err) {
+    captureAdminException(err, { action: "saveGameDay" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -379,6 +387,7 @@ export async function deleteGameDay(
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: "Day deleted." };
   } catch (err) {
+    captureAdminException(err, { action: "deleteGameDay" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -496,6 +505,7 @@ export async function saveNomination(
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: nominationId ? "Nomination saved." : "Nomination created." };
   } catch (err) {
+    captureAdminException(err, { action: "saveNomination" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -517,6 +527,7 @@ export async function deleteNomination(
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: "Nomination deleted." };
   } catch (err) {
+    captureAdminException(err, { action: "deleteNomination" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -597,6 +608,7 @@ export async function saveVote(
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: voteId ? "Vote saved." : "Vote set." };
   } catch (err) {
+    captureAdminException(err, { action: "saveVote" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -618,6 +630,7 @@ export async function deleteVote(
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: "Vote deleted." };
   } catch (err) {
+    captureAdminException(err, { action: "deleteVote" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -646,6 +659,7 @@ export async function requestNomsDiscordRefresh(
         "Discord refresh queued. The bot will post missing nominations and update embeds within about 30 seconds (or run /st refresh-noms now).",
     };
   } catch (err) {
+    captureAdminException(err, { action: "requestNomsDiscordRefresh" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -684,6 +698,7 @@ export async function failOpenNominationsForDay(
       }`,
     };
   } catch (err) {
+    captureAdminException(err, { action: "failOpenNominationsForDay" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -742,6 +757,7 @@ export async function extendNominationsForDay(
       }`,
     };
   } catch (err) {
+    captureAdminException(err, { action: "extendNominationsForDay" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -770,6 +786,7 @@ export async function requestKibNomsRepost(
         "Kib nom repost queued. The bot will refresh open nomination copies in kib within about 30 seconds (or run /st repost-kib-noms now).",
     };
   } catch (err) {
+    captureAdminException(err, { action: "requestKibNomsRepost" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -806,6 +823,7 @@ export async function requestPingMissingVoters(
         "Missing-voter ping queued. The bot will mention them in Town Voting within about 30 seconds (or run /st ping-missing).",
     };
   } catch (err) {
+    captureAdminException(err, { action: "requestPingMissingVoters" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }

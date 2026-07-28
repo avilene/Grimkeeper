@@ -7,6 +7,7 @@ import type { SaveResult } from "@/lib/action-result";
 import { prisma } from "@/lib/db";
 import { parseLocalDateTime, parseTimezoneOffsetMinutes } from "@/lib/datetime";
 import { emptyToNull } from "@/lib/utils";
+import { captureAdminException } from "@/lib/sentry";
 import { requireAdmin, requireGameAccess } from "@/lib/session";
 
 export type { SaveResult };
@@ -67,6 +68,7 @@ export async function saveReminder(
     redirect(`/reminders/${created.id}`);
   } catch (err) {
     if (err && typeof err === "object" && "digest" in err) throw err;
+    captureAdminException(err, { action: "saveReminder" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -96,6 +98,7 @@ export async function deleteReminder(
     redirect("/reminders");
   } catch (err) {
     if (err && typeof err === "object" && "digest" in err) throw err;
+    captureAdminException(err, { action: "deleteReminder" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
