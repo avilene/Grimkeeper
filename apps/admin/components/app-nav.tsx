@@ -19,6 +19,7 @@ export async function AppNav() {
       canListGames={access.canListGames}
       isAdmin={access.isAdmin}
       canListGamesAsStoryteller={access.canListGames && !access.isAdmin}
+      image={access.image}
       name={access.name}
       userId={access.userId}
       signOutAction={signOutAction}

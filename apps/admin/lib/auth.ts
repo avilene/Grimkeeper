@@ -1,6 +1,12 @@
 import NextAuth from "next-auth";
 import Discord from "next-auth/providers/discord";
 
+function getDiscordAvatarUrl(discordUserId: string, avatar: string | null): string | null {
+  if (!discordUserId || !avatar) return null;
+  const ext = avatar.startsWith("a_") ? "gif" : "png";
+  return `https://cdn.discordapp.com/avatars/${discordUserId}/${avatar}.${ext}?size=128`;
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Discord({
@@ -24,7 +30,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async jwt({ token, profile }) {
       if (profile && "id" in profile) {
-        token.discordId = String(profile.id);
+        const discordId = String(profile.id);
+        const avatar =
+          "avatar" in profile && typeof profile.avatar === "string" ? profile.avatar : null;
+
+        token.discordId = discordId;
         const globalName =
           "global_name" in profile && typeof profile.global_name === "string"
             ? profile.global_name
@@ -34,12 +44,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             ? profile.username
             : null;
         token.name = globalName || username || token.name;
+        token.image = getDiscordAvatarUrl(discordId, avatar);
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = String(token.discordId ?? token.sub ?? "");
+        session.user.image = typeof token.image === "string" ? token.image : null;
       }
       return session;
     },

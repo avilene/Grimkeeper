@@ -13,6 +13,7 @@ export type AppSidebarProps = {
   canListGames: boolean;
   isAdmin: boolean;
   canListGamesAsStoryteller: boolean;
+  image: string | null;
   name: string | null;
   userId: string;
   signOutAction: () => Promise<void>;
@@ -57,6 +58,7 @@ export function AppSidebar({
   canListGames,
   isAdmin,
   canListGamesAsStoryteller,
+  image,
   name,
   userId,
   signOutAction,
@@ -64,6 +66,8 @@ export function AppSidebar({
   const pathname = usePathname();
   const adminActive = isAdmin && isAdminPath(pathname);
   const [adminOpen, setAdminOpen] = useState(adminActive);
+  const displayName = name ?? "User";
+  const fallbackInitial = displayName.charAt(0).toUpperCase() || "U";
 
   useEffect(() => {
     if (adminActive) setAdminOpen(true);
@@ -143,14 +147,27 @@ export function AppSidebar({
       </nav>
 
       <div className="space-y-3 border-t border-border p-3">
-        <div className="px-1">
-          <p className="truncate text-sm font-medium">{name ?? "User"}</p>
-          <p className="truncate font-mono text-[11px] text-muted-foreground">{userId}</p>
-          {isAdmin ? (
-            <p className="mt-1 text-xs text-primary">admin</p>
-          ) : canListGamesAsStoryteller ? (
-            <p className="mt-1 text-xs text-primary">storyteller</p>
-          ) : null}
+        <div className="flex items-center gap-3 px-1">
+          {image ? (
+            <img
+              src={image}
+              alt={`${displayName} avatar`}
+              className="size-10 shrink-0 rounded-full border border-border object-cover"
+            />
+          ) : (
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-accent text-sm font-medium text-accent-foreground">
+              {fallbackInitial}
+            </div>
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{displayName}</p>
+            <p className="truncate font-mono text-[11px] text-muted-foreground">{userId}</p>
+            {isAdmin ? (
+              <p className="mt-1 text-xs text-primary">admin</p>
+            ) : canListGamesAsStoryteller ? (
+              <p className="mt-1 text-xs text-primary">storyteller</p>
+            ) : null}
+          </div>
         </div>
         <form action={signOutAction}>
           <Button type="submit" variant="secondary" size="sm" className="w-full">

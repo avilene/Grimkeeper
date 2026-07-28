@@ -12,6 +12,7 @@ import { parseAdminIds } from "@/lib/env";
 export type AccessProfile = {
   userId: string;
   name: string | null;
+  image: string | null;
   /** Discord user is in ADMIN_IDS (full admin). */
   isAdmin: boolean;
   /** Game ids the user may view/edit as storyteller (non-admin). */
@@ -76,6 +77,7 @@ export const getAccessProfile = cache(async (): Promise<AccessProfile | null> =>
   return {
     userId,
     name: session?.user?.name ?? null,
+    image: session?.user?.image ?? null,
     isAdmin,
     storytellerGameIds,
     canListGames: isAdmin || storytellerGameIds.size > 0,
