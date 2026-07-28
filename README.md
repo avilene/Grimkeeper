@@ -100,6 +100,9 @@ Enable the `admin` compose profile (separate `Grimkeeper-admin` image + shared S
 # ADMIN_SESSION_SECRET=...
 # ADMIN_OAUTH_CALLBACK_URL=https://admin.example.com/api/auth/callback/discord
 # ADMIN_IDS=your_discord_user_id
+#
+# HTTPS (Caddy): COMPOSE_PROFILES=admin,proxy + ADMIN_DOMAIN=admin.example.com
+# (A record → droplet; open ports 80/443 — see apps/admin/README.md)
 
 pnpm docker:redeploy
 ```

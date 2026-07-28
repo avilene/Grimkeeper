@@ -57,7 +57,9 @@ Admin UI on the droplet (optional compose profile — separate image):
   3. Optional: ADMIN_IMAGE=ghcr.io/YOUR_USER/Grimkeeper-admin:latest
      (defaults to GRIMKEEPER_IMAGE with -admin before the tag)
   4. pnpm docker:redeploy   # recreates bot + admin from their images
-  5. Open http://YOUR_DROPLET:3847 (or put Caddy/nginx + TLS in front)
+  5. Open http://YOUR_DROPLET:3847
+  6. HTTPS on a domain: set COMPOSE_PROFILES=admin,proxy and ADMIN_DOMAIN=your.domain,
+     open ports 80/443, then redeploy (Caddy → admin:3847; see apps/admin/README.md)
 
 Build notifications:
   - GitHub repo secret: DISCORD_BUILD_WEBHOOK_URL (Discord channel webhook)

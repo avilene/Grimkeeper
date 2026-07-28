@@ -62,6 +62,31 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Optional HTTPS front for admin — enable with COMPOSE_PROFILES=admin,proxy
+  # (or --profile proxy). Needs ADMIN_DOMAIN + A/AAAA → this host. Proxies to
+  # admin:3847 on the compose network. Open firewall ports 80 and 443.
+  caddy:
+    profiles: ["proxy"]
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    depends_on:
+      - admin
+    environment:
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./ops/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # Optional — enable with: docker compose --profile logging up -d
   promtail:
     profiles: ["logging"]
@@ -111,3 +136,5 @@ services:
 
 volumes:
   grimkeeper-data:
+  caddy_data:
+  caddy_config:

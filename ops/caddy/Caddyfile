@@ -1,0 +1,8 @@
+# Grimkeeper admin — TLS + reverse proxy to the admin container.
+# Requires ADMIN_DOMAIN in the environment (compose passes it through).
+# Let's Encrypt needs an A/AAAA record for {$ADMIN_DOMAIN} pointing at this host.
+
+{$ADMIN_DOMAIN} {
+	encode gzip
+	reverse_proxy admin:3847
+}

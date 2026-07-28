@@ -44,7 +44,7 @@ if [ -z "${GRIMKEEPER_IMAGE:-}" ]; then
   exit 1
 fi
 
-# Compose loads COMPOSE_PROFILES from .env — include admin when that profile is enabled.
+# Compose loads COMPOSE_PROFILES from .env — include admin / proxy when enabled.
 services="bot"
 if docker compose config --services 2>/dev/null | grep -qx admin; then
   services="bot admin"
@@ -53,9 +53,12 @@ if docker compose config --services 2>/dev/null | grep -qx admin; then
     export ADMIN_IMAGE
   fi
 fi
+if docker compose config --services 2>/dev/null | grep -qx caddy; then
+  services="$services caddy"
+fi
 
 printf '[%s] [redeploy] Pulling bot=%s' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GRIMKEEPER_IMAGE"
-if [ "$services" = "bot admin" ]; then
+if echo "$services" | grep -qw admin; then
   printf ' admin=%s' "$ADMIN_IMAGE"
 fi
 printf ' (trigger=%s)\n' "$trigger"

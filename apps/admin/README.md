@@ -52,7 +52,7 @@ Open http://localhost:3847
 Admin has its own Docker image (`apps/admin/Dockerfile` → `ghcr.io/…/Grimkeeper-admin`) and shares the bot SQLite volume. Enable the compose profile:
 
 1. **Discord Developer Portal** → OAuth2 → Redirects, add your public callback, e.g.
-   - `https://admin.example.com/api/auth/callback/discord` (recommended, behind Caddy/nginx), or
+   - `https://your.domain/api/auth/callback/discord` (recommended, behind Caddy), or
    - `http://YOUR_DROPLET_IP:3847/api/auth/callback/discord` (quick / no TLS)
 2. On the droplet `.env` (same file as the bot):
 
@@ -64,7 +64,7 @@ COMPOSE_PROFILES=admin
 DISCORD_CLIENT_ID=...              # already required by the bot
 DISCORD_CLIENT_SECRET=...          # Discord OAuth2 → Client Secret
 ADMIN_SESSION_SECRET=...           # openssl rand -hex 32
-ADMIN_OAUTH_CALLBACK_URL=https://admin.example.com/api/auth/callback/discord
+ADMIN_OAUTH_CALLBACK_URL=https://your.domain/api/auth/callback/discord
 # Or by droplet IP (include port if you expose 3847 directly):
 # ADMIN_OAUTH_CALLBACK_URL=http://46.101.182.124:3847/api/auth/callback/discord
 # Optional explicit Auth.js origin (defaults to origin of ADMIN_OAUTH_CALLBACK_URL):
@@ -84,6 +84,40 @@ pnpm docker:redeploy
 ```
 
 4. Open the public URL and log in with Discord. Anyone can sign in; `ADMIN_IDS` grants full admin tools. Storyteller Discord role checks use `DISCORD_TOKEN` (same bot token as the bot service).
+
+### HTTPS on your domain (Caddy)
+
+The admin container listens on **3847**. Browsers hit **80/443** for a bare domain, so use the `proxy` compose profile (Caddy + Let's Encrypt).
+
+1. Point an **A** (and optional **AAAA**) record for your domain at the droplet’s public IP. Wait until `dig +short your.domain` returns that IP.
+2. Open firewall ports **80** and **443** (required for ACME + HTTPS):
+   ```bash
+   sudo ufw allow 80/tcp
+   sudo ufw allow 443/tcp
+   sudo ufw reload
+   ```
+3. In `.env` on the droplet:
+   ```bash
+   COMPOSE_PROFILES=admin,proxy
+   ADMIN_DOMAIN=your.domain
+   ADMIN_OAUTH_CALLBACK_URL=https://your.domain/api/auth/callback/discord
+   ADMIN_COOKIE_SECURE=true
+   ```
+4. Discord Developer Portal → OAuth2 → Redirects: add  
+   `https://your.domain/api/auth/callback/discord`
+5. Pull the latest compose/Caddyfile (git pull), then:
+   ```bash
+   pnpm docker:redeploy
+   # or: docker compose --profile admin --profile proxy up -d
+   ```
+6. Check Caddy got a cert and is proxying:
+   ```bash
+   docker compose logs caddy --tail 50
+   curl -I https://your.domain
+   ```
+7. Optional hardening: after HTTPS works, close public **3847** in the firewall so only Caddy serves the UI.
+
+Caddy config lives in `ops/caddy/Caddyfile` and reverse-proxies to `admin:3847` on the Docker network.
 
 **Source maps (readable Sentry stack traces)**
 
