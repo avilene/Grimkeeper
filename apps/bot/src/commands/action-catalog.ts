@@ -44,6 +44,11 @@ export const ST_DO_ACTIONS: DoAction[] = [
     needs: ["nominee"],
   },
   { name: "next-phase", description: "Advance Setup → Night 1 → Day 1 → Night 2 …; renames town channel" },
+  {
+    name: "sub",
+    description: "Substitute a seated player with another Discord user",
+    needs: ["oldplayer", "newplayer"],
+  },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
   { name: "mark-dead", description: "Mark a player dead or alive", needs: ["player", "alive?"] },
   { name: "votes", description: "Refresh the ST vote tracker and Town Voting nomination embeds" },
@@ -89,10 +94,6 @@ export const ST_SLASH_SHORTCUTS: DoAction[] = [
   { name: "end", description: "End the game (strip roles, open kib)", needs: ["winner"] },
   { name: "next-phase", description: "Advance Setup → Night 1 → Day 1 → …" },
   {
-    name: "reset-to-setup",
-    description: "Wipe day/night back to Setup (ADMIN_IDS only)",
-  },
-  {
     name: "recreate-player-thread",
     description: "Create or reopen one player's private ST thread",
     needs: ["player"],
@@ -117,6 +118,11 @@ export const ST_SLASH_SHORTCUTS: DoAction[] = [
     name: "ping-missing",
     description: "Ping all players who have not voted on a specific open nomination",
     needs: ["nominee"],
+  },
+  {
+    name: "sub",
+    description: "Substitute a seated player with another Discord user",
+    needs: ["oldplayer", "newplayer"],
   },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
   { name: "mark-dead", description: "Mark a player dead or alive", needs: ["player", "alive?"] },

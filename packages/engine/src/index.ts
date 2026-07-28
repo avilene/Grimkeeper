@@ -173,6 +173,14 @@ export interface PlayerDisplayNameChangedEvent extends GameEventBase {
   displayName: string;
 }
 
+export interface PlayerSubstitutedEvent extends GameEventBase {
+  type: typeof GameEventType.PlayerSubstituted;
+  playerId: string;
+  oldDiscordUserId: string;
+  newDiscordUserId: string;
+  displayName: string;
+}
+
 export interface NominationVotesLockedEvent extends GameEventBase {
   type: typeof GameEventType.NominationVotesLocked;
   nominationId: string;
@@ -271,6 +279,7 @@ export type GameEvent =
   | TownResetToSetupEvent
   | PlayerAliveChangedEvent
   | PlayerDisplayNameChangedEvent
+  | PlayerSubstitutedEvent
   | NominationVotesLockedEvent
   | NominationVotesUnlockedEvent
   | NominationCountStartedEvent
@@ -584,6 +593,15 @@ export interface SetPlayerDisplayNameCommand {
   displayName: string;
 }
 
+/** Hand a seat to a different Discord user (keeps playerId / seat / votes). */
+export interface SubstitutePlayerCommand {
+  kind: typeof GameCommandKind.SubstitutePlayer;
+  gameId: string;
+  playerId: string;
+  newDiscordUserId: string;
+  displayName: string;
+}
+
 export interface LockNominationVotesCommand {
   kind: typeof GameCommandKind.LockNominationVotes;
   gameId: string;
@@ -650,6 +668,7 @@ export type GameCommand =
   | ResetTownToSetupCommand
   | SetPlayerAliveCommand
   | SetPlayerDisplayNameCommand
+  | SubstitutePlayerCommand
   | LockNominationVotesCommand
   | UnlockNominationVotesCommand
   | StartNominationCountCommand
@@ -1345,6 +1364,38 @@ export class GameEngine {
           throw new GameEngineError("Display name must be 100 characters or fewer.");
         }
         break;
+      case GameCommandKind.SubstitutePlayer: {
+        if (this.state.phase === "ended") {
+          throw new GameEngineError("Game has already ended.");
+        }
+        const player = this.getPlayerById(command.playerId);
+        if (!player) {
+          throw new GameEngineError("Player is not in this game.");
+        }
+        if (player.isFake || player.discordUserId.startsWith("dev:")) {
+          throw new GameEngineError("Cannot substitute a fake/dev player.");
+        }
+        const newDiscordUserId = command.newDiscordUserId.trim();
+        if (!newDiscordUserId) {
+          throw new GameEngineError("New Discord user is required.");
+        }
+        if (newDiscordUserId.startsWith("dev:")) {
+          throw new GameEngineError("Cannot substitute with a fake/dev user.");
+        }
+        if (newDiscordUserId === player.discordUserId) {
+          throw new GameEngineError("That user is already occupying this seat.");
+        }
+        if (this.getPlayerByDiscordId(newDiscordUserId)) {
+          throw new GameEngineError("That user is already in this game.");
+        }
+        if (!command.displayName.trim()) {
+          throw new GameEngineError("Display name cannot be empty.");
+        }
+        if (command.displayName.trim().length > 100) {
+          throw new GameEngineError("Display name must be 100 characters or fewer.");
+        }
+        break;
+      }
       case GameCommandKind.LockNominationVotes: {
         this.assertPhase("day", "Votes can only be locked during the day.");
         this.assertDayState();
@@ -1870,6 +1921,20 @@ export class GameEngine {
           },
         ];
       }
+      case GameCommandKind.SubstitutePlayer: {
+        const player = this.getPlayerById(command.playerId)!;
+        return [
+          {
+            type: GameEventType.PlayerSubstituted,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            oldDiscordUserId: player.discordUserId,
+            newDiscordUserId: command.newDiscordUserId.trim(),
+            displayName: command.displayName.trim(),
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
       case GameCommandKind.LockNominationVotes:
         return [
           {
@@ -2219,6 +2284,15 @@ export class GameEngine {
         const player = this.state.players.find((candidate) => candidate.id === event.playerId);
         if (player) {
           player.displayName = event.displayName;
+        }
+        break;
+      }
+      case GameEventType.PlayerSubstituted: {
+        const player = this.state.players.find((candidate) => candidate.id === event.playerId);
+        if (player) {
+          player.discordUserId = event.newDiscordUserId;
+          player.displayName = event.displayName;
+          player.isFake = event.newDiscordUserId.startsWith("dev:");
         }
         break;
       }

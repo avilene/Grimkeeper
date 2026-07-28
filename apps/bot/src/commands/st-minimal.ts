@@ -175,6 +175,20 @@ export class StCommandsMinimal {
     })
     hours: number | undefined,
     @SlashOption({
+      name: "oldplayer",
+      description: "For sub: seated player being replaced",
+      type: ApplicationCommandOptionType.User,
+      required: false,
+    })
+    oldplayer: User | undefined,
+    @SlashOption({
+      name: "newplayer",
+      description: "For sub: Discord user taking the seat",
+      type: ApplicationCommandOptionType.User,
+      required: false,
+    })
+    newplayer: User | undefined,
+    @SlashOption({
       name: "message",
       description: "For broadcast/say: text to send to all player threads",
       type: ApplicationCommandOptionType.String,
@@ -276,6 +290,17 @@ export class StCommandsMinimal {
         return;
       case "reset-to-setup":
         await this.resetToSetup(interaction);
+        return;
+      case "sub":
+        if (!oldplayer) {
+          await missingOption(interaction, "oldplayer", "sub");
+          return;
+        }
+        if (!newplayer) {
+          await missingOption(interaction, "newplayer", "sub");
+          return;
+        }
+        await this.substitutePlayer(oldplayer, newplayer, interaction);
         return;
       case "resolve-next":
         await this.resolveNext(interaction);
@@ -589,15 +614,6 @@ export class StCommandsMinimal {
   }
 
   @Slash({
-    name: "reset-to-setup",
-    description: "Wipe day/night back to Setup (ADMIN_IDS only)",
-  })
-  async resetToSetupSlash(interaction: CommandInteraction): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
-    await this.resetToSetup(interaction);
-  }
-
-  @Slash({
     name: "recreate-player-thread",
     description: "Create or reopen one player's private ST thread",
   })
@@ -715,6 +731,31 @@ export class StCommandsMinimal {
   ): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
     await this.pingMissing(nominee, interaction);
+  }
+
+  @Slash({
+    name: "sub",
+    description: "Substitute a seated player with another Discord user",
+  })
+  async subSlash(
+    @SlashOption({
+      name: "oldplayer",
+      description: "Seated player being replaced",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    oldplayer: User,
+    @SlashOption({
+      name: "newplayer",
+      description: "Discord user taking the seat",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    newplayer: User,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireCommandAccess(interaction))) return;
+    await this.substitutePlayer(oldplayer, newplayer, interaction);
   }
 
   @Slash({
@@ -1893,6 +1934,39 @@ export class StCommandsMinimal {
       const message = await pingMissingVoters(interaction.guild, game, engine, open[0]!.id);
       await replyOrEditInteraction(interaction, {
         content: message,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async substitutePlayer(
+    oldUser: User,
+    newUser: User,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    if (!interaction.guild) {
+      await replyOrEditInteraction(interaction, {
+        content: "Run this in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      const { substitutePlayerInGame } = await import("../substitute-player.js");
+      const result = await substitutePlayerInGame(
+        interaction.guild,
+        game,
+        oldUser,
+        newUser,
+        interaction.user.id,
+      );
+      await replyOrEditInteraction(interaction, {
+        content: result.message,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

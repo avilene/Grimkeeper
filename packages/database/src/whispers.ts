@@ -36,6 +36,63 @@ export async function listGameWhispers(gameId: string) {
   });
 }
 
+/**
+ * Rewrite Discord ids on whisper rows where `oldDiscordUserId` is a participant.
+ * Returns thread ids that need Discord membership updates.
+ */
+export async function substituteDiscordIdInGameWhispers(
+  gameId: string,
+  oldDiscordUserId: string,
+  newDiscordUserId: string,
+): Promise<{ threadIds: string[]; updated: number }> {
+  if (oldDiscordUserId === newDiscordUserId) {
+    return { threadIds: [], updated: 0 };
+  }
+
+  const whispers = await listGameWhispers(gameId);
+  const threadIds: string[] = [];
+  let updated = 0;
+
+  for (const whisper of whispers) {
+    const participants = whisper.participantKey
+      ? whisper.participantKey.split(",").filter(Boolean)
+      : [whisper.creatorDiscordId, whisper.targetDiscordId].filter(Boolean);
+
+    const involvesOld =
+      participants.includes(oldDiscordUserId) ||
+      whisper.creatorDiscordId === oldDiscordUserId ||
+      whisper.targetDiscordId === oldDiscordUserId;
+    if (!involvesOld) continue;
+
+    const nextParticipants = [
+      ...new Set(
+        participants.map((id) => (id === oldDiscordUserId ? newDiscordUserId : id)),
+      ),
+    ];
+    const creatorDiscordId =
+      whisper.creatorDiscordId === oldDiscordUserId
+        ? newDiscordUserId
+        : whisper.creatorDiscordId;
+    const targetDiscordId =
+      whisper.targetDiscordId === oldDiscordUserId
+        ? newDiscordUserId
+        : whisper.targetDiscordId;
+
+    await prisma.gameWhisper.update({
+      where: { id: whisper.id },
+      data: {
+        creatorDiscordId,
+        targetDiscordId,
+        participantKey: whisperParticipantKey(nextParticipants),
+      },
+    });
+    threadIds.push(whisper.threadId);
+    updated += 1;
+  }
+
+  return { threadIds, updated };
+}
+
 /** Most recent whisper for this exact participant set. */
 export async function findGameWhisperByParticipants(
   gameId: string,

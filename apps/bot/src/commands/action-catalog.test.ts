@@ -65,6 +65,8 @@ describe("ST_SLASH_SHORTCUTS", () => {
   it("keeps a focused mobile set (not the full catalog)", () => {
     expect(ST_SLASH_SHORTCUTS.length).toBeGreaterThanOrEqual(6);
     expect(ST_SLASH_SHORTCUTS.length).toBeLessThan(ST_DO_ACTIONS.length);
+    // Discord: /st top-level ≤ 25 (shortcuts + do/mark/panel/add-kib/remove-kib + help/guide/reminder/queue).
+    expect(ST_SLASH_SHORTCUTS.length + 5 + 4).toBeLessThanOrEqual(25);
     expect(ST_SLASH_SHORTCUTS.map((a) => a.name)).toEqual(
       expect.arrayContaining([
         "setup-town",
@@ -72,7 +74,6 @@ describe("ST_SLASH_SHORTCUTS", () => {
         "log",
         "end",
         "next-phase",
-        "reset-to-setup",
         "recreate-player-thread",
         "close-nominations",
         "nominate",
@@ -80,25 +81,34 @@ describe("ST_SLASH_SHORTCUTS", () => {
         "resolve-next",
         "extend-noms",
         "ping-missing",
+        "sub",
         "execute",
         "mark-dead",
       ]),
     );
-    // Panel-backed; stay on /st do only so /st stays under Discord's 25-option cap.
+    // Stay on /st do only so /st stays under Discord's 25-option cap.
     const shortcutNames = ST_SLASH_SHORTCUTS.map((a) => a.name);
     expect(shortcutNames).not.toContain("fail-open-noms");
     expect(shortcutNames).not.toContain("repost-kib-noms");
+    expect(shortcutNames).not.toContain("reset-to-setup");
   });
 });
 
 describe("reset-to-setup discoverability", () => {
-  it("is in the /st do catalog and mobile shortcuts", () => {
+  it("is in the /st do catalog but not a first-class shortcut", () => {
     expect(ST_DO_ACTIONS.some((a) => a.name === "reset-to-setup")).toBe(true);
-    expect(ST_SLASH_SHORTCUTS.some((a) => a.name === "reset-to-setup")).toBe(true);
+    expect(ST_SLASH_SHORTCUTS.some((a) => a.name === "reset-to-setup")).toBe(false);
   });
 
   it("matches typing reset in /st do autocomplete filters", () => {
     const names = filterDoActions("reset").map((a) => a.name);
     expect(names).toContain("reset-to-setup");
+  });
+});
+
+describe("sub discoverability", () => {
+  it("is in /st do and mobile shortcuts", () => {
+    expect(ST_DO_ACTIONS.some((a) => a.name === "sub")).toBe(true);
+    expect(ST_SLASH_SHORTCUTS.some((a) => a.name === "sub")).toBe(true);
   });
 });

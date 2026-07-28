@@ -526,7 +526,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
         value: [
           cmd(
             "/st … shortcuts",
-            "Common actions as first-class subcommands (setup-town, broadcast, log, end, next-phase, close-nominations, nominate, refresh-noms, resolve-next, extend-noms, ping-missing, execute, mark-dead). Fail-all / kib repost: panel or `/st do`.",
+            "Frequent mobile subcommands (setup-town, broadcast, next-phase, sub, resolve-next, …). Full catalog: `/st do`. Fail-all / kib repost / reset-to-setup: panel or `/st do`.",
           ),
           cmd(
             "/st do",
@@ -583,7 +583,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           "Each living player may nominate once per day; each player may be nominated once. Ghosts cannot nominate.",
           "`next-phase` advances Setup → Night 1 → Day 1 → …. Renames town to `base-setup` / `base-nightN` / `base-dayN`.",
           "`add-st` / `remove-st` / `sync-st-threads` manage co-STs and invite/remove them from player ST + whisper threads.",
-          "`reset-to-setup` (ADMIN_IDS only) wipes day/night back to Setup, keeping the roster.",
+          "`/st sub` swaps a seat’s Discord user. `/st do reset-to-setup` (ADMIN_IDS) resets day/night.",
           "Day stamps go to Voting, Whisper Declaration, Public Claims, kib, and whisper threads — not Rules.",
         ].join("\n"),
       },

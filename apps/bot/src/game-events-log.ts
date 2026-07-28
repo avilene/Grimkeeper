@@ -101,6 +101,13 @@ function eventFields(event: GameEvent): Record<string, unknown> {
       return { playerId: event.playerId, alive: event.alive };
     case GameEventType.PlayerDisplayNameChanged:
       return { playerId: event.playerId, displayName: event.displayName };
+    case GameEventType.PlayerSubstituted:
+      return {
+        playerId: event.playerId,
+        oldDiscordUserId: event.oldDiscordUserId,
+        newDiscordUserId: event.newDiscordUserId,
+        displayName: event.displayName,
+      };
     case GameEventType.NominationVotesLocked:
       return { nominationId: event.nominationId };
     case GameEventType.NominationVotesUnlocked:

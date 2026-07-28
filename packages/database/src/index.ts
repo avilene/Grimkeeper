@@ -86,6 +86,7 @@ export {
   listGameWhispers,
   findGameWhisperBetweenPlayers,
   findGameWhisperByParticipants,
+  substituteDiscordIdInGameWhispers,
   whisperParticipantKey,
   type CreateGameWhisperInput,
 } from "./whispers.js";

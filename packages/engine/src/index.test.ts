@@ -1531,6 +1531,81 @@ describe("GameEngine", () => {
     ).toHaveLength(0);
   });
 
+  it("substitutes a seated player's Discord user while keeping playerId", () => {
+    const engine = setupTownEngine(3);
+    const player = engine.getState().players[0]!;
+    const seat = player.seat;
+    const playerId = player.id;
+    const oldDiscord = player.discordUserId;
+
+    const events = engine.handle({
+      kind: GameCommandKind.SubstitutePlayer,
+      gameId,
+      playerId,
+      newDiscordUserId: "user-sub-99",
+      displayName: "Subbed In",
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe(GameEventType.PlayerSubstituted);
+    for (const event of events) engine.apply(event);
+
+    const updated = engine.getPlayerById(playerId)!;
+    expect(updated.discordUserId).toBe("user-sub-99");
+    expect(updated.displayName).toBe("Subbed In");
+    expect(updated.seat).toBe(seat);
+    expect(engine.getPlayerByDiscordId(oldDiscord)).toBeUndefined();
+    expect(engine.getPlayerByDiscordId("user-sub-99")?.id).toBe(playerId);
+  });
+
+  it("rejects substituting onto a Discord user already in the game", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.SubstitutePlayer,
+        gameId,
+        playerId: players[0]!.id,
+        newDiscordUserId: players[1]!.discordUserId,
+        displayName: "Taken",
+      }),
+    ).toThrow("already in this game");
+  });
+
+  it("rejects substituting a missing player", () => {
+    const engine = setupTownEngine(3);
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.SubstitutePlayer,
+        gameId,
+        playerId: "missing-player",
+        newDiscordUserId: "user-new",
+        displayName: "Nobody",
+      }),
+    ).toThrow("Player is not in this game");
+  });
+
+  it("rejects substituting after the game has ended", () => {
+    const engine = setupTownEngine(3);
+    for (const event of engine.handle({
+      kind: GameCommandKind.EndGame,
+      gameId,
+      winner: "good",
+      reason: "Test end.",
+    })) {
+      engine.apply(event);
+    }
+    const player = engine.getState().players[0]!;
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.SubstitutePlayer,
+        gameId,
+        playerId: player.id,
+        newDiscordUserId: "user-new",
+        displayName: "Too late",
+      }),
+    ).toThrow("already ended");
+  });
+
   it("locks player votes until unlocked; ST set-vote still works", () => {
     const engine = setupTownEngine(3);
     const players = engine.getState().players;

@@ -44,6 +44,7 @@ export async function syncGameProjectionFromEngine(
     await prisma.player.update({
       where: { id: player.id },
       data: {
+        discordUserId: player.discordUserId,
         seat: player.seat,
         roleId: player.roleId,
         alive: player.alive,
