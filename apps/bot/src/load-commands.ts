@@ -6,6 +6,7 @@ export async function loadCommandModules(): Promise<void> {
   await import("./commands/game-minimal.js");
   await import("./commands/player-day-minimal.js");
   await import("./commands/whisper.js");
+  await import("./commands/backpack.js");
   await import("./commands/alias.js");
   await import("./commands/stats.js");
   await import("./commands/role.js");
@@ -32,6 +33,7 @@ export async function loadCommandModules(): Promise<void> {
       "privatevote",
       "roster",
       "whisper",
+      "backpack",
       "alias",
       "stats",
       "role",

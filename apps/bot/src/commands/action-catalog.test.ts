@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeDoActionInput,
   resolveDoActionName,
+  PLAYER_DAY_ACTIONS,
   ST_DO_ACTIONS,
   ST_SLASH_SHORTCUTS,
 } from "./action-catalog.js";
@@ -110,5 +111,15 @@ describe("sub discoverability", () => {
   it("is in /st do and mobile shortcuts", () => {
     expect(ST_DO_ACTIONS.some((a) => a.name === "sub")).toBe(true);
     expect(ST_SLASH_SHORTCUTS.some((a) => a.name === "sub")).toBe(true);
+  });
+});
+
+describe("backpacker discoverability", () => {
+  it("is a top-level /backpack command, not /st do", () => {
+    expect(ST_DO_ACTIONS.some((a) => a.name === "add-backpacker")).toBe(false);
+    expect(ST_DO_ACTIONS.some((a) => a.name === "remove-backpacker")).toBe(false);
+    expect(ST_SLASH_SHORTCUTS.some((a) => a.name === "add-backpacker")).toBe(false);
+    expect(PLAYER_DAY_ACTIONS.some((a) => a.name === "backpack add")).toBe(true);
+    expect(PLAYER_DAY_ACTIONS.some((a) => a.name === "backpack remove")).toBe(true);
   });
 });

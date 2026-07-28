@@ -382,7 +382,7 @@ export function buildPlayerHelpEmbeds(): EmbedBuilder[] {
       .setDescription(
         [
           "Use these during an active game (usually in **Town Voting** or town).",
-          "**`/nominate`** · **`/accusation`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/whisper`** · **`/alias`** · **`/stats`** · **`/roster`** · **`/role`**",
+          "**`/nominate`** · **`/accusation`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/whisper`** · **`/backpack`** · **`/alias`** · **`/stats`** · **`/roster`** · **`/role`**",
           "",
           "Search: `/player help search: whisper`. Full lobby/setup guide: **`/game help`**.",
         ].join("\n"),
@@ -416,7 +416,7 @@ export function buildPlayerHelpEmbeds(): EmbedBuilder[] {
           ].join("\n\n"),
         },
         {
-          name: "Whisper",
+          name: "Whisper & backpack",
           value: [
             cmd(
               "/whisper neighbor",
@@ -425,6 +425,14 @@ export function buildPlayerHelpEmbeds(): EmbedBuilder[] {
             cmd(
               "/whisper with",
               "Open or resume a whisper with one or more players (`players:` @mentions, optional `name:`). Groups default to `Group (names)`.",
+            ),
+            cmd(
+              "/backpack add",
+              "Invite a follower into your private ST thread and your whispers (`user:`). They must not have this game’s ST or kib role. ST: `everywhere:True` for all threads.",
+            ),
+            cmd(
+              "/backpack remove",
+              "Remove a backpacker from your ST thread and whispers (`user:`; ST: `everywhere:True`).",
             ),
           ].join("\n\n"),
         },
@@ -455,12 +463,13 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
       .setDescription(
         [
           "Day play uses top-level slash commands — not `/game …`.",
-          "**`/nominate`** · **`/accusation`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/roster`** · **`/whisper`** · **`/role`** · **`/alias`** · **`/stats`**",
+          "**`/nominate`** · **`/accusation`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/roster`** · **`/whisper`** · **`/backpack`** · **`/role`** · **`/alias`** · **`/stats`**",
           "Nominations and votes happen in the **Town Voting** thread once Day 1 begins (`/st next-phase` twice after setup-town: Setup → Night 1 → Day 1).",
           "Each living player may nominate **once per day**; each player (alive or dead) may be nominated **once per day**. Ghosts cannot nominate.",
           "Update your accusation with **`/accusation`**. Nominee defense: **`/defend`**.",
           "Public ballot: `/vote` (or the Vote button). Private ballot: `/privatevote` (ST sees it on the kib tracker).",
           "Whispers: `/whisper neighbor` opens NW threads with both seats; `/whisper with` takes `@mentions` (optional `name:`; groups default to `Group (names)`).",
+          "Backpack: `/backpack add user:` invites a follower into your ST thread + whispers (not ST/kib). ST mass: `everywhere:True`.",
           "Character lookup: **`/role name:`** — fuzzy search over official characters (incl. travelers).",
           "Set how your name appears with **`/alias`** (defaults to a short form of your Discord name at setup).",
           "Ended-game record: **`/stats`** (optional `user:`) for win rate and most-played characters.",
@@ -582,7 +591,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           "Vote lock/count stay in Town Voting; **Announce & resolve** posts to Town Voting + audit log.",
           "Each living player may nominate once per day; each player may be nominated once. Ghosts cannot nominate.",
           "`next-phase` advances Setup → Night 1 → Day 1 → …. Renames town to `base-setup` / `base-nightN` / `base-dayN`.",
-          "`add-st` / `remove-st` / `sync-st-threads` manage co-STs and invite/remove them from player ST + whisper threads.",
+          "`add-st` / `remove-st` / `sync-st-threads` for co-STs. Players: `/backpack` (ST: `everywhere:True`).",
           "`/st sub` swaps a seat’s Discord user. `/st do reset-to-setup` (ADMIN_IDS) resets day/night.",
           "Day stamps go to Voting, Whisper Declaration, Public Claims, kib, and whisper threads — not Rules.",
         ].join("\n"),

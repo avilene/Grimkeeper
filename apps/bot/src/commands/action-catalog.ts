@@ -167,6 +167,16 @@ export const PLAYER_DAY_ACTIONS: DoAction[] = [
     needs: ["players", "name?"],
   },
   {
+    name: "backpack add",
+    description: "Invite a follower into your ST thread + whispers (not ST/kib)",
+    needs: ["user", "everywhere?"],
+  },
+  {
+    name: "backpack remove",
+    description: "Remove a follower from your ST thread + whispers",
+    needs: ["user", "everywhere?"],
+  },
+  {
     name: "role",
     description: "Look up a BotC character (fuzzy search; includes travelers)",
     needs: ["name"],
