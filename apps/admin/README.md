@@ -154,6 +154,8 @@ Caddy config lives in `ops/caddy/Caddyfile` and reverse-proxies to `admin:3847` 
 | GET | `/queues/entries/[id]` | Queue entry + members edit forms (admin) |
 | GET | `/reminders` | Global reminders list (admin) |
 | GET | `/aliases` | Player aliases (admin) |
+| GET | `/guild-settings` | Per-guild Discord config (admin) |
+| GET | `/guild-settings/[guildId]` | Edit guild settings (admin) |
 | GET | `/healthz` | Liveness |
 
 Mutations use Next.js server actions (POST from the forms above).

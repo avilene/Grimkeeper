@@ -19,6 +19,7 @@ import {
   listGameWhispers,
   getGameEvents,
   prisma,
+  resolveArchiveCategoryId,
   syncGameProjectionFromEngine,
   type Prisma,
 } from "@grimkeeper/database";
@@ -875,6 +876,7 @@ export const ARCHIVE_ROLE_READONLY = {
 export type ArchiveGameSurfacesResult = {
   channels: number;
   threads: number;
+  movedChannels: number;
 };
 
 export type ArchivableGame = NonNullable<Awaited<ReturnType<typeof getGameForChannelIncludingEnded>>>;
@@ -1021,6 +1023,31 @@ export async function lockThreadReadOnly(
 }
 
 /**
+ * Move a guild text/announcement channel into the configured Archives category.
+ * No-op when already in that category or when the channel cannot be reparented.
+ */
+export async function moveChannelToArchiveCategory(
+  guild: Guild,
+  channelId: string,
+  categoryId: string,
+): Promise<boolean> {
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel || channel.isDMBased() || channel.isThread()) return false;
+  if (!isGameTextChannel(channel)) return false;
+  if (channel.parentId === categoryId) return false;
+
+  try {
+    await channel.setParent(categoryId, {
+      lockPermissions: false,
+      reason: "Game archived — move to Archives category.",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Open town (+ kib channel, if any) for everyone to read and freeze all related
  * channels/threads as read-only. Private ST/whisper/kib threads stay private but locked.
  */
@@ -1034,8 +1061,10 @@ export async function archiveGameSurfaces(
 ): Promise<ArchiveGameSurfacesResult> {
   let channels = 0;
   let threads = 0;
+  let movedChannels = 0;
 
   const kib = await getKibThreadForGame(guild, game);
+  const archiveCategoryId = await resolveArchiveCategoryId(guild.id);
 
   const notice =
     "This game has been **archived** — open for reading, locked for posting.";
@@ -1057,6 +1086,17 @@ export async function archiveGameSurfaces(
     }
   }
 
+  if (archiveCategoryId) {
+    if (await moveChannelToArchiveCategory(guild, game.channelId, archiveCategoryId)) {
+      movedChannels++;
+    }
+    if (kib && isKibChannelVenue(kib) && kib.id !== game.channelId) {
+      if (await moveChannelToArchiveCategory(guild, kib.id, archiveCategoryId)) {
+        movedChannels++;
+      }
+    }
+  }
+
   // Use a full Discord channel scan so threads not tracked in the DB (whispers created
   // before they were recorded, manually created threads, etc.) are also locked.
   // For the kib channel venue, scan its threads too.
@@ -1068,7 +1108,7 @@ export async function archiveGameSurfaces(
     threads += kibScan.threads;
   }
 
-  return { channels, threads };
+  return { channels, threads, movedChannels };
 }
 
 export type ArchivePreviewLine = {
@@ -1098,6 +1138,13 @@ export async function previewArchiveSurfaces(
   const threadLines: ArchivePreviewLine[] = [];
 
   const kib = game ? await getKibThreadForGame(guild, game) : null;
+  const archiveCategoryId = await resolveArchiveCategoryId(guild.id);
+  let archiveCategoryLabel: string | null = null;
+  if (archiveCategoryId) {
+    const category = await guild.channels.fetch(archiveCategoryId).catch(() => null);
+    archiveCategoryLabel =
+      category && "name" in category ? String(category.name) : archiveCategoryId;
+  }
 
   // Channels that would get permission overwrites
   const channelIds = [channelId];
@@ -1109,10 +1156,21 @@ export async function previewArchiveSurfaces(
     const ch = await guild.channels.fetch(cid).catch(() => null);
     if (!ch) continue;
     const name = "name" in ch ? String(ch.name) : cid;
-    const action = game
-      ? "@everyone: ViewChannel ✓, SendMessages ✗ — game roles: SendMessages / CreateThreads / ManageThreads ✗"
-      : "threads scanned and locked (no permission overwrites — no game record)";
-    channelLines.push({ name, mention: `<#${cid}>`, action });
+    const parts = [
+      game
+        ? "@everyone: ViewChannel ✓, SendMessages ✗ — game roles: SendMessages / CreateThreads / ManageThreads ✗"
+        : "threads scanned and locked (no permission overwrites — no game record)",
+    ];
+    if (archiveCategoryId && !ch.isThread() && "parentId" in ch) {
+      if (ch.parentId === archiveCategoryId) {
+        parts.push(`already in Archives category "${archiveCategoryLabel}"`);
+      } else {
+        parts.push(`move to Archives category "${archiveCategoryLabel}"`);
+      }
+    } else if (!archiveCategoryId && game) {
+      parts.push("no Archives category configured (set in admin Guild settings or ARCHIVE_CATEGORY_ID)");
+    }
+    channelLines.push({ name, mention: `<#${cid}>`, action: parts.join(" — ") });
   }
 
   // Threads under town

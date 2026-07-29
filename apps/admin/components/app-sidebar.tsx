@@ -19,7 +19,7 @@ export type AppSidebarProps = {
   signOutAction: () => Promise<void>;
 };
 
-const ADMIN_PREFIXES = ["/reminders", "/aliases", "/queues", "/stats/players"];
+const ADMIN_PREFIXES = ["/reminders", "/aliases", "/queues", "/guild-settings", "/stats/players"];
 
 function isAdminPath(pathname: string): boolean {
   if (ADMIN_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
@@ -139,6 +139,14 @@ export function AppSidebar({
                   active={pathname === "/queues" || pathname.startsWith("/queues/")}
                 >
                   Queue
+                </NavLink>
+                <NavLink
+                  href="/guild-settings"
+                  active={
+                    pathname === "/guild-settings" || pathname.startsWith("/guild-settings/")
+                  }
+                >
+                  Guild settings
                 </NavLink>
               </div>
             ) : null}

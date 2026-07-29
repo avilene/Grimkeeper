@@ -243,3 +243,12 @@ model StQueueMember {
   @@index([entryId])
   @@index([discordUserId])
 }
+
+/** Per-guild Discord configuration (archive category, etc.). */
+model GuildSettings {
+  guildId           String   @id
+  /** Discord category ID for archived game town channels. */
+  archiveCategoryId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}

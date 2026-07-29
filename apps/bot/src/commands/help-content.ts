@@ -524,7 +524,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
       "3. `/st broadcast` from kib to send the same message to all player threads",
       "4. `/st reminder schedule` / `/st reminder batch` for scheduled pings (ST role or allowlist)",
       "5. `/st end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
-      "6. `/st do archive` — opens town/kib for everyone to read and locks all channels/threads read-only",
+      "6. `/st do archive` — opens town/kib for everyone to read, locks all channels/threads read-only, and moves town (and kib channel) to the Archives category (Admin → Guild settings)",
       "",
       "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/st log` to recreate it mid-game.",
       "On mobile, prefer **`/st broadcast`**, **`/st next-phase`**, **`/st resolve-next`**, **`/st execute`**, etc. from the slash menu — no autocomplete. Full catalog still on **`/st do`**. Mid-game buttons: **`/st panel`**.",

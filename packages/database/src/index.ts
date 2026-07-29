@@ -111,6 +111,12 @@ export {
   type StQueueEntryStatus,
   type StQueueEntryWithMembers,
 } from "./st-queue.js";
+export {
+  getGuildSettings,
+  listGuildSettings,
+  upsertGuildSettings,
+  resolveArchiveCategoryId,
+} from "./guild-settings.js";
 
 export type StoredGameEvent = GameEvent;
 

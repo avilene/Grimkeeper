@@ -2,6 +2,7 @@ import { ChannelType } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@grimkeeper/database", () => ({
+  resolveArchiveCategoryId: vi.fn(async () => null),
   prisma: {
     player: {
       findMany: vi.fn(async () => []),
@@ -20,6 +21,7 @@ import {
   archiveChannelThreadsDirectly,
   archiveGameSurfaces,
   lockThreadReadOnly,
+  moveChannelToArchiveCategory,
 } from "./command-context.js";
 
 describe("archive channel permissions", () => {
@@ -222,6 +224,53 @@ describe("archiveChannelThreadsDirectly", () => {
     const result = await archiveChannelThreadsDirectly(guild as never, "town-1");
     expect(result.threads).toBe(0);
     expect(setLocked).not.toHaveBeenCalled();
+  });
+});
+
+describe("moveChannelToArchiveCategory", () => {
+  it("moves a text channel when parent differs", async () => {
+    const setParent = vi.fn(async () => undefined);
+    const guild = {
+      id: "guild-1",
+      channels: {
+        fetch: vi.fn(async () => ({
+          isDMBased: () => false,
+          isThread: () => false,
+          type: ChannelType.GuildText,
+          parentId: "old-category",
+          setParent,
+        })),
+      },
+    };
+
+    await expect(
+      moveChannelToArchiveCategory(guild as never, "town-1", "archives-cat"),
+    ).resolves.toBe(true);
+    expect(setParent).toHaveBeenCalledWith("archives-cat", {
+      lockPermissions: false,
+      reason: "Game archived — move to Archives category.",
+    });
+  });
+
+  it("skips when channel is already in the target category", async () => {
+    const setParent = vi.fn();
+    const guild = {
+      id: "guild-1",
+      channels: {
+        fetch: vi.fn(async () => ({
+          isDMBased: () => false,
+          isThread: () => false,
+          type: ChannelType.GuildText,
+          parentId: "archives-cat",
+          setParent,
+        })),
+      },
+    };
+
+    await expect(
+      moveChannelToArchiveCategory(guild as never, "town-1", "archives-cat"),
+    ).resolves.toBe(false);
+    expect(setParent).not.toHaveBeenCalled();
   });
 });
 

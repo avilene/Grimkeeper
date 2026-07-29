@@ -7,7 +7,7 @@ import {
   User,
 } from "discord.js";
 import { Discord, Slash, SlashChoice, SlashGroup, SlashOption } from "discordx";
-import { prisma } from "@grimkeeper/database";
+import { prisma, resolveArchiveCategoryId } from "@grimkeeper/database";
 import { GameCommandKind } from "@grimkeeper/engine";
 
 import { minPlayersForMode } from "../bot-mode.js";
@@ -41,6 +41,7 @@ import {
   addUserToPlayerStThreads,
   archiveChannelThreadsDirectly,
   archiveGameSurfaces,
+  moveChannelToArchiveCategory,
   previewArchiveSurfaces,
   broadcastToPlayerThreads,
   createPlayerStThreads,
@@ -924,27 +925,44 @@ export class StCommandsMinimal {
       }
 
       if (resolved.noDbRow) {
-        // No game record — archive the channel directly (admin-only, already checked).
         const channelResult = await archiveChannelThreadsDirectly(guild, resolved.channelId);
+        const archiveCategoryId = await resolveArchiveCategoryId(guild.id);
+        let movedChannels = 0;
+        if (archiveCategoryId) {
+          if (
+            await moveChannelToArchiveCategory(guild, resolved.channelId, archiveCategoryId)
+          ) {
+            movedChannels++;
+          }
+        }
+        const movedHint =
+          movedChannels > 0 ? ` ${movedChannels} channel(s) moved to Archives.` : "";
+        const categoryHint = archiveCategoryId
+          ? ""
+          : " No Archives category configured.";
         await replyOrEditInteraction(interaction, {
           content:
-            `Archived unrecognised channel — ${channelResult.threads} thread(s) locked read-only. No game record found, so channel permission overwrites were not applied.`,
+            `Archived unrecognised channel — ${channelResult.threads} thread(s) locked read-only.${movedHint} No game record found, so channel permission overwrites were not applied.${categoryHint}`,
         });
         return;
       }
 
       const { game } = resolved;
       const result = await archiveGameSurfaces(guild, game);
+      const movedHint =
+        result.movedChannels > 0
+          ? ` ${result.movedChannels} channel(s) moved to Archives.`
+          : "";
       await postGameLog(
         guild,
         game,
-        `Game archived — town/kib opened for reading; ${result.channels} channel(s) and ${result.threads} thread(s) set read-only.` +
+        `Game archived — town/kib opened for reading; ${result.channels} channel(s) and ${result.threads} thread(s) set read-only.${movedHint}` +
           (interaction.user.id ? ` By <@${interaction.user.id}>.` : ""),
       );
 
       await replyOrEditInteraction(interaction, {
         content:
-          `Archived — town and kib (if a channel) are open to read; ${result.channels} channel(s) and ${result.threads} thread(s) locked read-only. Private ST/whisper threads stay private but locked.`,
+          `Archived — town and kib (if a channel) are open to read; ${result.channels} channel(s) and ${result.threads} thread(s) locked read-only.${movedHint} Private ST/whisper threads stay private but locked.`,
       });
     } catch (error) {
       await replyEngineError(interaction, error);
