@@ -14,7 +14,7 @@ import {
   appendGameEvent,
   getActiveGameForChannel,
   getActiveGameForVenue,
-  getGameForVenueIncludingEnded,
+  getGameForChannelIncludingEnded,
   listActiveGamesForGuild,
   listGameWhispers,
   getGameEvents,
@@ -877,35 +877,46 @@ export type ArchiveGameSurfacesResult = {
   threads: number;
 };
 
-export type ArchivableGame = NonNullable<Awaited<ReturnType<typeof getGameForVenueIncludingEnded>>>;
+export type ArchivableGame = NonNullable<Awaited<ReturnType<typeof getGameForChannelIncludingEnded>>>;
 
 /**
- * Most recent game for this interaction venue, including ended games (for `/st do archive`).
+ * Lock all active and archived threads under a channel (no DB game required).
+ * Used when the channel has no known game row, or to supplement DB-based archiving.
  */
-export async function resolveGameForArchiveInteraction(interaction: {
-  guildId: string | null;
-  channelId: string | null;
-  channel?: CommandInteraction["channel"] | null;
-  guild?: Guild | null;
-  inGuild?: () => boolean;
-}): Promise<ArchivableGame | null> {
-  if (!interaction.guildId) return null;
+export async function archiveChannelThreadsDirectly(
+  guild: Guild,
+  channelId: string,
+  reason = "Game archived — read only.",
+): Promise<{ threads: number }> {
+  const parent = await guild.channels.fetch(channelId).catch(() => null);
+  if (!isGameTextChannel(parent)) return { threads: 0 };
 
-  if (interaction.channelId) {
-    const forVenue = await getGameForVenueIncludingEnded(interaction.guildId, interaction.channelId);
-    if (forVenue) return forVenue;
+  let threads = 0;
+
+  const active = await guild.channels.fetchActiveThreads().catch(() => null);
+  if (active) {
+    for (const thread of active.threads.values()) {
+      if (thread.parentId !== channelId) continue;
+      if (await lockThreadReadOnly(thread, reason)) threads++;
+    }
   }
 
-  const parentChannelId = await resolveParentChannelId(interaction);
-  if (parentChannelId && parentChannelId !== interaction.channelId) {
-    const forParent = await getGameForVenueIncludingEnded(interaction.guildId, parentChannelId);
-    if (forParent) return forParent;
+  for (const type of ["public", "private"] as const) {
+    const archived = await parent.threads.fetchArchived({ type, limit: 100 }).catch(() => null);
+    if (!archived) continue;
+    for (const thread of archived.threads.values()) {
+      if (await lockThreadReadOnly(thread, reason)) threads++;
+    }
   }
 
-  return null;
+  return { threads };
 }
 
-export async function requireArchivableGame(interaction: CommandInteraction) {
+export async function requireArchivableGame(interaction: CommandInteraction): Promise<
+  | { game: ArchivableGame; engine: GameEngine; channelId: string; noDbRow: false }
+  | { game: null; engine: null; channelId: string; noDbRow: true }
+  | null
+> {
   if (!interaction.guildId) {
     await replyOrEditInteraction(interaction, {
       content: "This command must be used in a server.",
@@ -914,29 +925,59 @@ export async function requireArchivableGame(interaction: CommandInteraction) {
     return null;
   }
 
-  const game = await resolveGameForArchiveInteraction(interaction);
-  if (!game) {
+  // Must run from the town channel itself, not from kib or a thread, to avoid ambiguity.
+  const cached = interaction.channel;
+  const channelIsThread =
+    (cached != null ? cached.isThread() : null) ??
+    (interaction.guild
+      ? (await interaction.guild.channels.fetch(interaction.channelId).catch(() => null))?.isThread() ?? false
+      : false);
+
+  if (channelIsThread) {
     await replyOrEditInteraction(interaction, {
       content:
-        "No game found for this channel. Run from the town channel, kib, or a known game thread (works after `/st end`).",
+        "Run `/st do archive` from the **town channel** directly, not from a thread or kib. This prevents accidentally archiving the wrong game.",
       flags: MessageFlags.Ephemeral,
     });
     return null;
+  }
+
+  const channelId = interaction.channelId;
+  if (!channelId) {
+    await replyOrEditInteraction(interaction, {
+      content: "This command must be used in a channel.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return null;
+  }
+
+  const game = await getGameForChannelIncludingEnded(interaction.guildId, channelId);
+
+  if (!game) {
+    // No DB row — still allow archiving Discord threads directly (admin-only).
+    if (!(await isInExplicitAllowlist(interaction))) {
+      await replyOrEditInteraction(interaction, {
+        content:
+          "No game record found for this channel. Run from the town channel, or add your user ID to `ADMIN_IDS` to archive an unrecognised channel.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return null;
+    }
+    return { game: null, engine: null, channelId, noDbRow: true };
   }
 
   const engine = await loadEngine(game.id);
   if (!(await canActAsStoryteller(interaction, game, engine))) {
     const roleHint = game.stRoleId ? ` <@&${game.stRoleId}>` : "";
     await replyOrEditInteraction(interaction, {
-      content: `Only holders of this game’s storyteller role can archive.${roleHint ? ` Need${roleHint} (or \`ADMIN_IDS\`).` : " Or `ADMIN_IDS`."}`,
+      content: `Only holders of this game's storyteller role can archive.${roleHint ? ` Need${roleHint} (or \`ADMIN_IDS\`).` : " Or `ADMIN_IDS`."}`,
       flags: MessageFlags.Ephemeral,
     });
     return null;
   }
 
-  return { game, engine };
+  return { game, engine, channelId, noDbRow: false };
 }
-
 export async function applyArchiveChannelPermissions(
   guild: Guild,
   channelId: string,
@@ -955,7 +996,12 @@ export async function applyArchiveChannelPermissions(
   return true;
 }
 
-/** Unarchive (so history is browsable) and lock a thread read-only. */
+/**
+ * Unarchive (so history is browsable) then lock a thread read-only.
+ * Private threads also have invitable set to false.
+ * Public threads become readable by anyone with channel access; private threads stay
+ * visible only to existing members, but no one can post.
+ */
 export async function lockThreadReadOnly(
   thread: AnyThreadChannel,
   reason = "Game archived — read only.",
@@ -964,14 +1010,10 @@ export async function lockThreadReadOnly(
     if (thread.archived) {
       await thread.setArchived(false, reason).catch(() => undefined);
     }
-    const edit: { locked: boolean; invitable?: boolean; reason: string } = {
-      locked: true,
-      reason,
-    };
+    await thread.setLocked(true, reason);
     if (thread.type === ChannelType.PrivateThread) {
-      edit.invitable = false;
+      await thread.edit({ invitable: false }).catch(() => undefined);
     }
-    await thread.edit(edit);
     return true;
   } catch {
     return false;
@@ -988,13 +1030,7 @@ export async function archiveGameSurfaces(
     id: string;
     channelId: string;
     kibThreadId?: string | null;
-    logThreadId?: string | null;
-    votingThreadId?: string | null;
-    whisperDeclThreadId?: string | null;
-    claimsThreadId?: string | null;
-    rulesThreadId?: string | null;
   },
-  engine: GameEngine,
 ): Promise<ArchiveGameSurfacesResult> {
   let channels = 0;
   let threads = 0;
@@ -1021,39 +1057,15 @@ export async function archiveGameSurfaces(
     }
   }
 
-  const threadIds = new Set<string>();
-  for (const id of [
-    game.votingThreadId,
-    game.whisperDeclThreadId,
-    game.claimsThreadId,
-    game.rulesThreadId,
-    game.logThreadId,
-    kib?.isThread() ? kib.id : null,
-    game.kibThreadId,
-  ]) {
-    if (id) threadIds.add(id);
-  }
+  // Use a full Discord channel scan so threads not tracked in the DB (whispers created
+  // before they were recorded, manually created threads, etc.) are also locked.
+  // For the kib channel venue, scan its threads too.
+  const townScan = await archiveChannelThreadsDirectly(guild, game.channelId);
+  threads += townScan.threads;
 
-  for (const playerThread of await listPersonalPlayerThreads(guild, game, engine, {
-    includeArchived: true,
-  })) {
-    threadIds.add(playerThread.id);
-  }
-
-  const whispers = await listGameWhispers(game.id);
-  for (const whisper of whispers) {
-    threadIds.add(whisper.threadId);
-  }
-
-  const dayThreadId = engine.getState().day?.discordThreadId;
-  if (dayThreadId) threadIds.add(dayThreadId);
-
-  for (const threadId of threadIds) {
-    const channel = await guild.channels.fetch(threadId).catch(() => null);
-    if (!channel?.isThread()) continue;
-    if (await lockThreadReadOnly(channel)) {
-      threads++;
-    }
+  if (kib && isKibChannelVenue(kib) && kib.id !== game.channelId) {
+    const kibScan = await archiveChannelThreadsDirectly(guild, kib.id);
+    threads += kibScan.threads;
   }
 
   return { channels, threads };

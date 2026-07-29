@@ -1,8 +1,7 @@
 import { ChannelType } from "discord.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@grimkeeper/database", () => ({
-  listGameWhispers: vi.fn(async () => [{ threadId: "whisper-1" }]),
   prisma: {
     player: {
       findMany: vi.fn(async () => []),
@@ -14,11 +13,11 @@ vi.mock("../error-reporter.js", () => ({
   reportError: vi.fn(async () => undefined),
 }));
 
-import { listGameWhispers } from "@grimkeeper/database";
 import {
   ARCHIVE_CHANNEL_READONLY,
   ARCHIVE_ROLE_READONLY,
   applyArchiveChannelPermissions,
+  archiveChannelThreadsDirectly,
   archiveGameSurfaces,
   lockThreadReadOnly,
 } from "./command-context.js";
@@ -57,48 +56,179 @@ describe("archive channel permissions", () => {
     expect(edit).toHaveBeenCalledWith("role-p", ARCHIVE_ROLE_READONLY);
     expect(edit).toHaveBeenCalledWith("role-k", ARCHIVE_ROLE_READONLY);
   });
+
+  it("returns false when the channel has no permissionOverwrites", async () => {
+    const guild = {
+      id: "guild-1",
+      channels: { fetch: vi.fn(async () => ({ type: ChannelType.GuildText })) },
+    };
+    await expect(
+      applyArchiveChannelPermissions(guild as never, "ch-1", { channelId: "ch-1" }),
+    ).resolves.toBe(false);
+  });
 });
 
 describe("lockThreadReadOnly", () => {
-  it("unarchives then locks a public thread", async () => {
+  it("unarchives then locks a public thread via setLocked", async () => {
     const thread = {
       archived: true,
       type: ChannelType.PublicThread,
       setArchived: vi.fn(async () => undefined),
+      setLocked: vi.fn(async () => undefined),
       edit: vi.fn(async () => undefined),
     };
 
     await expect(lockThreadReadOnly(thread as never)).resolves.toBe(true);
     expect(thread.setArchived).toHaveBeenCalled();
-    expect(thread.edit).toHaveBeenCalledWith(
-      expect.objectContaining({ locked: true }),
-    );
+    expect(thread.setLocked).toHaveBeenCalledWith(true, expect.any(String));
+    expect(thread.edit).not.toHaveBeenCalled();
   });
 
-  it("disables invites on private threads", async () => {
+  it("skips setArchived when thread is not archived", async () => {
     const thread = {
       archived: false,
-      type: ChannelType.PrivateThread,
-      setArchived: vi.fn(),
+      type: ChannelType.PublicThread,
+      setArchived: vi.fn(async () => undefined),
+      setLocked: vi.fn(async () => undefined),
       edit: vi.fn(async () => undefined),
     };
 
     await expect(lockThreadReadOnly(thread as never)).resolves.toBe(true);
-    expect(thread.edit).toHaveBeenCalledWith(
-      expect.objectContaining({ locked: true, invitable: false }),
-    );
+    expect(thread.setArchived).not.toHaveBeenCalled();
+  });
+
+  it("sets invitable: false on private threads", async () => {
+    const thread = {
+      archived: false,
+      type: ChannelType.PrivateThread,
+      setArchived: vi.fn(),
+      setLocked: vi.fn(async () => undefined),
+      edit: vi.fn(async () => undefined),
+    };
+
+    await expect(lockThreadReadOnly(thread as never)).resolves.toBe(true);
+    expect(thread.setLocked).toHaveBeenCalledWith(true, expect.any(String));
+    expect(thread.edit).toHaveBeenCalledWith({ invitable: false });
+  });
+
+  it("returns false when setLocked throws", async () => {
+    const thread = {
+      archived: false,
+      type: ChannelType.PublicThread,
+      setArchived: vi.fn(),
+      setLocked: vi.fn(async () => { throw new Error("Missing Permissions"); }),
+      edit: vi.fn(),
+    };
+
+    await expect(lockThreadReadOnly(thread as never)).resolves.toBe(false);
+  });
+});
+
+describe("archiveChannelThreadsDirectly", () => {
+  it("locks active and archived threads under the given channel", async () => {
+    const setLocked = vi.fn(async () => undefined);
+    const activeThread = {
+      id: "t-active",
+      parentId: "town-1",
+      isThread: () => true,
+      archived: false,
+      type: ChannelType.PublicThread,
+      setArchived: vi.fn(),
+      setLocked,
+      edit: vi.fn(),
+    };
+    const archivedPublicThread = {
+      id: "t-archived-pub",
+      parentId: "town-1",
+      isThread: () => true,
+      archived: true,
+      type: ChannelType.PublicThread,
+      setArchived: vi.fn(async () => undefined),
+      setLocked,
+      edit: vi.fn(),
+    };
+    const archivedPrivateThread = {
+      id: "t-archived-priv",
+      parentId: "town-1",
+      isThread: () => true,
+      archived: true,
+      type: ChannelType.PrivateThread,
+      setArchived: vi.fn(async () => undefined),
+      setLocked,
+      edit: vi.fn(async () => undefined),
+    };
+
+    const town = {
+      id: "town-1",
+      name: "town",
+      type: ChannelType.GuildText,
+      threads: {
+        fetchArchived: vi.fn(async ({ type }: { type: string }) => ({
+          threads: {
+            values: () =>
+              type === "public" ? [archivedPublicThread] : [archivedPrivateThread],
+          },
+        })),
+      },
+    };
+
+    const guild = {
+      id: "guild-1",
+      channels: {
+        fetch: vi.fn(async (id: string) => (id === "town-1" ? town : null)),
+        fetchActiveThreads: vi.fn(async () => ({
+          threads: { values: () => [activeThread] },
+        })),
+      },
+    };
+
+    const result = await archiveChannelThreadsDirectly(guild as never, "town-1");
+    expect(result.threads).toBe(3);
+    expect(setLocked).toHaveBeenCalledTimes(3);
+  });
+
+  it("skips threads belonging to other parent channels", async () => {
+    const setLocked = vi.fn(async () => undefined);
+    const otherThread = {
+      id: "t-other",
+      parentId: "other-channel",
+      isThread: () => true,
+      archived: false,
+      type: ChannelType.PublicThread,
+      setArchived: vi.fn(),
+      setLocked,
+      edit: vi.fn(),
+    };
+
+    const town = {
+      id: "town-1",
+      name: "town",
+      type: ChannelType.GuildText,
+      threads: {
+        fetchArchived: vi.fn(async () => ({ threads: { values: () => [] } })),
+      },
+    };
+
+    const guild = {
+      id: "guild-1",
+      channels: {
+        fetch: vi.fn(async (id: string) => (id === "town-1" ? town : null)),
+        fetchActiveThreads: vi.fn(async () => ({
+          threads: { values: () => [otherThread] },
+        })),
+      },
+    };
+
+    const result = await archiveChannelThreadsDirectly(guild as never, "town-1");
+    expect(result.threads).toBe(0);
+    expect(setLocked).not.toHaveBeenCalled();
   });
 });
 
 describe("archiveGameSurfaces", () => {
-  beforeEach(() => {
-    vi.mocked(listGameWhispers).mockResolvedValue([{ threadId: "whisper-1" }] as never);
-  });
-
-  it("opens town for reading, locks public and private threads", async () => {
+  it("applies channel overwrites and scans threads; posts archive notice", async () => {
     const townEdit = vi.fn(async () => undefined);
     const kibEdit = vi.fn(async () => undefined);
-    const lockEdit = vi.fn(async () => undefined);
 
     const town = {
       id: "town-1",
@@ -121,35 +251,19 @@ describe("archiveGameSurfaces", () => {
       type: ChannelType.GuildText,
       permissionOverwrites: { edit: kibEdit },
       send: vi.fn(async () => undefined),
+      threads: {
+        fetchArchived: vi.fn(async () => ({ threads: { values: () => [] } })),
+      },
     };
-    const voting = {
-      id: "voting-1",
-      isThread: () => true,
-      archived: false,
-      type: ChannelType.PublicThread,
-      setArchived: vi.fn(),
-      edit: lockEdit,
-    };
-    const whisper = {
-      id: "whisper-1",
-      isThread: () => true,
-      archived: true,
-      type: ChannelType.PrivateThread,
-      setArchived: vi.fn(async () => undefined),
-      edit: lockEdit,
-    };
-
-    const channels = new Map<string, unknown>([
-      ["town-1", town],
-      ["kib-channel", kib],
-      ["voting-1", voting],
-      ["whisper-1", whisper],
-    ]);
 
     const guild = {
       id: "guild-1",
       channels: {
-        fetch: vi.fn(async (id: string) => channels.get(id) ?? null),
+        fetch: vi.fn(async (id: string) => {
+          if (id === "town-1") return town;
+          if (id === "kib-channel") return kib;
+          return null;
+        }),
         fetchActiveThreads: vi.fn(async () => ({ threads: { values: () => [] } })),
       },
     };
@@ -158,26 +272,17 @@ describe("archiveGameSurfaces", () => {
       id: "game-1",
       channelId: "town-1",
       kibThreadId: "kib-channel",
-      votingThreadId: "voting-1",
       stRoleId: "role-st",
       playerRoleId: "role-p",
       kibRoleId: "role-k",
     };
 
-    const engine = {
-      getState: () => ({ day: null, players: [] }),
-      getStorytellerDiscordIds: () => [],
-    };
-
-    const result = await archiveGameSurfaces(guild as never, game, engine as never);
+    const result = await archiveGameSurfaces(guild as never, game);
 
     expect(result.channels).toBe(2);
-    expect(result.threads).toBe(2);
     expect(townEdit).toHaveBeenCalledWith("guild-1", ARCHIVE_CHANNEL_READONLY);
     expect(kibEdit).toHaveBeenCalledWith("guild-1", ARCHIVE_CHANNEL_READONLY);
     expect(town.send).toHaveBeenCalled();
     expect(kib.send).toHaveBeenCalled();
-    expect(whisper.setArchived).toHaveBeenCalled();
-    expect(lockEdit).toHaveBeenCalled();
   });
 });

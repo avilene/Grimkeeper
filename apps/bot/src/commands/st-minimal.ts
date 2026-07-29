@@ -39,6 +39,7 @@ import { resolveOrCreatePlayerAlias } from "./alias.js";
 import {
   addRoleToUser,
   addUserToPlayerStThreads,
+  archiveChannelThreadsDirectly,
   archiveGameSurfaces,
   broadcastToPlayerThreads,
   createPlayerStThreads,
@@ -878,11 +879,21 @@ export class StCommandsMinimal {
     const guild = interaction.guild;
     if (!guild) return;
 
-    const { game, engine } = resolved;
-
     try {
       await setInteractionProgress(interaction, "Archiving channels and threads…");
-      const result = await archiveGameSurfaces(guild, game, engine);
+
+      if (resolved.noDbRow) {
+        // No game record — archive the channel directly (admin-only, already checked).
+        const channelResult = await archiveChannelThreadsDirectly(guild, resolved.channelId);
+        await replyOrEditInteraction(interaction, {
+          content:
+            `Archived unrecognised channel — ${channelResult.threads} thread(s) locked read-only. No game record found, so channel permission overwrites were not applied.`,
+        });
+        return;
+      }
+
+      const { game } = resolved;
+      const result = await archiveGameSurfaces(guild, game);
       await postGameLog(
         guild,
         game,

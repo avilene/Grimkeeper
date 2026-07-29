@@ -179,8 +179,22 @@ export async function getActiveGameForVenue(guildId: string, channelId: string) 
 }
 
 /**
+ * Most recent game whose town channel matches, including ended games.
+ * Town-channel-only so `/st do archive` run from kib or a thread of
+ * a different game cannot accidentally target the wrong game.
+ */
+export async function getGameForChannelIncludingEnded(guildId: string, channelId: string) {
+  return prisma.game.findFirst({
+    where: { guildId, channelId },
+    orderBy: { createdAt: "desc" },
+    include: { players: true },
+  });
+}
+
+/**
  * Most recent game for a venue, including ended games.
  * Used for post-game archive after `/st end` when phase is already `ended`.
+ * @deprecated Prefer getGameForChannelIncludingEnded to avoid cross-game venue ambiguity.
  */
 export async function getGameForVenueIncludingEnded(guildId: string, channelId: string) {
   return prisma.game.findFirst({
