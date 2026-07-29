@@ -513,7 +513,15 @@ export class GameCommandsMinimal {
     );
 
     const lines = games.map((game) => {
-      const venues = [game.channelId, game.kibThreadId, game.logThreadId, game.votingThreadId].filter(
+      const venues = [
+        game.channelId,
+        game.kibThreadId,
+        game.logThreadId,
+        game.votingThreadId,
+        game.whisperDeclThreadId,
+        game.claimsThreadId,
+        game.rulesThreadId,
+      ].filter(
         (id): id is string => Boolean(id),
       );
       const matchesHere = venues.some((id) => hereIds.has(id));
@@ -527,7 +535,15 @@ export class GameCommandsMinimal {
     });
 
     const anyHere = games.some((game) => {
-      const venues = [game.channelId, game.kibThreadId, game.logThreadId, game.votingThreadId].filter(
+      const venues = [
+        game.channelId,
+        game.kibThreadId,
+        game.logThreadId,
+        game.votingThreadId,
+        game.whisperDeclThreadId,
+        game.claimsThreadId,
+        game.rulesThreadId,
+      ].filter(
         (id): id is string => Boolean(id),
       );
       return venues.some((id) => hereIds.has(id));

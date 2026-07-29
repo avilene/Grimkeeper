@@ -4,6 +4,7 @@ import { fetchGuildMemberWithTimeout, MEMBER_FETCH_TIMEOUT_MS } from "../access.
 import {
   addRoleMembersToThread,
   addRoleToUser,
+  formatKibRolePingLine,
   removeRoleFromUser,
   resolveGameRoles,
   transferGamePlayerRole,
@@ -14,6 +15,24 @@ vi.mock("../error-reporter.js", () => ({
 }));
 
 import { reportError } from "../error-reporter.js";
+
+describe("formatKibRolePingLine", () => {
+  it("mentions only ST and kib roles — never the player role", () => {
+    const ping = formatKibRolePingLine({
+      stRole: { id: "st-1" } as never,
+      spectatorRole: { id: "kib-1" } as never,
+    });
+    expect(ping.roleIds).toEqual(["st-1", "kib-1"]);
+    expect(ping.content).toContain("<@&st-1>");
+    expect(ping.content).toContain("<@&kib-1>");
+    expect(ping.content).not.toMatch(/player/i);
+  });
+
+  it("returns empty when roles are missing", () => {
+    expect(formatKibRolePingLine(null)).toEqual({ content: "", roleIds: [] });
+    expect(formatKibRolePingLine(undefined)).toEqual({ content: "", roleIds: [] });
+  });
+});
 
 describe("addRoleToUser / removeRoleFromUser", () => {
   it("uses REST addRole/removeRole and never guild.members.fetch", async () => {

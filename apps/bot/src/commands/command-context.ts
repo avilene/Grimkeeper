@@ -193,16 +193,108 @@ export async function resolveParentChannelId(interaction: {
 }): Promise<string | null> {
   if (!interaction.channelId) return null;
   const cached = interaction.channel;
-  if (cached?.isThread()) return cached.parentId ?? interaction.channelId;
+  if (cached?.isThread()) return cached.parentId ?? null;
   if (cached) return interaction.channelId;
   const inGuild =
     typeof interaction.inGuild === "function" ? interaction.inGuild() : Boolean(interaction.guild);
   if (inGuild && interaction.guild) {
     const fetched = await interaction.guild.channels.fetch(interaction.channelId).catch(() => null);
-    if (fetched?.isThread()) return fetched.parentId ?? interaction.channelId;
+    if (fetched?.isThread()) return fetched.parentId ?? null;
     if (fetched) return interaction.channelId;
   }
   return interaction.channelId;
+}
+
+/** Town/kib/voting parent ids for venue matching (thread parent when applicable). */
+export async function resolveInteractionVenueChannelIds(interaction: {
+  channelId: string | null;
+  channel?: CommandInteraction["channel"] | null;
+  guild?: Guild | null;
+  inGuild?: () => boolean;
+}): Promise<string[]> {
+  if (!interaction.channelId) return [];
+
+  const ids = new Set<string>([interaction.channelId]);
+  const parentId = await resolveParentChannelId(interaction);
+
+  if (parentId && parentId !== interaction.channelId) {
+    ids.add(parentId);
+    return [...ids];
+  }
+
+  // Cached channel missing — re-fetch so thread parent lookup is not skipped.
+  if (interaction.guild) {
+    const fetched = await interaction.guild.channels.fetch(interaction.channelId).catch(() => null);
+    if (fetched?.isThread() && fetched.parentId && fetched.parentId !== interaction.channelId) {
+      ids.add(fetched.parentId);
+    }
+  }
+
+  return [...ids];
+}
+
+type ActiveGuildGame = Awaited<ReturnType<typeof listActiveGamesForGuild>>[number];
+
+/**
+ * When DB venue ids are missing/stale, match via Discord (kib thread name, Town Voting, parent town).
+ * Only returns a game when the match is unambiguous for this channel context.
+ */
+async function resolveActiveGameFromDiscordVenue(
+  guild: Guild,
+  guildId: string,
+  venueChannelIds: readonly string[],
+): Promise<ActiveGuildGame | null> {
+  const active = await listActiveGamesForGuild(guildId);
+  if (active.length === 0) return null;
+
+  const venueIds = new Set(venueChannelIds);
+  const matched: ActiveGuildGame[] = [];
+
+  for (const game of active) {
+    if (venueIds.has(game.channelId)) {
+      matched.push(game);
+      continue;
+    }
+
+    const kib = await getKibThreadForGame(guild, game);
+    if (kib && venueIds.has(kib.id)) {
+      matched.push(game);
+      continue;
+    }
+
+    const voting = await findTownVoteThread(guild, game.channelId, game.id, game.votingThreadId);
+    if (voting && venueIds.has(voting.id)) {
+      matched.push(game);
+      continue;
+    }
+
+    let matchesVenueThread = false;
+    for (const venueId of venueIds) {
+      const channel = await guild.channels.fetch(venueId).catch(() => null);
+      if (!channel?.isThread()) continue;
+      if (channel.parentId === game.channelId) {
+        matchesVenueThread = true;
+        break;
+      }
+      if (kib && isKibChannelVenue(kib) && channel.parentId === kib.id) {
+        matchesVenueThread = true;
+        break;
+      }
+    }
+    if (matchesVenueThread) {
+      matched.push(game);
+    }
+  }
+
+  const unique = [...new Map(matched.map((game) => [game.id, game])).values()];
+  if (unique.length === 1) return unique[0]!;
+
+  if (unique.length > 1) {
+    const byTownChannel = unique.filter((game) => venueIds.has(game.channelId));
+    if (byTownChannel.length === 1) return byTownChannel[0]!;
+  }
+
+  return null;
 }
 
 /**
@@ -217,19 +309,22 @@ export async function resolveActiveGameForInteraction(interaction: {
   guild?: Guild | null;
   inGuild?: () => boolean;
 }) {
-  if (!interaction.guildId) return null;
+  if (!interaction.guildId || !interaction.channelId) return null;
 
-  // Match town, kib venue (channel or thread), log, or voting thread by the interaction channel itself.
-  if (interaction.channelId) {
-    const forVenue = await getActiveGameForVenue(interaction.guildId, interaction.channelId);
+  const venueChannelIds = await resolveInteractionVenueChannelIds(interaction);
+
+  for (const venueId of venueChannelIds) {
+    const forVenue = await getActiveGameForVenue(interaction.guildId, venueId);
     if (forVenue) return forVenue;
   }
 
-  // Threads under town/kib: parent may be the town channel or a kib channel venue.
-  const parentChannelId = await resolveParentChannelId(interaction);
-  if (parentChannelId && parentChannelId !== interaction.channelId) {
-    const forParent = await getActiveGameForVenue(interaction.guildId, parentChannelId);
-    if (forParent) return forParent;
+  if (interaction.guild) {
+    const fromDiscord = await resolveActiveGameFromDiscordVenue(
+      interaction.guild,
+      interaction.guildId,
+      venueChannelIds,
+    );
+    if (fromDiscord) return fromDiscord;
   }
 
   return null;
@@ -1758,11 +1853,14 @@ export async function createKibThread(
           } as Record<string, unknown>),
         });
         venue = thread;
-        const roleMention = gameRoles
-          ? ` Roles: <@&${gameRoles.stRole.id}> / <@&${gameRoles.playersRole.id}> / kib <@&${gameRoles.spectatorRole.id}>.`
-          : "";
+        // Only ping ST + kib — @mentioning the player role in a private thread adds
+        // every player to kib (Discord thread membership), which we do not want.
+        const kibPing = formatKibRolePingLine(gameRoles);
         await thread
-          .send(`Kib thread ready.${roleMention} Use \`/st add-kib\` to grant kib access.`)
+          .send({
+            content: `Kib thread ready.${kibPing.content} Use \`/st add-kib\` to grant kib access.`,
+            allowedMentions: { roles: kibPing.roleIds },
+          })
           .catch(() => undefined);
       } catch {
         return { mention: null, threadId: null };
@@ -1778,22 +1876,36 @@ export async function createKibThread(
     await venue.members.add(interaction.user.id).catch(() => undefined);
 
     const kibRoleId = options?.kibRoleId ?? gameRoles?.spectatorRole.id;
+    if (gameRoles?.stRole.id) {
+      await addRoleMembersToThread(guild, venue, gameRoles.stRole.id);
+    }
     if (kibRoleId) {
       await addRoleMembersToThread(guild, venue, kibRoleId);
     }
   } else {
-    const roleMention = gameRoles
-      ? ` Roles: <@&${gameRoles.stRole.id}> / <@&${gameRoles.playersRole.id}> / kib <@&${gameRoles.spectatorRole.id}>.`
-      : "";
+    const kibPing = formatKibRolePingLine(gameRoles);
     await venue
       .send({
-        content: `Kib channel attached.${roleMention} Use \`/st add-kib\` to grant kib access.`,
-        allowedMentions: { parse: [] },
+        content: `Kib channel attached.${kibPing.content} Use \`/st add-kib\` to grant kib access.`,
+        allowedMentions: { roles: kibPing.roleIds },
       })
       .catch(() => undefined);
   }
 
   return { mention: `<#${venue.id}>`, threadId: venue.id };
+}
+
+/** ST + kib role pings for kib venues (never the player role — that adds players to private kib). */
+export function formatKibRolePingLine(
+  gameRoles?: Pick<GameRoles, "stRole" | "spectatorRole"> | null,
+): { content: string; roleIds: string[] } {
+  if (!gameRoles) return { content: "", roleIds: [] };
+  const roleIds = [gameRoles.stRole.id, gameRoles.spectatorRole.id].filter(Boolean);
+  if (roleIds.length === 0) return { content: "", roleIds: [] };
+  return {
+    content: ` Roles: <@&${gameRoles.stRole.id}> / kib <@&${gameRoles.spectatorRole.id}>.`,
+    roleIds,
+  };
 }
 
 /**
