@@ -26,6 +26,10 @@ export const ST_DO_ACTIONS: DoAction[] = [
     description: "Wipe day/night back to Setup (ADMIN_IDS only; keeps roster)",
   },
   { name: "end", description: "End the game (strip roles, open kib)", needs: ["winner"] },
+  {
+    name: "archive",
+    description: "Open town/kib for everyone to read and lock all channels/threads read-only",
+  },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
   { name: "fail-open-noms", description: "Force-fail every open nomination" },
   { name: "close-nominations", description: "Close nominations for the day (no new noms until next day)" },

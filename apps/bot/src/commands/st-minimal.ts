@@ -39,6 +39,7 @@ import { resolveOrCreatePlayerAlias } from "./alias.js";
 import {
   addRoleToUser,
   addUserToPlayerStThreads,
+  archiveGameSurfaces,
   broadcastToPlayerThreads,
   createPlayerStThreads,
   createTownVoteThread,
@@ -54,6 +55,7 @@ import {
   removeUserFromPlayerStThreads,
   replyEngineError,
   replyOrEditInteraction,
+  requireArchivableGame,
   requireCommandAccess,
   requireKibThread,
   requireStorytellerGame,
@@ -230,6 +232,9 @@ export class StCommandsMinimal {
           return;
         }
         await this.end(winner, interaction);
+        return;
+      case "archive":
+        await this.archive(interaction);
         return;
       case "add-spectator":
         if (!user) {
@@ -860,7 +865,34 @@ export class StCommandsMinimal {
 
       await replyOrEditInteraction(interaction, {
         content:
-          `Game ended — **${winner}** wins. Game roles removed from players, reminders cancelled, and kib opened for post-game chat.`,
+          `Game ended — **${winner}** wins. Game roles removed from players, reminders cancelled, and kib opened for post-game chat. When ready, \`/st do archive\` freezes town/kib read-only.`,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async archive(interaction: CommandInteraction): Promise<void> {
+    const resolved = await requireArchivableGame(interaction);
+    if (!resolved) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    const { game, engine } = resolved;
+
+    try {
+      await setInteractionProgress(interaction, "Archiving channels and threads…");
+      const result = await archiveGameSurfaces(guild, game, engine);
+      await postGameLog(
+        guild,
+        game,
+        `Game archived — town/kib opened for reading; ${result.channels} channel(s) and ${result.threads} thread(s) set read-only.` +
+          (interaction.user.id ? ` By <@${interaction.user.id}>.` : ""),
+      );
+
+      await replyOrEditInteraction(interaction, {
+        content:
+          `Archived — town and kib (if a channel) are open to read; ${result.channels} channel(s) and ${result.threads} thread(s) locked read-only. Private ST/whisper threads stay private but locked.`,
       });
     } catch (error) {
       await replyEngineError(interaction, error);

@@ -524,6 +524,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
       "3. `/st broadcast` from kib to send the same message to all player threads",
       "4. `/st reminder schedule` / `/st reminder batch` for scheduled pings (ST role or allowlist)",
       "5. `/st end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
+      "6. `/st do archive` — opens town/kib for everyone to read and locks all channels/threads read-only",
       "",
       "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/st log` to recreate it mid-game.",
       "On mobile, prefer **`/st broadcast`**, **`/st next-phase`**, **`/st resolve-next`**, **`/st execute`**, etc. from the slash menu — no autocomplete. Full catalog still on **`/st do`**. Mid-game buttons: **`/st panel`**.",
@@ -709,7 +710,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           name: "Also",
           value: [
             "Whispers are player-side (`/whisper …`); declarations go to Whisper Declaration.",
-            "Game over: `/st end` with `winner: good` or `evil`.",
+            "Game over: `/st end` with `winner: good` or `evil`. Then `/st do archive` to freeze town/kib read-only.",
             "Setup: `/st guide setup` · Night: `/st guide night` · All commands: `/st help`",
           ].join("\n"),
         },
@@ -742,7 +743,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
       {
         name: "Also",
         value: [
-          "Game over: `/st end` with `winner: good` or `evil`.",
+          "Game over: `/st end` with `winner: good` or `evil`. Then `/st do archive` to freeze town/kib read-only.",
           "Setup: `/st guide setup` · Day: `/st guide day` · All commands: `/st help`",
         ].join("\n"),
       },

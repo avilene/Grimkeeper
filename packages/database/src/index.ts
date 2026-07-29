@@ -178,6 +178,26 @@ export async function getActiveGameForVenue(guildId: string, channelId: string) 
   });
 }
 
+/**
+ * Most recent game for a venue, including ended games.
+ * Used for post-game archive after `/st end` when phase is already `ended`.
+ */
+export async function getGameForVenueIncludingEnded(guildId: string, channelId: string) {
+  return prisma.game.findFirst({
+    where: {
+      guildId,
+      OR: [
+        { channelId },
+        { kibThreadId: channelId },
+        { logThreadId: channelId },
+        { votingThreadId: channelId },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    include: { players: true },
+  });
+}
+
 export async function listActiveGamesForGuild(guildId: string) {
   return prisma.game.findMany({
     where: { guildId, phase: { not: "ended" } },

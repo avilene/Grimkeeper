@@ -61,6 +61,8 @@ Player day play uses top-level slash commands. Storytellers use `/st …`. Guide
 | `/role` | Look up a BotC character (`name:` fuzzy search) |
 | `/st setup-town` | Set roster + seats from ordered @mentions |
 | `/st broadcast` | Send the same message to every player ST thread (from kib) |
+| `/st end` | End the game (strip roles, open kib for post-game chat) |
+| `/st do archive` | Open town/kib for reading and lock all channels/threads read-only |
 | `/st do` | Autocomplete ST actions (resolve, execute, next-phase, …) |
 | `/st panel` | Pin/refresh kib control panel |
 | `/st help` | Storyteller command guide (`search:` filters by name/description) |
