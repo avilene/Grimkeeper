@@ -182,10 +182,11 @@ async function finishBuffetPick(
   const draft = engine.getState().buffetDraft;
   if (draft?.status === "complete") {
     await upsertPinnedGameStatus(guild, game.channelId, engine);
+    const linkToGame = `<https://grimkeeper.dev/games/${game.id}#sushi-buffet-draft>`;
     await postGameLog(
       guild,
       game,
-      "Sushi Buffet draft complete — all players have picked their roles.",
+      `Sushi Buffet draft complete — all players have picked their roles. You can check their roles here: ${linkToGame}`,
     );
     return "complete";
   }

@@ -234,7 +234,7 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
 
       {game.phase !== "ended" ? (
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Sushi Buffet Draft</h2>
+          <h2 className="text-lg font-semibold" id="sushi-buffet-draft">Sushi Buffet Draft</h2>
           <p className="text-sm text-muted-foreground">
             Configure the role pool for a Sushi Buffet draft. All roles are enabled by default.
             Uncheck roles to remove them from the pool. Once configured, run{" "}
