@@ -936,16 +936,26 @@ export async function finalizeMinimalGameEnd(
   await clearGameChannelPermissions(guild, game.channelId, game);
   await openStorytellerThread(guild, game.channelId, game.kibThreadId, game.id);
   const winner = engine.getState().winner;
-  await postGameLog(
-    guild,
-    game,
-    `Game ended` +
-      (winner ? ` — **${winner}** wins` : "") +
-      ` — roles stripped, reminders cancelled, kib opened.` +
-      (engine.getStorytellerDiscordIds()[0]
-        ? ` Ended by <@${engine.getStorytellerDiscordIds()[0]}>.`
-        : ""),
-  );
+  
+  if (winner !== "good" && winner !== "evil") {
+    await prisma.game.delete({ where: { id: game.id } });
+    await postGameLog(
+      guild,
+      game,
+      "Game cancelled by storyteller.",
+    );
+  } else {
+    await postGameLog(
+      guild,
+      game,
+      `Game ended` +
+        (winner ? ` — **${winner}** wins` : "") +
+        ` — roles stripped, reminders cancelled, kib opened.` +
+        (engine.getStorytellerDiscordIds()[0]
+          ? ` Ended by <@${engine.getStorytellerDiscordIds()[0]}>.`
+          : ""),
+    );
+  }
 }
 
 /** Channel overwrites: publicly readable, no posts / new threads. */
@@ -3003,3 +3013,9 @@ export async function replyEngineError(
   });
   await withAcknowledgedFallback(attempts);
 }
+function deleteGame(id: string) {
+  return prisma.game.delete({
+    where: { id },
+  });
+}
+

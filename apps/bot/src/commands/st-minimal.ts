@@ -219,13 +219,14 @@ export class StCommandsMinimal {
     message: string | undefined,
     @SlashChoice({ name: "Good wins", value: "good" })
     @SlashChoice({ name: "Evil wins", value: "evil" })
+    @SlashChoice({ name: "Cancel", value: "cancel" })
     @SlashOption({
       name: "winner",
       description: "For end: which team won",
       type: ApplicationCommandOptionType.String,
       required: false,
     })
-    winner: "good" | "evil" | undefined,
+    winner: "good" | "evil" | "cancel" | undefined,
     @SlashOption({
       name: "dry_run",
       description: "For archive: preview changes without applying them",
@@ -639,13 +640,14 @@ export class StCommandsMinimal {
   async endSlash(
     @SlashChoice({ name: "Good wins", value: "good" })
     @SlashChoice({ name: "Evil wins", value: "evil" })
+    @SlashChoice({ name: "Cancel", value: "cancel" })
     @SlashOption({
       name: "winner",
       description: "Which team won",
       type: ApplicationCommandOptionType.String,
       required: true,
     })
-    winner: "good" | "evil",
+    winner: "good" | "evil" | "cancel",
     interaction: CommandInteraction,
   ): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
@@ -882,7 +884,7 @@ export class StCommandsMinimal {
     }
   }
 
-  async end(winner: "good" | "evil", interaction: CommandInteraction): Promise<void> {
+  async end(winner: "good" | "evil" | "cancel", interaction: CommandInteraction): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
     const guild = interaction.guild;

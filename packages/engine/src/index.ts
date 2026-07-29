@@ -262,7 +262,7 @@ export interface SeatsClosedEvent extends GameEventBase {
 
 export interface GameEndedEvent extends GameEventBase {
   type: typeof GameEventType.GameEnded;
-  winner: "good" | "evil";
+  winner: "good" | "evil" | "cancel";
   reason: string;
 }
 
@@ -432,7 +432,7 @@ export interface GameState {
   day: DayPhaseState | null;
   seatsOpen: boolean;
   townMode: boolean;
-  winner: "good" | "evil" | null;
+  winner: "good" | "evil" | "cancel" | null;
   buffetDraft: BuffetDraftState | null;
 }
 
@@ -622,7 +622,7 @@ export interface CloseSeatsCommand {
 export interface EndGameCommand {
   kind: typeof GameCommandKind.EndGame;
   gameId: string;
-  winner: "good" | "evil";
+  winner: "good" | "evil" | "cancel";
   reason: string;
 }
 
