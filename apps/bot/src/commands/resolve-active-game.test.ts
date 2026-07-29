@@ -93,9 +93,9 @@ describe("resolveActiveGameForInteraction", () => {
           if (id === "kib-1") {
             return {
               id: "kib-1",
-              isThread: () => false,
-              isTextBased: () => true,
-              isDMBased: () => false,
+              isThread: (): boolean => false,
+              isTextBased: (): boolean => true,
+              isDMBased: (): boolean => false,
               type: ChannelType.GuildText,
             };
           }
@@ -104,7 +104,7 @@ describe("resolveActiveGameForInteraction", () => {
               id: "town-1",
               name: "game-one",
               type: ChannelType.GuildText,
-              isThread: () => false,
+              isThread: (): boolean => false,
             };
           }
           return null;
