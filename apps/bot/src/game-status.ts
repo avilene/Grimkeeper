@@ -34,15 +34,7 @@ export function buildAliveDeadLines(engine: GameEngine): { alive: string; dead: 
     daySummary = "**Setup** · Nominations closed until Day 1";
     const draft = state.buffetDraft;
     if (draft?.status === "active") {
-      const currentPlayer = draft.currentOffer
-        ? state.players.find((p) => p.id === draft.currentOffer!.playerId)
-        : null;
-      const who = currentPlayer
-        ? currentPlayer.isFake
-          ? currentPlayer.displayName
-          : `<@${currentPlayer.discordUserId}>`
-        : "—";
-      daySummary += `\n**Buffet draft:** ${draft.currentIndex}/${draft.draftOrder.length} picked · currently picking: ${who}`;
+      daySummary += "\n**Buffet draft:** ongoing!";
     } else if (draft?.status === "complete") {
       daySummary += "\n**Buffet draft:** complete — all roles assigned";
     }

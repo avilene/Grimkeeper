@@ -164,7 +164,14 @@ export async function postBuffetOffer(
 
   const thread = await getPlayerStThread(guild, game.id, player.discordUserId);
   if (!thread) return;
-  await thread.send({ content, components });
+
+  const ping =
+    player.isFake || !player.discordUserId ? "" : `<@${player.discordUserId}> `;
+  await thread.send({
+    content: `${ping}${content}`,
+    components,
+    ...(ping ? { allowedMentions: { users: [player.discordUserId] } } : {}),
+  });
 }
 
 async function finishBuffetPick(

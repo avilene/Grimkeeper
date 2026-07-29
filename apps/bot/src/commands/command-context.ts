@@ -2104,7 +2104,8 @@ export async function ensurePlayerStThread(
   await thread.members.add(interaction.user.id).catch(() => undefined);
   await addStorytellersToPlayerThread(guild, thread, engine, game.stRoleId);
 
-  const shouldAnnounce = options?.announce ?? created;
+  // New threads already get an intro from createPersonalPlayerThread.
+  const shouldAnnounce = !created && (options?.announce ?? false);
   if (shouldAnnounce) {
     const fakePlayer = isFakePlayer(player.discordUserId);
     await thread
