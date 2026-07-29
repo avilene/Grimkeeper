@@ -1071,6 +1071,114 @@ export async function archiveGameSurfaces(
   return { channels, threads };
 }
 
+export type ArchivePreviewLine = {
+  /** Human-readable channel/thread name */
+  name: string;
+  /** Discord channel mention (<#id>) */
+  mention: string;
+  /** What would happen */
+  action: string;
+};
+
+export type ArchivePreviewResult = {
+  channelLines: ArchivePreviewLine[];
+  threadLines: ArchivePreviewLine[];
+};
+
+/**
+ * Dry-run version of archiveGameSurfaces / archiveChannelThreadsDirectly.
+ * Discovers what would be changed without making any Discord API writes.
+ */
+export async function previewArchiveSurfaces(
+  guild: Guild,
+  channelId: string,
+  game?: GameRoleIds & { id: string; kibThreadId?: string | null } | null,
+): Promise<ArchivePreviewResult> {
+  const channelLines: ArchivePreviewLine[] = [];
+  const threadLines: ArchivePreviewLine[] = [];
+
+  const kib = game ? await getKibThreadForGame(guild, game) : null;
+
+  // Channels that would get permission overwrites
+  const channelIds = [channelId];
+  if (kib && isKibChannelVenue(kib) && kib.id !== channelId) {
+    channelIds.push(kib.id);
+  }
+
+  for (const cid of channelIds) {
+    const ch = await guild.channels.fetch(cid).catch(() => null);
+    if (!ch) continue;
+    const name = "name" in ch ? String(ch.name) : cid;
+    const action = game
+      ? "@everyone: ViewChannel ✓, SendMessages ✗ — game roles: SendMessages / CreateThreads / ManageThreads ✗"
+      : "threads scanned and locked (no permission overwrites — no game record)";
+    channelLines.push({ name, mention: `<#${cid}>`, action });
+  }
+
+  // Threads under town
+  const townParent = await guild.channels.fetch(channelId).catch(() => null);
+  if (isGameTextChannel(townParent)) {
+    const active = await guild.channels.fetchActiveThreads().catch(() => null);
+    if (active) {
+      for (const thread of active.threads.values()) {
+        if (thread.parentId !== channelId) continue;
+        const vis = thread.type === ChannelType.PrivateThread ? "private" : "public";
+        threadLines.push({
+          name: thread.name,
+          mention: `<#${thread.id}>`,
+          action: thread.archived
+            ? `unarchive → lock (${vis})`
+            : `lock (${vis})`,
+        });
+      }
+    }
+    for (const type of ["public", "private"] as const) {
+      const archived = await townParent.threads.fetchArchived({ type, limit: 100 }).catch(() => null);
+      if (!archived) continue;
+      for (const thread of archived.threads.values()) {
+        const vis = thread.type === ChannelType.PrivateThread ? "private" : "public";
+        threadLines.push({
+          name: thread.name,
+          mention: `<#${thread.id}>`,
+          action: `unarchive → lock (${vis})`,
+        });
+      }
+    }
+  }
+
+  // Threads under kib channel venue
+  if (kib && isKibChannelVenue(kib) && kib.id !== channelId && isGameTextChannel(kib)) {
+    for (const type of ["public", "private"] as const) {
+      const archived = await kib.threads.fetchArchived({ type, limit: 100 }).catch(() => null);
+      if (!archived) continue;
+      for (const thread of archived.threads.values()) {
+        const vis = thread.type === ChannelType.PrivateThread ? "private" : "public";
+        threadLines.push({
+          name: thread.name,
+          mention: `<#${thread.id}>`,
+          action: `unarchive → lock (${vis})`,
+        });
+      }
+    }
+    const active = await guild.channels.fetchActiveThreads().catch(() => null);
+    if (active) {
+      for (const thread of active.threads.values()) {
+        if (thread.parentId !== kib.id) continue;
+        const vis = thread.type === ChannelType.PrivateThread ? "private" : "public";
+        threadLines.push({
+          name: thread.name,
+          mention: `<#${thread.id}>`,
+          action: thread.archived
+            ? `unarchive → lock (${vis})`
+            : `lock (${vis})`,
+        });
+      }
+    }
+  }
+
+  return { channelLines, threadLines };
+}
+
 type GameRoles = {
   stRole: Role;
   playersRole: Role;

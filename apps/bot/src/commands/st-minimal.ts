@@ -41,6 +41,7 @@ import {
   addUserToPlayerStThreads,
   archiveChannelThreadsDirectly,
   archiveGameSurfaces,
+  previewArchiveSurfaces,
   broadcastToPlayerThreads,
   createPlayerStThreads,
   createTownVoteThread,
@@ -209,6 +210,13 @@ export class StCommandsMinimal {
       required: false,
     })
     winner: "good" | "evil" | undefined,
+    @SlashOption({
+      name: "dry_run",
+      description: "For archive: preview changes without applying them",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    dry_run: boolean | undefined,
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
@@ -235,7 +243,7 @@ export class StCommandsMinimal {
         await this.end(winner, interaction);
         return;
       case "archive":
-        await this.archive(interaction);
+        await this.archive(interaction, dry_run ?? false);
         return;
       case "add-spectator":
         if (!user) {
@@ -873,14 +881,47 @@ export class StCommandsMinimal {
     }
   }
 
-  async archive(interaction: CommandInteraction): Promise<void> {
+  async archive(interaction: CommandInteraction, dryRun = false): Promise<void> {
     const resolved = await requireArchivableGame(interaction);
     if (!resolved) return;
     const guild = interaction.guild;
     if (!guild) return;
 
     try {
-      await setInteractionProgress(interaction, "Archiving channels and threads…");
+      await setInteractionProgress(
+        interaction,
+        dryRun ? "Previewing archive changes…" : "Archiving channels and threads…",
+      );
+
+      if (dryRun) {
+        const game = resolved.noDbRow ? null : resolved.game;
+        const preview = await previewArchiveSurfaces(guild, resolved.channelId, game);
+        const lines: string[] = [];
+
+        if (preview.channelLines.length > 0) {
+          lines.push("**Channels — permission overwrites:**");
+          for (const c of preview.channelLines) {
+            lines.push(`• ${c.mention} \`${c.name}\` — ${c.action}`);
+          }
+        }
+        if (preview.threadLines.length > 0) {
+          lines.push("");
+          lines.push(`**Threads — ${preview.threadLines.length} would be locked:**`);
+          for (const t of preview.threadLines) {
+            lines.push(`• ${t.mention} \`${t.name}\` — ${t.action}`);
+          }
+        }
+        if (lines.length === 0) {
+          lines.push("Nothing found to archive in this channel.");
+        }
+
+        await replyOrEditInteraction(interaction, {
+          content:
+            `**Archive dry run** — no changes made.\n\n${lines.join("\n")}\n\nRun \`/st do archive\` (without \`dry_run\`) to apply.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
 
       if (resolved.noDbRow) {
         // No game record — archive the channel directly (admin-only, already checked).

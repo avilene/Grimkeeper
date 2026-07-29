@@ -29,6 +29,7 @@ export const ST_DO_ACTIONS: DoAction[] = [
   {
     name: "archive",
     description: "Open town/kib for everyone to read and lock all channels/threads read-only",
+    needs: ["dry_run?"],
   },
   { name: "resolve-next", description: "Resolve the oldest open nomination" },
   { name: "fail-open-noms", description: "Force-fail every open nomination" },
