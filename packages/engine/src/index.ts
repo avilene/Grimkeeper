@@ -13,9 +13,40 @@ import {
   StandardEdition,
   type GameScript,
 } from "./scripts/index.js";
+import {
+  type BuffetDraftConfig,
+  type BuffetDraftState,
+  type BuffetCurrentOffer,
+  buildInitialPool,
+  applyPick,
+  applyMulligan,
+  computeRemainingSlots,
+  defaultBuffetConfig,
+  validatePoolForComposition,
+  shuffle,
+  drawOffer,
+} from "./buffet-draft.js";
+
+function buildNextOfferFromPool(
+  pool: string[],
+  slots: Record<string, number>,
+  count: number,
+): string[] {
+  return drawOffer(pool, slots as Record<string, number>, count);
+}
 
 export * from "./command-kinds.js";
 export * from "./event-types.js";
+export {
+  type BuffetDraftConfig,
+  type BuffetDraftState,
+  type BuffetCurrentOffer,
+  type BuffetScriptPreset,
+  defaultBuffetConfig,
+  buildInitialPool,
+  computeRemainingSlots,
+  validatePoolForComposition,
+} from "./buffet-draft.js";
 
 export type Team = "good" | "evil" | "traveler";
 
@@ -250,6 +281,40 @@ export interface StorytellerDemotedEvent extends GameEventBase {
   discordUserId: string;
 }
 
+export interface BuffetDraftConfiguredEvent extends GameEventBase {
+  type: typeof GameEventType.BuffetDraftConfigured;
+  config: BuffetDraftConfig;
+}
+
+export interface BuffetDraftStartedEvent extends GameEventBase {
+  type: typeof GameEventType.BuffetDraftStarted;
+  draftOrder: string[];
+  pool: string[];
+  remainingSlots: Record<string, number>;
+}
+
+export interface BuffetChoicesOfferedEvent extends GameEventBase {
+  type: typeof GameEventType.BuffetChoicesOffered;
+  offer: BuffetCurrentOffer;
+}
+
+export interface BuffetRolePickedEvent extends GameEventBase {
+  type: typeof GameEventType.BuffetRolePicked;
+  playerId: string;
+  roleId: string;
+}
+
+export interface BuffetMulliganUsedEvent extends GameEventBase {
+  type: typeof GameEventType.BuffetMulliganUsed;
+  playerId: string;
+  newOffer: BuffetCurrentOffer;
+}
+
+export interface BuffetDraftCompletedEvent extends GameEventBase {
+  type: typeof GameEventType.BuffetDraftCompleted;
+  assignments: Array<{ playerId: string; roleId: string }>;
+}
+
 export type GameEvent =
   | GameCreatedEvent
   | PlayerAddedEvent
@@ -286,7 +351,13 @@ export type GameEvent =
   | NominationVotesUnlockedEvent
   | NominationCountStartedEvent
   | NominationCountHandAdvancedEvent
-  | NominationCountFinishedEvent;
+  | NominationCountFinishedEvent
+  | BuffetDraftConfiguredEvent
+  | BuffetDraftStartedEvent
+  | BuffetChoicesOfferedEvent
+  | BuffetRolePickedEvent
+  | BuffetMulliganUsedEvent
+  | BuffetDraftCompletedEvent;
 
 export interface PlayerState {
   id: string;
@@ -362,6 +433,7 @@ export interface GameState {
   seatsOpen: boolean;
   townMode: boolean;
   winner: "good" | "evil" | null;
+  buffetDraft: BuffetDraftState | null;
 }
 
 export interface CreateGameCommand {
@@ -640,6 +712,36 @@ export interface CancelNominationCountCommand {
   nominationId: string;
 }
 
+export interface ConfigureBuffetDraftCommand {
+  kind: typeof GameCommandKind.ConfigureBuffetDraft;
+  gameId: string;
+  config: Partial<BuffetDraftConfig>;
+}
+
+export interface StartBuffetDraftCommand {
+  kind: typeof GameCommandKind.StartBuffetDraft;
+  gameId: string;
+  devMode?: boolean;
+}
+
+export interface PickBuffetRoleCommand {
+  kind: typeof GameCommandKind.PickBuffetRole;
+  gameId: string;
+  playerId: string;
+  roleId: string;
+}
+
+export interface MulliganBuffetCommand {
+  kind: typeof GameCommandKind.MulliganBuffet;
+  gameId: string;
+  playerId: string;
+}
+
+export interface CancelBuffetDraftCommand {
+  kind: typeof GameCommandKind.CancelBuffetDraft;
+  gameId: string;
+}
+
 export type GameCommand =
   | CreateGameCommand
   | AddPlayerCommand
@@ -680,7 +782,12 @@ export type GameCommand =
   | UnlockNominationVotesCommand
   | StartNominationCountCommand
   | CountHandVoteCommand
-  | CancelNominationCountCommand;
+  | CancelNominationCountCommand
+  | ConfigureBuffetDraftCommand
+  | StartBuffetDraftCommand
+  | PickBuffetRoleCommand
+  | MulliganBuffetCommand
+  | CancelBuffetDraftCommand;
 
 export const DEFAULT_MIN_PLAYERS = 5;
 export const DEV_MIN_PLAYERS = 3;
@@ -709,6 +816,7 @@ function emptyState(gameId: string): GameState {
     seatsOpen: false,
     townMode: false,
     winner: null,
+    buffetDraft: null,
   };
 }
 
@@ -1321,6 +1429,11 @@ export class GameEngine {
         if (this.state.phase === "ended") {
           throw new GameEngineError("Game has already ended.");
         }
+        if (this.state.buffetDraft?.status === "active") {
+          throw new GameEngineError(
+            "Cannot re-run setup-town while a Sushi Buffet draft is in progress. Cancel the draft first (`/st do buffet-cancel`).",
+          );
+        }
         const minPlayers = command.minPlayers ?? DEFAULT_MIN_PLAYERS;
         if (command.players.length < minPlayers) {
           throw new GameEngineError(`At least ${minPlayers} players are required to set up town.`);
@@ -1502,6 +1615,77 @@ export class GameEngine {
           )
         ) {
           throw new GameEngineError("That seat is already taken.");
+        }
+        break;
+      case GameCommandKind.ConfigureBuffetDraft:
+        if (this.state.phase === "ended") {
+          throw new GameEngineError("Cannot configure buffet on an ended game.");
+        }
+        if (this.state.buffetDraft?.status === "active") {
+          throw new GameEngineError("Cannot reconfigure buffet while a draft is in progress.");
+        }
+        break;
+      case GameCommandKind.StartBuffetDraft: {
+        if (this.state.phase !== "setup") {
+          throw new GameEngineError("Buffet draft can only start during setup.");
+        }
+        if (this.state.buffetDraft?.status === "active") {
+          throw new GameEngineError("A buffet draft is already in progress.");
+        }
+        const seatedPlayers = this.state.players.filter((p) => p.seat !== null);
+        if (seatedPlayers.length < 1) {
+          throw new GameEngineError("No seated players. Run setup-town first.");
+        }
+        if (this.state.players.some((p) => p.roleId)) {
+          throw new GameEngineError("Some players already have roles assigned.");
+        }
+        const config = this.state.buffetDraft?.config ?? defaultBuffetConfig();
+        const pool = buildInitialPool(config.enabledRoleIds);
+        const slots = computeRemainingSlots(seatedPlayers.length, command.devMode);
+        const poolError = validatePoolForComposition(pool, slots);
+        if (poolError) {
+          throw new GameEngineError(poolError);
+        }
+        break;
+      }
+      case GameCommandKind.PickBuffetRole: {
+        const draft = this.state.buffetDraft;
+        if (!draft || draft.status !== "active") {
+          throw new GameEngineError("No active buffet draft.");
+        }
+        const offer = draft.currentOffer;
+        if (!offer) {
+          throw new GameEngineError("No current offer to pick from.");
+        }
+        if (offer.playerId !== command.playerId) {
+          throw new GameEngineError("It is not your turn to pick.");
+        }
+        if (!offer.roleIds.includes(command.roleId)) {
+          throw new GameEngineError("That role was not in your offer.");
+        }
+        break;
+      }
+      case GameCommandKind.MulliganBuffet: {
+        const draft = this.state.buffetDraft;
+        if (!draft || draft.status !== "active") {
+          throw new GameEngineError("No active buffet draft.");
+        }
+        const offer = draft.currentOffer;
+        if (!offer) {
+          throw new GameEngineError("No current offer to mulligan.");
+        }
+        if (offer.playerId !== command.playerId) {
+          throw new GameEngineError("It is not your turn.");
+        }
+        const nextStep = offer.mulliganStep + 1;
+        if (nextStep >= draft.config.mulliganSteps.length) {
+          throw new GameEngineError("No more mulligans available.");
+        }
+        break;
+      }
+      case GameCommandKind.CancelBuffetDraft:
+        if (!this.state.buffetDraft || this.state.buffetDraft.status !== "active") {
+          throw new GameEngineError("No active buffet draft to cancel.");
         }
         break;
     }
@@ -2043,6 +2227,120 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
+      case GameCommandKind.ConfigureBuffetDraft: {
+        const existing = this.state.buffetDraft;
+        const baseConfig = existing?.config ?? defaultBuffetConfig();
+        const newConfig: BuffetDraftConfig = { ...baseConfig, ...command.config };
+        return [
+          {
+            type: GameEventType.BuffetDraftConfigured,
+            gameId: command.gameId,
+            config: newConfig,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
+      case GameCommandKind.StartBuffetDraft: {
+        const config = this.state.buffetDraft?.config ?? defaultBuffetConfig();
+        const seatedPlayers = this.state.players.filter((p) => p.seat !== null);
+        const slots = computeRemainingSlots(seatedPlayers.length, command.devMode);
+        const pool = buildInitialPool(config.enabledRoleIds);
+        const draftOrder = shuffle(seatedPlayers.map((p) => p.id));
+        const offerCount = config.mulliganSteps[0] ?? 3;
+        const firstPlayerId = draftOrder[0]!;
+        const roleIds = buildNextOfferFromPool(pool, slots, offerCount);
+        return [
+          {
+            type: GameEventType.BuffetDraftStarted,
+            gameId: command.gameId,
+            draftOrder,
+            pool,
+            remainingSlots: slots as Record<string, number>,
+            timestamp: new Date().toISOString(),
+          },
+          {
+            type: GameEventType.BuffetChoicesOffered,
+            gameId: command.gameId,
+            offer: { playerId: firstPlayerId, roleIds, mulliganStep: 0 },
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
+      case GameCommandKind.PickBuffetRole: {
+        const draft = this.state.buffetDraft!;
+        const newDraftState = applyPick(draft, command.playerId, command.roleId);
+        const events: GameEvent[] = [
+          {
+            type: GameEventType.BuffetRolePicked,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            roleId: command.roleId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+        if (newDraftState.status === "complete") {
+          const assignments = Object.entries(newDraftState.picks).map(
+            ([playerId, roleId]) => ({ playerId, roleId }),
+          );
+          events.push({
+            type: GameEventType.BuffetDraftCompleted,
+            gameId: command.gameId,
+            assignments,
+            timestamp: new Date().toISOString(),
+          });
+          events.push({
+            type: GameEventType.RolesDealt,
+            gameId: command.gameId,
+            assignments,
+            timestamp: new Date().toISOString(),
+          });
+        } else {
+          const nextPlayerId = newDraftState.draftOrder[newDraftState.currentIndex]!;
+          const offerCount = draft.config.mulliganSteps[0] ?? 3;
+          const roleIds = buildNextOfferFromPool(
+            newDraftState.pool,
+            newDraftState.remainingSlots,
+            offerCount,
+          );
+          events.push({
+            type: GameEventType.BuffetChoicesOffered,
+            gameId: command.gameId,
+            offer: { playerId: nextPlayerId, roleIds, mulliganStep: 0 },
+            timestamp: new Date().toISOString(),
+          });
+        }
+        return events;
+      }
+      case GameCommandKind.MulliganBuffet: {
+        const draft = this.state.buffetDraft!;
+        const { state: _s, newOffer } = applyMulligan(draft, command.playerId);
+        const offer: BuffetCurrentOffer = {
+          playerId: command.playerId,
+          roleIds: newOffer,
+          mulliganStep: (draft.currentOffer?.mulliganStep ?? 0) + 1,
+        };
+        return [
+          {
+            type: GameEventType.BuffetMulliganUsed,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            newOffer: offer,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
+      case GameCommandKind.CancelBuffetDraft: {
+        // Re-emit configured (idle) so draft resets while preserving the role pool config
+        const config = this.state.buffetDraft?.config ?? defaultBuffetConfig();
+        return [
+          {
+            type: GameEventType.BuffetDraftConfigured,
+            gameId: command.gameId,
+            config,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
       default:
         return [];
     }
@@ -2366,6 +2664,66 @@ export class GameEngine {
         const nomination = this.getNominationById(event.nominationId);
         if (nomination) {
           nomination.countHandIndex = null;
+        }
+        break;
+      }
+      case GameEventType.BuffetDraftConfigured: {
+        // Always reset to idle when (re)configuring — also used by CancelBuffetDraft
+        this.state.buffetDraft = {
+          status: "idle",
+          config: event.config,
+          pool: [],
+          remainingSlots: { townsfolk: 0, outsider: 0, minion: 0, demon: 0 },
+          draftOrder: [],
+          currentIndex: 0,
+          currentOffer: null,
+          mulligansUsed: {},
+          picks: {},
+        };
+        break;
+      }
+      case GameEventType.BuffetDraftStarted: {
+        const config = this.state.buffetDraft?.config ?? defaultBuffetConfig();
+        this.state.buffetDraft = {
+          status: "active",
+          config,
+          pool: event.pool,
+          remainingSlots: event.remainingSlots as Record<string, number>,
+          draftOrder: event.draftOrder,
+          currentIndex: 0,
+          currentOffer: null,
+          mulligansUsed: {},
+          picks: {},
+        };
+        break;
+      }
+      case GameEventType.BuffetChoicesOffered: {
+        if (this.state.buffetDraft) {
+          this.state.buffetDraft.currentOffer = event.offer;
+        }
+        break;
+      }
+      case GameEventType.BuffetRolePicked: {
+        const draft = this.state.buffetDraft;
+        if (!draft) break;
+        const newState = applyPick(draft, event.playerId, event.roleId);
+        this.state.buffetDraft = newState;
+        break;
+      }
+      case GameEventType.BuffetMulliganUsed: {
+        const draft = this.state.buffetDraft;
+        if (!draft) break;
+        draft.currentOffer = event.newOffer;
+        draft.mulligansUsed = {
+          ...draft.mulligansUsed,
+          [event.playerId]: (draft.mulligansUsed[event.playerId] ?? 0) + 1,
+        };
+        break;
+      }
+      case GameEventType.BuffetDraftCompleted: {
+        if (this.state.buffetDraft) {
+          this.state.buffetDraft.status = "complete";
+          this.state.buffetDraft.currentOffer = null;
         }
         break;
       }

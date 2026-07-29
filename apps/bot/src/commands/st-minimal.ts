@@ -8,9 +8,18 @@ import {
 } from "discord.js";
 import { Discord, Slash, SlashChoice, SlashGroup, SlashOption } from "discordx";
 import { prisma, resolveArchiveCategoryId } from "@grimkeeper/database";
-import { GameCommandKind } from "@grimkeeper/engine";
+import {
+  GameCommandKind,
+  listBotcRoles,
+  defaultBuffetConfig,
+  validatePoolForComposition,
+  buildInitialPool,
+  computeRemainingSlots,
+  isFakePlayer,
+} from "@grimkeeper/engine";
 
 import { minPlayersForMode } from "../bot-mode.js";
+import { isDevMode } from "../dev.js";
 import { isAllowedUserId } from "../access.js";
 import { formatVoteVisibility } from "../day-thread.js";
 import { ensureLogThread, postGameLog, postGameLogRoleChange } from "../game-log-thread.js";
@@ -167,6 +176,13 @@ export class StCommandsMinimal {
       required: false,
     })
     override: boolean | undefined,
+    @SlashOption({
+      name: "recycle",
+      description: "For buffet-configure: recycle unchosen roles (true/false)",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    recycle: boolean | undefined,
     @SlashOption({
       name: "reason",
       description: "For set-vote conditional votes",
@@ -404,6 +420,19 @@ export class StCommandsMinimal {
       case "refresh-noms":
         await this.refreshNoms(interaction);
         return;
+      case "buffet-start":
+        await this.buffetStart(interaction);
+        return;
+      case "buffet-status":
+        await this.buffetStatus(interaction);
+        return;
+      case "buffet-cancel":
+        await this.buffetCancel(interaction);
+        return;
+      case "buffet-configure": {
+        await this.buffetConfigure(recycle, interaction);
+        return;
+      }
       default:
         await replyOrEditInteraction(interaction, {
           content: `Action \`${normalized}\` is not implemented.`,
@@ -2456,6 +2485,245 @@ export class StCommandsMinimal {
 
       await replyOrEditInteraction(interaction, {
         content: `Recorded nomination: **${nominator.displayName}** → **${nominee.displayName}**.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async buffetStart(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      await setInteractionProgress(interaction, "Starting Sushi Buffet draft…");
+      const engine = await loadEngine(game.id);
+      const state = engine.getState();
+
+      // Pre-validate pool before issuing command
+      const config = state.buffetDraft?.config ?? defaultBuffetConfig();
+      const seatedPlayers = state.players.filter((p) => p.seat !== null);
+      if (seatedPlayers.length === 0) {
+        await replyOrEditInteraction(interaction, {
+          content: "No seated players. Run `/st setup-town` first.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const slots = computeRemainingSlots(seatedPlayers.length);
+      const pool = buildInitialPool(config.enabledRoleIds);
+      const poolError = validatePoolForComposition(pool, slots);
+      if (poolError) {
+        await replyOrEditInteraction(interaction, {
+          content: `Cannot start buffet: ${poolError}\n\nAdjust the role pool in the admin panel (\`/games/${game.id}\`).`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      // Check all players have ST threads
+      const dbPlayers = await prisma.player.findMany({
+        where: { gameId: game.id, seat: { not: null } },
+        select: { discordUserId: true, stThreadId: true, displayName: true },
+      });
+      const missingThreads = dbPlayers.filter(
+        (p) => !p.stThreadId && !isFakePlayer(p.discordUserId),
+      );
+      if (missingThreads.length > 0) {
+        const names = missingThreads.map((p) => p.displayName).join(", ");
+        await replyOrEditInteraction(interaction, {
+          content: `Missing ST threads for: **${names}**. Run \`/st do recreate-player-thread\` for each player first.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const events = engine.handle({
+        kind: GameCommandKind.StartBuffetDraft,
+        gameId: game.id,
+        devMode: isDevMode(),
+      });
+      await persistEvents(engine, events);
+      await syncGameProjection(game.id, engine);
+
+      const { postBuffetOffer } = await import("../interactions/buffet-draft.js");
+
+      const draft = engine.getState().buffetDraft;
+      const firstOffer = draft?.currentOffer;
+      if (draft?.status === "complete") {
+        await upsertPinnedGameStatus(guild, game.channelId, engine);
+        await postGameLog(
+          guild,
+          game,
+          `<@${interaction.user.id}> started the Sushi Buffet draft — all picks resolved.`,
+        );
+        await replyOrEditInteraction(interaction, {
+          content: "Sushi Buffet draft complete — all players have roles.",
+        });
+      } else if (firstOffer) {
+        await postBuffetOffer(guild, game, engine, firstOffer);
+        const firstPlayer = engine.getState().players.find((p) => p.id === firstOffer.playerId);
+        await upsertPinnedGameStatus(guild, game.channelId, engine);
+        await postGameLog(
+          guild,
+          game,
+          `<@${interaction.user.id}> started the Sushi Buffet draft — first offer for **${firstPlayer?.displayName ?? "a player"}**.`,
+        );
+        await replyOrEditInteraction(interaction, {
+          content: firstPlayer?.isFake
+            ? `Sushi Buffet draft started! Pick for **${firstPlayer.displayName}** using the buttons in kib.`
+            : `Sushi Buffet draft started! First offer sent to **${firstPlayer?.displayName ?? "a player"}** in their ST thread.`,
+        });
+      } else {
+        await replyOrEditInteraction(interaction, {
+          content: "Draft started but no offer could be generated — check pool configuration.",
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async buffetStatus(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const draft = engine.getState().buffetDraft;
+
+      if (!draft || draft.status === "idle") {
+        await replyOrEditInteraction(interaction, {
+          content: "No buffet draft configured. Use the admin panel to set up the role pool, then `/st do buffet-start`.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const catalog = new Map(listBotcRoles().map((r) => [r.id, r]));
+
+      if (draft.status === "complete") {
+        const pickLines = Object.entries(draft.picks).map(([pid, rid]) => {
+          const player = engine.getState().players.find((p) => p.id === pid);
+          const role = catalog.get(rid);
+          return `• **${player?.displayName ?? pid}** → ${role?.name ?? rid}`;
+        });
+        await replyOrEditInteraction(interaction, {
+          content: `**Sushi Buffet — Complete**\n${pickLines.join("\n")}`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const currentPlayer = draft.currentOffer
+        ? engine.getState().players.find((p) => p.id === draft.currentOffer!.playerId)
+        : null;
+
+      const pickLines = Object.entries(draft.picks).map(([pid, rid]) => {
+        const player = engine.getState().players.find((p) => p.id === pid);
+        const role = catalog.get(rid);
+        return `• **${player?.displayName ?? pid}** → ${role?.name ?? rid}`;
+      });
+
+      const remaining = draft.draftOrder.length - draft.currentIndex;
+      const poolCounts = {
+        townsfolk: draft.pool.filter((id) => catalog.get(id)?.team === "townsfolk").length,
+        outsider: draft.pool.filter((id) => catalog.get(id)?.team === "outsider").length,
+        minion: draft.pool.filter((id) => catalog.get(id)?.team === "minion").length,
+        demon: draft.pool.filter((id) => catalog.get(id)?.team === "demon").length,
+      };
+
+      const lines = [
+        `**Sushi Buffet — In Progress** (${draft.currentIndex}/${draft.draftOrder.length} picked)`,
+        `Currently picking: **${currentPlayer?.displayName ?? "—"}**`,
+        `Remaining: ${remaining} player(s)`,
+        `Pool: ${draft.pool.length} roles (TF: ${poolCounts.townsfolk}, OS: ${poolCounts.outsider}, MN: ${poolCounts.minion}, DM: ${poolCounts.demon})`,
+        "",
+        ...(pickLines.length > 0 ? ["**Picks so far:**", ...pickLines] : ["No picks yet."]),
+      ];
+
+      await replyOrEditInteraction(interaction, {
+        content: lines.join("\n"),
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async buffetCancel(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const events = engine.handle({
+        kind: GameCommandKind.CancelBuffetDraft,
+        gameId: game.id,
+      });
+      await persistEvents(engine, events);
+      await syncGameProjection(game.id, engine);
+
+      await postGameLog(
+        guild,
+        game,
+        `<@${interaction.user.id}> cancelled the Sushi Buffet draft.`,
+      );
+      await replyOrEditInteraction(interaction, {
+        content: "Sushi Buffet draft cancelled. Player roles are unchanged.",
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async buffetConfigure(
+    recycle: boolean | undefined,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const patch: Record<string, unknown> = {};
+
+      if (recycle !== undefined) {
+        patch.recycleUnchosen = recycle;
+      }
+
+      if (Object.keys(patch).length === 0) {
+        const draft = engine.getState().buffetDraft;
+        const config = draft?.config ?? defaultBuffetConfig();
+        await replyOrEditInteraction(interaction, {
+          content: [
+            "**Buffet config** (current):",
+            `• Recycle unchosen: **${config.recycleUnchosen ? "on" : "off"}**`,
+            `• Mulligan steps: **${config.mulliganSteps.join(" → ")}**`,
+            `• Enabled roles: **${config.enabledRoleIds.length}** (manage in admin panel)`,
+          ].join("\n"),
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const events = engine.handle({
+        kind: GameCommandKind.ConfigureBuffetDraft,
+        gameId: game.id,
+        config: patch,
+      });
+      await persistEvents(engine, events);
+      await syncGameProjection(game.id, engine);
+
+      await replyOrEditInteraction(interaction, {
+        content: "Buffet config updated.",
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

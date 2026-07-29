@@ -22,6 +22,14 @@ export async function syncGameProjectionFromEngine(
 ): Promise<void> {
   const state = engine.getState();
 
+  const buffetData = state.buffetDraft
+    ? {
+        setupMode: "buffet",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        buffetConfig: state.buffetDraft.config as any,
+      }
+    : {};
+
   await prisma.game.update({
     where: { id: gameId },
     data: {
@@ -29,6 +37,7 @@ export async function syncGameProjectionFromEngine(
       dayNumber: state.dayNumber,
       nightNumber: state.nightNumber,
       winner: state.winner,
+      ...buffetData,
     },
   });
 

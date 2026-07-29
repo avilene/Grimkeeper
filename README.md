@@ -69,6 +69,19 @@ Player day play uses top-level slash commands. Storytellers use `/st …`. Guide
 | `/st guide setup` / `day` / `night` | Phase checklists |
 | `/st reminder schedule` / `/st reminder batch` | Scheduled pings |
 
+### Sushi Buffet draft
+
+Optional role-draft mode (like [Grim Bits Draft Buffet](https://grimbits.com/draft-buffet/)):
+
+1. `/game setup` → `/st setup-town` as usual
+2. Open the admin game page → **Sushi Buffet Draft** — toggle roles off (all on by default), set recycle option, save
+3. `/st do buffet-start` — offers go to player ST threads in random order; players pick (or mulligan 3→2→1)
+4. When complete, roles are assigned; continue with `/st next-phase` as usual
+
+Also: `/st do buffet-status`, `/st do buffet-cancel`, `/st do buffet-configure` (`recycle:` true/false).
+
+**Dev shortcut (`DEV_MODE=true`):** `/dev bot-game` seats 8 fake players and opens town threads in one step. Add `buffet:true` to start a buffet draft — offers for bots appear in **kib** for you to pick.
+
 ## Deploy to Railway
 
 1. Connect this repo to [Railway](https://railway.app).

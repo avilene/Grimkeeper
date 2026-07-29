@@ -8,10 +8,13 @@ import {
 import {
   formatBotcEdition,
   listBotcRoles,
+  GameEngine,
+  defaultBuffetConfig,
   type GameEvent,
 } from "@grimkeeper/engine";
 
 import { FlashBanner, WarnBanner } from "@/components/banners";
+import { BuffetConfigForm, type BuffetRole } from "@/components/buffet-config-form";
 import { DeleteGameForm } from "@/components/delete-game-form";
 import { GameDaysSection } from "@/components/game-days-section";
 import { GameFieldsForm } from "@/components/game-fields-form";
@@ -84,6 +87,21 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
     roleOptions.push({ id: roleId, name: roleId, type: "custom", edition: "in game" });
     knownIds.add(roleId);
   }
+
+  // Buffet draft state
+  const buffetEngine = new GameEngine(game.id);
+  for (const ev of engineEvents) {
+    buffetEngine.apply(ev);
+  }
+  const buffetState = buffetEngine.getState().buffetDraft;
+  const buffetConfig = buffetState?.config ?? defaultBuffetConfig();
+  const seatedPlayerCount = game.players.filter((p) => p.seat !== null).length;
+  const buffetRoles: BuffetRole[] = listBotcRoles().map((r) => ({
+    id: r.id,
+    name: r.name,
+    team: r.team as BuffetRole["team"],
+    edition: formatBotcEdition(r.edition) ?? r.edition ?? "",
+  }));
 
   const nominations = game.gameDays
     .flatMap((day) =>
@@ -211,6 +229,36 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-destructive">Danger zone</h2>
           <DeleteGameForm gameId={game.id} />
+        </section>
+      ) : null}
+
+      {game.phase !== "ended" ? (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">Sushi Buffet Draft</h2>
+          <p className="text-sm text-muted-foreground">
+            Configure the role pool for a Sushi Buffet draft. All roles are enabled by default.
+            Uncheck roles to remove them from the pool. Once configured, run{" "}
+            <code>/st do buffet-start</code> in Discord to begin the draft.
+          </p>
+          {buffetState?.status === "active" ? (
+            <div className="rounded-md border border-blue-300 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300">
+              Draft in progress — {buffetState.currentIndex}/{buffetState.draftOrder.length} players have picked.
+              Use <code>/st do buffet-status</code> in Discord for details or{" "}
+              <code>/st do buffet-cancel</code> to cancel.
+            </div>
+          ) : buffetState?.status === "complete" ? (
+            <div className="rounded-md border border-green-300 bg-green-50 p-3 text-sm text-green-800 dark:border-green-700 dark:bg-green-950 dark:text-green-300">
+              Draft complete — all players have picked their roles.
+            </div>
+          ) : null}
+          <BuffetConfigForm
+            gameId={game.id}
+            roles={buffetRoles}
+            initialEnabledIds={buffetConfig.enabledRoleIds}
+            initialRecycle={buffetConfig.recycleUnchosen}
+            playerCount={seatedPlayerCount}
+            draftStatus={buffetState?.status ?? "idle"}
+          />
         </section>
       ) : null}
     </div>

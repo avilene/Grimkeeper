@@ -135,6 +135,15 @@ client.on("interactionCreate", (interaction) => {
         if (handledPanel) return;
         const handledLock = await handleLockVotesButton(interaction);
         if (handledLock) return;
+        const { handleBuffetPick, handleBuffetMulligan, isBuffetInteraction } = await import(
+          "./interactions/buffet-draft.js"
+        );
+        if (isBuffetInteraction(interaction.customId)) {
+          const handledBuffetPick = await handleBuffetPick(interaction);
+          if (handledBuffetPick) return;
+          const handledBuffetMulligan = await handleBuffetMulligan(interaction);
+          if (handledBuffetMulligan) return;
+        }
         const handled = await handleVoteButton(interaction);
         if (handled) return;
       }

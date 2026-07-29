@@ -5,6 +5,8 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  appendGameEvent,
+  getGameEvents,
   isStatsOnlyGame,
   recordCompletedGame,
   requestDiscordKibNomsRepost,
@@ -12,7 +14,14 @@ import {
   requestDiscordPingMissing,
   STATS_ONLY_CHANNEL_ID,
 } from "@grimkeeper/database";
-import { getBotcRole } from "@grimkeeper/engine";
+import {
+  GameCommandKind,
+  GameEngine,
+  GameEventType,
+  getBotcRole,
+  defaultBuffetConfig,
+  type BuffetDraftConfig,
+} from "@grimkeeper/engine";
 
 import type { SaveResult } from "@/lib/action-result";
 import { prisma } from "@/lib/db";
@@ -824,6 +833,68 @@ export async function requestPingMissingVoters(
     };
   } catch (err) {
     captureAdminException(err, { action: "requestPingMissingVoters" });
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export interface BuffetConfigInput {
+  enabledRoleIds: string[];
+  recycleUnchosen: boolean;
+}
+
+export async function saveBuffetConfig(
+  gameId: string,
+  input: BuffetConfigInput,
+): Promise<SaveResult> {
+  await requireGameAccess(gameId);
+  try {
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      select: { id: true, phase: true },
+    });
+    if (!game) return { ok: false, message: "Game not found." };
+    if (game.phase === "ended") {
+      return { ok: false, message: "Cannot configure a buffet on an ended game." };
+    }
+
+    // Replay existing events to get current config
+    const storedEvents = await getGameEvents(gameId);
+    const engine = new GameEngine(gameId);
+    for (const ev of storedEvents) {
+      engine.apply(ev.payload as unknown as Parameters<typeof engine.apply>[0]);
+    }
+
+    const existing = engine.getState().buffetDraft;
+    const base = existing?.config ?? defaultBuffetConfig();
+    const newConfig: BuffetDraftConfig = {
+      ...base,
+      enabledRoleIds: input.enabledRoleIds,
+      recycleUnchosen: input.recycleUnchosen,
+    };
+
+    // Append BuffetDraftConfigured event so bot replay stays consistent
+    const events = engine.handle({
+      kind: GameCommandKind.ConfigureBuffetDraft,
+      gameId,
+      config: newConfig,
+    });
+
+    for (const event of events) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await appendGameEvent(gameId, event.type, event as any);
+    }
+
+    // Sync buffetConfig + setupMode to DB projection
+    await prisma.game.update({
+      where: { id: gameId },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: { setupMode: "buffet", buffetConfig: newConfig as any },
+    });
+
+    revalidatePath(`/games/${gameId}`);
+    return { ok: true, message: "Buffet configuration saved." };
+  } catch (err) {
+    captureAdminException(err, { action: "saveBuffetConfig" });
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }

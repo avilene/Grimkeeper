@@ -35,6 +35,12 @@ export const GameEventType = {
   NominationCountStarted: "NominationCountStarted",
   NominationCountHandAdvanced: "NominationCountHandAdvanced",
   NominationCountFinished: "NominationCountFinished",
+  BuffetDraftConfigured: "BuffetDraftConfigured",
+  BuffetDraftStarted: "BuffetDraftStarted",
+  BuffetChoicesOffered: "BuffetChoicesOffered",
+  BuffetRolePicked: "BuffetRolePicked",
+  BuffetMulliganUsed: "BuffetMulliganUsed",
+  BuffetDraftCompleted: "BuffetDraftCompleted",
 } as const;
 
 export type GameEventType = (typeof GameEventType)[keyof typeof GameEventType];

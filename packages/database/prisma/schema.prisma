@@ -32,6 +32,10 @@ model Game {
   /** When set with discordPingMissingNominationId, bot pings missing voters for that nom. */
   discordPingMissingRequestedAt DateTime?
   discordPingMissingNominationId String?
+  /** null | "town" | "buffet" */
+  setupMode            String?
+  /** JSON: BuffetDraftConfig */
+  buffetConfig         Json?
   stRoleId             String?
   playerRoleId         String?
   kibRoleId            String?
