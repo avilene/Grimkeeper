@@ -2249,7 +2249,9 @@ export class StCommandsMinimal {
       }
 
       await replyOrEditInteraction(interaction, {
-        content: `Vote visibility set to **${formatVoteVisibility(mode)}**.`,
+        content:
+          `Vote visibility set to **${formatVoteVisibility(mode)}**. ` +
+          "Players won't see the change until the next nomination.",
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

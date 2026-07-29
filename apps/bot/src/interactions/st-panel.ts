@@ -181,7 +181,9 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
       );
       await upsertStControlPanel(guild, game.channelId, engine, game.kibThreadId);
       await interaction.editReply({
-        content: `Vote visibility set to **${formatVoteVisibility(mode)}**.`,
+        content:
+          `Vote visibility set to **${formatVoteVisibility(mode)}**. ` +
+          "Players won't see the change until the next nomination.",
       });
       return true;
     }

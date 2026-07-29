@@ -972,6 +972,63 @@ describe("GameEngine", () => {
     expect(engine.formatNominationTally(nomination.id, { revealSecret: true })).toContain("Yes: 1");
   });
 
+  it("does not apply mid-day secret toggles to existing nominations", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(5));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const players = engine.getState().players;
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "First.",
+    })) {
+      engine.apply(event);
+    }
+    const first = engine.getState().day!.nominations[0]!;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      voterId: players[2]!.id,
+      nominationId: first.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.SetVoteVisibility,
+      gameId,
+      visibility: "secret",
+    })) {
+      engine.apply(event);
+    }
+
+    expect(first.voteVisibility).toBe("public");
+    expect(engine.formatNominationTally(first.id)).toContain("Yes: 1");
+    expect(engine.getState().day?.voteVisibility).toBe("secret");
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[2]!.id,
+      nomineeId: players[3]!.id,
+      accusation: "Second.",
+    })) {
+      engine.apply(event);
+    }
+    const second = engine.getState().day!.nominations[1]!;
+    expect(second.voteVisibility).toBe("secret");
+    expect(engine.formatNominationTally(second.id)).toBe("Votes recorded (secret mode)");
+  });
+
   it("does not count conditional votes toward execution majority", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(5));
     engine.apply({

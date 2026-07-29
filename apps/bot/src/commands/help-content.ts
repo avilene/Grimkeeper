@@ -507,7 +507,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
             "**`/vote`** — public ballot. **`/privatevote`** — private ballot (ST sees it on the kib **vote tracker**).",
             "**Whisper threads** — `/whisper neighbor` or `/whisper with` (ST is added). Declarations post to Whisper Declaration when available.",
             "You can vote on **any** open nomination.",
-            "ST sets public vs secret tallies with `/st do vote-visibility` or the kib control panel.",
+            "ST sets public vs secret tallies with `/st do vote-visibility` or the kib control panel (applies to new nominations only).",
           ].join("\n"),
         },
       ),

@@ -143,6 +143,8 @@ export interface NominationMadeEvent extends GameEventBase {
   accusation?: string;
   order?: number;
   voteDeadlineAt?: string;
+  /** Snapshotted at emission; older events omit this and fall back on apply-time day visibility. */
+  voteVisibility?: VoteVisibility;
 }
 
 export interface TownSetupEvent extends GameEventBase {
@@ -309,6 +311,11 @@ export interface NominationRecord {
   votesLocked: boolean;
   /** Index into eligible count order; null when not counting. */
   countHandIndex: number | null;
+  /**
+   * Player-facing visibility for this nomination, snapshotted from day.voteVisibility
+   * when the nomination was made. Mid-day visibility toggles do not rewrite existing noms.
+   */
+  voteVisibility: VoteVisibility;
 }
 
 export interface VoteRecord {
@@ -1657,6 +1664,7 @@ export class GameEngine {
             accusation: command.accusation.trim(),
             order,
             voteDeadlineAt,
+            voteVisibility: this.state.day?.voteVisibility ?? "public",
             timestamp: new Date().toISOString(),
           },
         ];
@@ -2131,6 +2139,8 @@ export class GameEngine {
           voteDeadlineAt: event.voteDeadlineAt ?? null,
           votesLocked: false,
           countHandIndex: null,
+          voteVisibility:
+            event.voteVisibility ?? this.state.day.voteVisibility ?? "public",
         });
         break;
       }
@@ -2416,11 +2426,19 @@ export class GameEngine {
     const tally = this.getNominationTally(nominationId, {
       ballot: options?.ballot ?? "effective",
     });
-    const day = this.state.day;
-    if (day?.voteVisibility === "secret" && !options?.revealSecret) {
+    const nomination = this.getNominationById(nominationId);
+    const visibility =
+      nomination?.voteVisibility ?? this.state.day?.voteVisibility ?? "public";
+    if (visibility === "secret" && !options?.revealSecret) {
       return "Votes recorded (secret mode)";
     }
     return `Yes: ${tally.yes} | No: ${tally.no} | Conditional: ${tally.conditional}`;
+  }
+
+  /** Player-facing visibility for a nomination (snapshotted at creation). */
+  getNominationVoteVisibility(nominationId: string): VoteVisibility {
+    const nomination = this.getNominationById(nominationId);
+    return nomination?.voteVisibility ?? this.state.day?.voteVisibility ?? "public";
   }
 
   /**

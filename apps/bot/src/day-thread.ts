@@ -284,7 +284,7 @@ export function buildNominationEmbed(
   });
   const blockText = formatNominationBlockField(engine, nomination);
   const secret =
-    engine.getState().day?.voteVisibility === "secret" && !options?.revealSecret;
+    nomination.voteVisibility === "secret" && !options?.revealSecret;
   const fields: APIEmbedField[] = [
     {
       name: "Accusation",
@@ -451,7 +451,7 @@ export async function updateNominationMessage(
 
   // Never reveal secret tallies on shared/public nomination embeds.
   const embedOptions =
-    engine.getState().day?.voteVisibility === "secret"
+    nomination.voteVisibility === "secret"
       ? { revealSecret: false }
       : options;
   const embed = buildNominationEmbed(engine, nomination, embedOptions);

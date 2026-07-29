@@ -244,10 +244,9 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
     await persistEvents(engine, events);
     await syncGameProjection(game.id, engine);
 
-    const day = engine.getState().day;
-    const isSecret = day?.voteVisibility === "secret";
-    const isSt = engine.isStoryteller(interaction.user.id);
     const nomination = engine.getNominationById(parsed.nominationId);
+    const isSecret = nomination?.voteVisibility === "secret";
+    const isSt = engine.isStoryteller(interaction.user.id);
 
     if (interaction.guild) {
       await refreshNominationEverywhere(interaction.guild, game, engine, parsed.nominationId, {

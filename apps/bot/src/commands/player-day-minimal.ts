@@ -89,8 +89,7 @@ async function castPlayerVote(
     await persistEvents(updatedEngine, events);
     await syncGameProjection(game.id, updatedEngine);
 
-    const day = updatedEngine.getState().day;
-    const isSecret = day?.voteVisibility === "secret";
+    const isSecret = nomination.voteVisibility === "secret";
     const isSt = updatedEngine.isStoryteller(interaction.user.id);
 
     if (interaction.guild) {
