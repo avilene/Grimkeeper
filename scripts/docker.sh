@@ -108,6 +108,7 @@ case "$cmd" in
         echo "Lockfile unchanged — reusing cached deps layer (compile only)."
       fi
       echo "Building locally (set GRIMKEEPER_IMAGE in .env to skip this on droplet)..."
+      export SENTRY_RELEASE="${SENTRY_RELEASE:-$(git rev-parse HEAD 2>/dev/null || true)}"
       services="bot"
       if docker compose config --services 2>/dev/null | grep -qx admin; then
         services="bot admin"
@@ -138,6 +139,7 @@ case "$cmd" in
     ;;
   fresh)
     echo "Force full local rebuild (pnpm install + compile)..."
+    export SENTRY_RELEASE="${SENTRY_RELEASE:-$(git rev-parse HEAD 2>/dev/null || true)}"
     services="bot"
     if docker compose config --services 2>/dev/null | grep -qx admin; then
       services="bot admin"

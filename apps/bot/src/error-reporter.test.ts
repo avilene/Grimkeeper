@@ -107,4 +107,12 @@ describe("buildLifecycleLogEmbed", () => {
     expect(data.fields?.[0]?.value).toContain("tag: Grimkeeper#1234");
     expect(data.fields?.[0]?.value).toContain("commandsRegistered: true");
   });
+
+  it("includes commit short hash in bot.started title", () => {
+    const embed = buildLifecycleLogEmbed("bot.started", {
+      commitShort: "86f9504",
+      commit: "86f9504abcdef1234567890",
+    });
+    expect(embed.toJSON().title).toBe("bot.started · 86f9504");
+  });
 });

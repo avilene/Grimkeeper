@@ -8,18 +8,21 @@ import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
 import * as Sentry from "@sentry/node";
 
+import { getDeployRelease, getDeployReleaseShort } from "./deploy-release.js";
+
 const envPath = resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env");
 if (existsSync(envPath)) {
   config({ path: envPath });
 }
 
 const dsn = process.env.SENTRY_DSN?.trim();
+const deployRelease = getDeployRelease();
 if (dsn) {
   Sentry.init({
     dsn,
     environment:
       process.env.SENTRY_ENVIRONMENT?.trim() || process.env.NODE_ENV || "development",
-    release: process.env.SENTRY_RELEASE?.trim() || undefined,
+    release: deployRelease,
     // 100% in non-production, lower in production
     tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
     includeLocalVariables: true,
@@ -32,13 +35,24 @@ if (dsn) {
           integration.name !== "OnUnhandledRejection",
       ),
   });
+  if (deployRelease) {
+    Sentry.setTag("git.commit", deployRelease);
+    const short = getDeployReleaseShort();
+    if (short) Sentry.setTag("git.commit_short", short);
+    Sentry.setContext("deploy", {
+      commit: deployRelease,
+      commitShort: short ?? deployRelease,
+      trigger: process.env.DEPLOY_TRIGGER?.trim() || undefined,
+      image: process.env.GRIMKEEPER_IMAGE?.trim() || undefined,
+    });
+  }
   // Logger is not loaded yet — console is intentional for boot confirmation.
   console.info(
     JSON.stringify({
       level: "info",
       msg: "sentry.init.ok",
       environment: process.env.SENTRY_ENVIRONMENT?.trim() || process.env.NODE_ENV || "development",
-      release: process.env.SENTRY_RELEASE?.trim() || null,
+      release: deployRelease ?? null,
     }),
   );
 } else {

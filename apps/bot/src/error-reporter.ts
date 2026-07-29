@@ -210,7 +210,11 @@ export function buildLifecycleLogEmbed(
     source,
     ...context,
   };
-  return buildDiscordLogEmbed(source, meta);
+  const title =
+    source === "bot.started" && typeof context.commitShort === "string"
+      ? `${source} · ${context.commitShort}`
+      : source;
+  return buildDiscordLogEmbed(title, meta);
 }
 
 /** @deprecated Use buildErrorLogEmbed */
@@ -358,6 +362,10 @@ function captureInSentry(
   Sentry.withScope((scope) => {
     scope.setTag("source", source);
     scope.setLevel("error");
+    const release = process.env.SENTRY_RELEASE?.trim();
+    if (release) {
+      scope.setTag("git.commit", release);
+    }
     for (const [key, value] of Object.entries(context)) {
       if (value === undefined) continue;
       scope.setExtra(key, value);

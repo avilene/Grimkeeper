@@ -15,6 +15,7 @@ import { Events, IntentsBitField, MessageFlags } from "discord.js";
 import { Client } from "discordx";
 
 import { setBotClient } from "./discord-client.js";
+import { getDeployRelease, getDeployReleaseShort } from "./deploy-release.js";
 import {
   flushDiscordReports,
   notifyLifecycle,
@@ -90,13 +91,20 @@ client.once(Events.ClientReady, async () => {
       botMode: "minimal",
       commandsRegistered,
       deployTrigger: process.env.DEPLOY_TRIGGER ?? "unknown",
+      commit: getDeployRelease(),
+      commitShort: getDeployReleaseShort(),
       image: process.env.GRIMKEEPER_IMAGE,
       hostname: process.env.HOSTNAME,
     },
     client,
   );
   await flushDiscordReports(client);
-  log("info", "bot.ready", { tag: client.user?.tag, id: client.user?.id, botMode: "minimal" });
+  log("info", "bot.ready", {
+    tag: client.user?.tag,
+    id: client.user?.id,
+    botMode: "minimal",
+    commit: getDeployReleaseShort() ?? getDeployRelease() ?? null,
+  });
 });
 
 client.on("interactionCreate", (interaction) => {

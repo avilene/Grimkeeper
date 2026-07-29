@@ -4,7 +4,10 @@ services:
   # fast 10062 ack races. `docker compose up -d --scale bot=N` must stay at N=1.
   bot:
     image: ${GRIMKEEPER_IMAGE:-grimkeeper-bot:local}
-    build: .
+    build:
+      context: .
+      args:
+        SENTRY_RELEASE: ${SENTRY_RELEASE:-}
     restart: unless-stopped
     env_file:
       - .env
