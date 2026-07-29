@@ -28,9 +28,16 @@ import {
 import {
   loadEngine,
   persistEvents,
+  replyEngineError,
   requireCommandAccess,
   requireStorytellerGame,
 } from "./command-context.js";
+import { resolveOrCreatePlayerAlias } from "./alias.js";
+import { parseUserMentionsFromString } from "../town-setup.js";
+import {
+  DEFAULT_DEV_BOT_GAME_SIZE,
+  runDevBotGameSetup,
+} from "../dev-bot-game.js";
 
 @Discord()
 @SlashGroup({ name: "dev", description: "Development utilities (DEV_MODE only)" })
@@ -191,6 +198,125 @@ export class DevCommandsMinimal {
       ],
       flags: MessageFlags.Ephemeral,
     });
+  }
+
+  @Slash({
+    name: "bot-game",
+    description: "Seat bots (+ optional real @mentions) and open town surfaces",
+  })
+  async botGame(
+    @SlashOption({
+      name: "count",
+      description: "Total table size including real players (default 8)",
+      type: ApplicationCommandOptionType.Integer,
+      required: false,
+      minValue: 3,
+      maxValue: 15,
+    })
+    count: number | undefined,
+    @SlashOption({
+      name: "players",
+      description: "Real @mentions in seat order (bots fill remaining seats)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    playersInput: string | undefined,
+    @SlashOption({
+      name: "buffet",
+      description: "Configure and start Sushi Buffet draft",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    buffet: boolean | undefined,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    if (!(await requireCommandAccess(interaction))) return;
+    if (!(await this.requireDev(interaction))) return;
+
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    const guild = interaction.guild;
+    if (!guild) {
+      await interaction.reply({
+        content: "This command must be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const totalCount = count ?? DEFAULT_DEV_BOT_GAME_SIZE;
+    let realPlayers: Array<{ discordUserId: string; displayName: string }> = [];
+
+    if (playersInput?.trim()) {
+      const mentionIds = parseUserMentionsFromString(playersInput);
+      if (mentionIds.length === 0) {
+        await interaction.reply({
+          content: "Provide at least one @mention in `players:` (seat order).",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (mentionIds.length > totalCount) {
+        await interaction.reply({
+          content: `Too many real players (${mentionIds.length}) for count ${totalCount}. Increase \`count:\` or remove mentions.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      realPlayers = await Promise.all(
+        mentionIds.map(async (discordUserId) => {
+          const member = await guild.members.fetch(discordUserId).catch(() => null);
+          const discordName =
+            member?.displayName ?? member?.user.username ?? discordUserId;
+          const displayName = await resolveOrCreatePlayerAlias(
+            guild.id,
+            discordUserId,
+            discordName,
+          );
+          return { discordUserId, displayName };
+        }),
+      );
+    }
+
+    try {
+      const result = await runDevBotGameSetup(interaction, game, {
+        count: totalCount,
+        startBuffet: buffet ?? false,
+        realPlayers,
+      });
+
+      const botCount = totalCount - realPlayers.length;
+      const header =
+        realPlayers.length > 0
+          ? `Dev bot game ready with **${totalCount}** players (${realPlayers.length} real, ${botCount} bots) in <#${game.channelId}>.`
+          : `Dev bot game ready with **${result.playerCount}** fake players in <#${game.channelId}>.`;
+      const lines = [
+        header,
+        "**Setup** — use the kib panel or `/st next-phase` when ready.",
+        result.seatingChart.join("\n"),
+        result.voteThreadId
+          ? `Town Voting: <#${result.voteThreadId}>`
+          : "Town Voting thread was not created.",
+      ];
+      if (result.buffetStarted) {
+        lines.push(
+          realPlayers.length > 0
+            ? "Sushi Buffet draft **started** — real players pick in their ST threads; ST picks for bots in bot ST threads."
+            : "Sushi Buffet draft **started** — ST picks for bots in their ST threads.",
+        );
+      } else {
+        lines.push("Optional: configure buffet in admin, then `/st do buffet-start`.");
+      }
+
+      await interaction.editReply({
+        content: lines.filter(Boolean).join("\n"),
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
   }
 
   @Slash({

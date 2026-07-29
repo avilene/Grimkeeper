@@ -39,6 +39,11 @@ export const GameCommandKind = {
   StartNominationCount: "StartNominationCount",
   CountHandVote: "CountHandVote",
   CancelNominationCount: "CancelNominationCount",
+  ConfigureBuffetDraft: "ConfigureBuffetDraft",
+  StartBuffetDraft: "StartBuffetDraft",
+  PickBuffetRole: "PickBuffetRole",
+  MulliganBuffet: "MulliganBuffet",
+  CancelBuffetDraft: "CancelBuffetDraft",
 } as const;
 
 export type GameCommandKind = (typeof GameCommandKind)[keyof typeof GameCommandKind];

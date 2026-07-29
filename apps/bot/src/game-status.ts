@@ -32,6 +32,20 @@ export function buildAliveDeadLines(engine: GameEngine): { alive: string; dead: 
   let daySummary = "Not in day phase.";
   if (state.phase === "setup") {
     daySummary = "**Setup** · Nominations closed until Day 1";
+    const draft = state.buffetDraft;
+    if (draft?.status === "active") {
+      const currentPlayer = draft.currentOffer
+        ? state.players.find((p) => p.id === draft.currentOffer!.playerId)
+        : null;
+      const who = currentPlayer
+        ? currentPlayer.isFake
+          ? currentPlayer.displayName
+          : `<@${currentPlayer.discordUserId}>`
+        : "—";
+      daySummary += `\n**Buffet draft:** ${draft.currentIndex}/${draft.draftOrder.length} picked · currently picking: ${who}`;
+    } else if (draft?.status === "complete") {
+      daySummary += "\n**Buffet draft:** complete — all roles assigned";
+    }
   } else if (state.phase === "night") {
     daySummary = `Night **${state.nightNumber}** · Nominations: **closed**`;
   } else if (state.phase === "day" && state.day) {

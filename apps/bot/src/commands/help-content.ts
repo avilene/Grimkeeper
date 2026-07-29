@@ -185,6 +185,10 @@ export const DEV_HELP_ENTRIES: HelpEntry[] = [
   { command: "/dev clear", description: "Remove all fake players." },
   { command: "/dev setup", description: "Fill lobby with fake players for testing." },
   {
+    command: "/dev bot-game",
+    description: "Seat bots (default 8) + optional real @mentions; opens town threads; optional buffet draft.",
+  },
+  {
     command: "/dev reminders",
     description: "List/delete all server reminders (STs use `/st reminder list` for their game).",
   },
@@ -614,6 +618,10 @@ export function buildDevHelpEmbeds(): EmbedBuilder[] {
           cmd("/dev clear", "Remove all fake players."),
           cmd("/dev setup", "Fill lobby with fake players for testing."),
           cmd(
+            "/dev bot-game",
+            "Seat bots (default 8) + optional `players:` @mentions in seat order; `buffet:true` starts draft.",
+          ),
+          cmd(
             "/dev reminders",
             "List/delete all server reminders (STs use `/st reminder list` for their game).",
           ),
@@ -661,6 +669,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "Optional: `/st reminder schedule` / `/st reminder batch`",
             "Optional: `/st do add-st` / `/st do sync-st-threads` / `/st add-kib`",
             "Optional: `/st log` if the audit log is missing",
+            "**Sushi Buffet?** Admin panel → game → Sushi Buffet config (toggle roles, save), then `/st do buffet-start`",
             "`/st next-phase` — start **Day 1** (opens nominations)",
           ]),
         },
