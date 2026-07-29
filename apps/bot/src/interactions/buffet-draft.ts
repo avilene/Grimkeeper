@@ -5,7 +5,6 @@ import {
   MessageFlags,
   type ButtonInteraction,
   type Guild,
-  type SendableChannels,
 } from "discord.js";
 import { getGameById, prisma } from "@grimkeeper/database";
 import {
@@ -16,7 +15,6 @@ import {
 
 import {
   canActAsStoryteller,
-  getKibThreadForGame,
   loadEngine,
   persistEvents,
   replyEngineError,
@@ -68,7 +66,6 @@ export function buildBuffetOfferMessage(
   gameId: string,
   mulliganStep: number,
   mulliganStepsCount: number,
-  options?: { drafterName?: string; forStoryteller?: boolean },
 ): { content: string; components: ActionRowBuilder<ButtonBuilder>[] } {
   const catalog = new Map(listBotcRoles().map((r) => [r.id, r]));
   const hasMoreMulligans = mulliganStep + 1 < mulliganStepsCount;
@@ -99,10 +96,7 @@ export function buildBuffetOfferMessage(
     );
   }
 
-  const intro =
-    options?.forStoryteller && options.drafterName
-      ? `**Sushi Buffet — pick for ${options.drafterName}** (bot)\nChoose a role for this player using the buttons below.`
-      : "**Sushi Buffet — choose your role!**\nPick one of the options below.";
+  const intro = "**Sushi Buffet — choose your role!**\nPick one of the options below.";
   const mulliganNote = hasMoreMulligans
     ? " You can also mulligan for fewer choices."
     : " No mulligans remaining.";
@@ -122,47 +116,33 @@ function roleDisplayName(roleId: string): string {
   return listBotcRoles().find((r) => r.id === roleId)?.name ?? roleId;
 }
 
-async function revealRoleForDrafter(
+async function getPlayerStThread(
   guild: Guild,
-  game: { id: string; channelId: string; kibThreadId?: string | null },
-  drafter: { id: string; discordUserId: string; displayName: string; isFake: boolean },
-  roleId: string,
-): Promise<void> {
-  const roleEmbed = buildRoleDmEmbed(roleId);
-  if (drafter.isFake) {
-    const kib = await resolveBuffetOfferChannel(guild, game);
-    if (kib) {
-      await kib.send({
-        content: `**${drafter.displayName}** → **${roleDisplayName(roleId)}**`,
-        embeds: [roleEmbed],
-      });
-    }
-    return;
-  }
-
+  gameId: string,
+  discordUserId: string,
+): Promise<Awaited<ReturnType<typeof guild.channels.fetch>> | null> {
   const playerRow = await prisma.player.findFirst({
-    where: { gameId: game.id, discordUserId: drafter.discordUserId },
+    where: { gameId, discordUserId },
     select: { stThreadId: true },
   });
-  if (!playerRow?.stThreadId) return;
+  if (!playerRow?.stThreadId) return null;
   const thread = await guild.channels.fetch(playerRow.stThreadId).catch(() => null);
-  if (thread?.isThread()) {
-    await thread.send({ content: "**Your role:**", embeds: [roleEmbed] });
-  }
+  return thread?.isThread() ? thread : null;
 }
 
-async function resolveBuffetOfferChannel(
+async function revealRoleForDrafter(
   guild: Guild,
-  game: { id: string; channelId: string; kibThreadId?: string | null },
-): Promise<SendableChannels | null> {
-  const kib = await getKibThreadForGame(guild, game);
-  if (kib?.isSendable()) return kib;
-  const channel = await guild.channels.fetch(game.channelId).catch(() => null);
-  if (channel?.isSendable()) return channel;
-  return null;
+  game: { id: string },
+  drafter: { discordUserId: string },
+  roleId: string,
+): Promise<void> {
+  const thread = await getPlayerStThread(guild, game.id, drafter.discordUserId);
+  if (!thread) return;
+  const roleEmbed = buildRoleDmEmbed(roleId);
+  await thread.send({ content: "**Your role:**", embeds: [roleEmbed] });
 }
 
-/** Post the current buffet offer to the drafter's ST thread or kib (for bots). */
+/** Post the current buffet offer to the drafter's ST thread. */
 export async function postBuffetOffer(
   guild: Guild,
   game: { id: string; channelId: string; kibThreadId?: string | null },
@@ -179,24 +159,10 @@ export async function postBuffetOffer(
     game.id,
     offer.mulliganStep,
     draft.config.mulliganSteps.length,
-    player.isFake ? { drafterName: player.displayName, forStoryteller: true } : undefined,
   );
 
-  if (player.isFake) {
-    const channel = await resolveBuffetOfferChannel(guild, game);
-    if (channel) {
-      await channel.send({ content, components });
-    }
-    return;
-  }
-
-  const playerRow = await prisma.player.findFirst({
-    where: { gameId: game.id, discordUserId: player.discordUserId },
-    select: { stThreadId: true },
-  });
-  if (!playerRow?.stThreadId) return;
-  const thread = await guild.channels.fetch(playerRow.stThreadId).catch(() => null);
-  if (!thread?.isThread()) return;
+  const thread = await getPlayerStThread(guild, game.id, player.discordUserId);
+  if (!thread) return;
   await thread.send({ content, components });
 }
 
@@ -204,8 +170,6 @@ async function finishBuffetPick(
   guild: Guild,
   game: { id: string; channelId: string; kibThreadId?: string | null },
   engine: GameEngine,
-  drafter: { id: string; discordUserId: string; displayName: string; isFake: boolean },
-  roleId: string,
 ): Promise<"complete" | "continued"> {
   const draft = engine.getState().buffetDraft;
   if (draft?.status === "complete") {
@@ -223,8 +187,6 @@ async function finishBuffetPick(
     await postBuffetOffer(guild, game, engine, nextOffer);
   }
   await upsertPinnedGameStatus(guild, game.channelId, engine);
-  void drafter;
-  void roleId;
   return "continued";
 }
 
@@ -301,7 +263,7 @@ export async function handleBuffetPick(interaction: ButtonInteraction): Promise<
     await revealRoleForDrafter(guild, game, drafter, roleId);
 
     const roleName = roleDisplayName(roleId);
-    const outcome = await finishBuffetPick(guild, game, engine, drafter, roleId);
+    const outcome = await finishBuffetPick(guild, game, engine);
 
     if (outcome === "complete") {
       await interaction.editReply({
@@ -396,7 +358,7 @@ export async function handleBuffetMulligan(interaction: ButtonInteraction): Prom
     await syncGameProjection(gameId, engine);
     await interaction.editReply({
       content: drafter.isFake
-        ? `Mulligan for **${drafter.displayName}** — new choices posted in kib.`
+        ? `Mulligan for **${drafter.displayName}** — new choices posted in their ST thread.`
         : "Mulligan used — new choices posted in your ST thread.",
     });
   } catch (error) {

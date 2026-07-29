@@ -15,7 +15,6 @@ import {
   validatePoolForComposition,
   buildInitialPool,
   computeRemainingSlots,
-  isFakePlayer,
 } from "@grimkeeper/engine";
 
 import { minPlayersForMode } from "../bot-mode.js";
@@ -2530,9 +2529,7 @@ export class StCommandsMinimal {
         where: { gameId: game.id, seat: { not: null } },
         select: { discordUserId: true, stThreadId: true, displayName: true },
       });
-      const missingThreads = dbPlayers.filter(
-        (p) => !p.stThreadId && !isFakePlayer(p.discordUserId),
-      );
+      const missingThreads = dbPlayers.filter((p) => !p.stThreadId);
       if (missingThreads.length > 0) {
         const names = missingThreads.map((p) => p.displayName).join(", ");
         await replyOrEditInteraction(interaction, {
@@ -2574,9 +2571,7 @@ export class StCommandsMinimal {
           `<@${interaction.user.id}> started the Sushi Buffet draft — first offer for **${firstPlayer?.displayName ?? "a player"}**.`,
         );
         await replyOrEditInteraction(interaction, {
-          content: firstPlayer?.isFake
-            ? `Sushi Buffet draft started! Pick for **${firstPlayer.displayName}** using the buttons in kib.`
-            : `Sushi Buffet draft started! First offer sent to **${firstPlayer?.displayName ?? "a player"}** in their ST thread.`,
+          content: `Sushi Buffet draft started! First offer sent to **${firstPlayer?.displayName ?? "a player"}** in their ST thread.`,
         });
       } else {
         await replyOrEditInteraction(interaction, {

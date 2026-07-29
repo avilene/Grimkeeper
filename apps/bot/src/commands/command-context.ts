@@ -1616,7 +1616,7 @@ export async function ensureGameThreads(
   let playerThreadsCreated = 0;
   let playerThreadsFailed = 0;
   for (const player of engine.getState().players) {
-    if (isFakePlayer(player.discordUserId)) continue;
+    if (isFakePlayer(player.discordUserId) && !isDevMode()) continue;
     const thread = await getOrCreatePersonalPlayerThread(
       interaction,
       game.id,
@@ -1929,7 +1929,9 @@ export async function ensurePlayerStThread(
 ): Promise<{ thread: AnyThreadChannel | null; created: boolean }> {
   const guild = interaction.guild;
   if (!guild) return { thread: null, created: false };
-  if (isFakePlayer(player.discordUserId)) return { thread: null, created: false };
+  if (isFakePlayer(player.discordUserId) && !isDevMode()) {
+    return { thread: null, created: false };
+  }
 
   let storedThreadId = player.stThreadId ?? null;
   if (!storedThreadId) {
@@ -1983,19 +1985,24 @@ export async function ensurePlayerStThread(
 
   await persistPlayerStThreadId(game.id, player.discordUserId, thread.id);
 
-  await thread.members.add(player.discordUserId).catch(() => undefined);
+  if (!isFakePlayer(player.discordUserId)) {
+    await thread.members.add(player.discordUserId).catch(() => undefined);
+  }
   // Always invite the acting ST (role cache is often empty without Guild Members intent).
   await thread.members.add(interaction.user.id).catch(() => undefined);
   await addStorytellersToPlayerThread(guild, thread, engine, game.stRoleId);
 
   const shouldAnnounce = options?.announce ?? created;
   if (shouldAnnounce) {
+    const fakePlayer = isFakePlayer(player.discordUserId);
     await thread
       .send({
-        content:
-          `Private ST thread for <@${player.discordUserId}>. Only you, the storyteller, and server admins can access this thread.\n` +
-          `Day-play commands: **/player help** (nominate, vote, whisper, alias, …).`,
-        allowedMentions: { users: [player.discordUserId] },
+        content: fakePlayer
+          ? `Private ST thread for **${player.displayName}** (dev bot). Only the storyteller and server admins can access this thread.\n` +
+            `Day-play commands: **/player help** (nominate, vote, whisper, alias, …).`
+          : `Private ST thread for <@${player.discordUserId}>. Only you, the storyteller, and server admins can access this thread.\n` +
+            `Day-play commands: **/player help** (nominate, vote, whisper, alias, …).`,
+        ...(fakePlayer ? {} : { allowedMentions: { users: [player.discordUserId] } }),
       })
       .catch(() => undefined);
   }
@@ -2016,7 +2023,7 @@ export async function createPlayerStThreads(
   const threadIndex = await loadParentThreadIndex(guild, game.channelId);
 
   for (const player of engine.getState().players) {
-    if (isFakePlayer(player.discordUserId)) continue;
+    if (isFakePlayer(player.discordUserId) && !isDevMode()) continue;
 
     const result = await ensurePlayerStThread(interaction, game, engine, player, {
       threadIndex,
@@ -2089,7 +2096,9 @@ export async function getOrCreatePersonalPlayerThread(
       await existing.setArchived(false, "Game in progress; reopening player thread.").catch(() => undefined);
     }
     await ensureThreadAutoArchive(existing);
-    await existing.members.add(userId).catch(() => undefined);
+    if (!isFakePlayer(userId)) {
+      await existing.members.add(userId).catch(() => undefined);
+    }
     return existing;
   }
 
@@ -2140,13 +2149,19 @@ export async function createPersonalPlayerThread(
       } as Record<string, unknown>),
     });
 
-    await thread.members.add(userId).catch(() => undefined);
+    const fakePlayer = isFakePlayer(userId);
+    if (!fakePlayer) {
+      await thread.members.add(userId).catch(() => undefined);
+    }
     await thread.send({
-      content:
-        `Hi <@${userId}>! This is your private game thread for Grimkeeper.\n` +
-        `Only you, the storyteller, and server admins can see this thread — do not try to invite others.\n` +
-        `Day-play commands: **/player help** (nominate, vote, whisper, alias, …).`,
-      allowedMentions: { users: [userId] },
+      content: fakePlayer
+        ? `Hi! This is the private game thread for **${displayName}** (dev bot player).\n` +
+          `Only the storyteller and server admins can see this thread.\n` +
+          `Day-play commands: **/player help** (nominate, vote, whisper, alias, …).`
+        : `Hi <@${userId}>! This is your private game thread for Grimkeeper.\n` +
+          `Only you, the storyteller, and server admins can see this thread — do not try to invite others.\n` +
+          `Day-play commands: **/player help** (nominate, vote, whisper, alias, …).`,
+      ...(fakePlayer ? {} : { allowedMentions: { users: [userId] } }),
     });
     await persistPlayerStThreadId(gameId, userId, thread.id);
     return thread;
@@ -2351,7 +2366,7 @@ export async function listPersonalPlayerThreads(
   const threadIndex = await loadParentThreadIndex(guild, game.channelId);
   const threads: DayDiscussionChannel[] = [];
   for (const player of engine.getState().players) {
-    if (isFakePlayer(player.discordUserId)) continue;
+    if (isFakePlayer(player.discordUserId) && !isDevMode()) continue;
     const stored = stThreadByUser.get(player.discordUserId);
     const thread = await findPersonalPlayerThread(
       guild,

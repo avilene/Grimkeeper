@@ -204,7 +204,7 @@ export async function runDevBotGameSetup(
       ` **Setup** phase.` +
       (voteThread ? ` Voting: <#${voteThread.id}>.` : "") +
       (surfaceLinks.length > 0 ? ` Town threads: ${surfaceLinks.join(", ")}.` : "") +
-      (buffetStarted ? " Sushi Buffet draft started — pick for bots in kib." : ""),
+      (buffetStarted ? " Sushi Buffet draft started — pick for bots in their ST threads." : ""),
   );
 
   void threadSummary;

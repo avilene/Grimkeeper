@@ -80,7 +80,7 @@ Optional role-draft mode (like [Grim Bits Draft Buffet](https://grimbits.com/dra
 
 Also: `/st do buffet-status`, `/st do buffet-cancel`, `/st do buffet-configure` (`recycle:` true/false).
 
-**Dev shortcut (`DEV_MODE=true`):** `/dev bot-game` seats 8 fake players and opens town threads in one step. Add `buffet:true` to start a buffet draft — offers for bots appear in **kib** for you to pick.
+**Dev shortcut (`DEV_MODE=true`):** `/dev bot-game` seats 8 fake players (optional real `@mentions`) and opens town threads in one step. Add `buffet:true` to start a buffet draft — offers appear in each player's ST thread (ST picks for bots).
 
 ## Deploy to Railway
 

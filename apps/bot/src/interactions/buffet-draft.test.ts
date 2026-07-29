@@ -54,16 +54,15 @@ describe("buildBuffetOfferMessage", () => {
     expect(allCustomIds).toContain(buffetMulliganCustomId(gameId));
   });
 
-  it("uses ST-facing header when picking for a bot", () => {
+  it("uses the same offer message for all drafters", () => {
     const { content } = buildBuffetOfferMessage(
       ["washerwoman", "librarian", "imp"],
       gameId,
       0,
       3,
-      { drafterName: "Dev Player 1", forStoryteller: true },
     );
-    expect(content).toMatch(/pick for Dev Player 1/i);
-    expect(content).toMatch(/bot/i);
+    expect(content).toMatch(/choose your role/i);
+    expect(content).not.toMatch(/pick for/i);
   });
 
   it("omits mulligan button on last step", () => {
