@@ -3,6 +3,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   MessageFlags,
+  type AnyThreadChannel,
   type ButtonInteraction,
   type Guild,
 } from "discord.js";
@@ -120,14 +121,14 @@ async function getPlayerStThread(
   guild: Guild,
   gameId: string,
   discordUserId: string,
-): Promise<Awaited<ReturnType<typeof guild.channels.fetch>> | null> {
+): Promise<AnyThreadChannel | null> {
   const playerRow = await prisma.player.findFirst({
     where: { gameId, discordUserId },
     select: { stThreadId: true },
   });
   if (!playerRow?.stThreadId) return null;
-  const thread = await guild.channels.fetch(playerRow.stThreadId).catch(() => null);
-  return thread?.isThread() ? thread : null;
+  const channel = await guild.channels.fetch(playerRow.stThreadId).catch(() => null);
+  return channel?.isThread() ? channel : null;
 }
 
 async function revealRoleForDrafter(
