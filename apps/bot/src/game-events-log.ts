@@ -129,6 +129,29 @@ function eventFields(event: GameEvent): Record<string, unknown> {
       };
     case GameEventType.NominationCountFinished:
       return { nominationId: event.nominationId };
+    case GameEventType.BuffetDraftConfigured:
+      return { enabledRoleCount: event.config.enabledRoleIds.length };
+    case GameEventType.BuffetDraftStarted:
+      return {
+        draftOrderCount: event.draftOrder.length,
+        poolSize: event.pool.length,
+      };
+    case GameEventType.BuffetChoicesOffered:
+      return {
+        playerId: event.offer.playerId,
+        choiceCount: event.offer.roleIds.length,
+        mulliganStep: event.offer.mulliganStep,
+      };
+    case GameEventType.BuffetRolePicked:
+      return { playerId: event.playerId, roleId: event.roleId };
+    case GameEventType.BuffetMulliganUsed:
+      return {
+        playerId: event.playerId,
+        choiceCount: event.newOffer.roleIds.length,
+        mulliganStep: event.newOffer.mulliganStep,
+      };
+    case GameEventType.BuffetDraftCompleted:
+      return { assignmentCount: event.assignments.length };
   }
 }
 
