@@ -8,9 +8,6 @@ import {
 import { log } from "../logger.js";
 
 const FAST_SUBCOMMANDS = new Set(["help", "guide"]);
-/** Nested `/st guide setup|day|night` — ack with public defer, not ephemeral "Working…". */
-const FAST_SUBCOMMAND_GROUPS = new Set(["guide"]);
-const GUIDE_NESTED_SUBCOMMANDS = new Set(["setup", "day", "night"]);
 /** `/st queue join|edit` open a modal — must not early-ack. */
 const QUEUE_MODAL_SUBCOMMANDS = new Set(["join", "edit"]);
 
@@ -35,22 +32,8 @@ const INTERACTION_DEFER_BUDGET_MS = 2_800;
 export function isHelpOrGuideCommand(interaction: Interaction): boolean {
   if (!interaction.isChatInputCommand()) return false;
 
-  const subcommandGroup = interaction.options.getSubcommandGroup(false);
-  if (subcommandGroup !== null && FAST_SUBCOMMAND_GROUPS.has(subcommandGroup)) {
-    return true;
-  }
-
   const subcommand = interaction.options.getSubcommand(false);
   if (subcommand !== null && FAST_SUBCOMMANDS.has(subcommand)) return true;
-
-  // Safety: nested guide without group metadata.
-  if (
-    interaction.commandName === "st" &&
-    subcommand !== null &&
-    GUIDE_NESTED_SUBCOMMANDS.has(subcommand)
-  ) {
-    return true;
-  }
 
   return false;
 }

@@ -59,10 +59,7 @@ describe("isHelpOrGuideCommand", () => {
     expect(isHelpOrGuideCommand(chatCommand("game", "help") as never)).toBe(true);
     expect(isHelpOrGuideCommand(chatCommand("player", "help") as never)).toBe(true);
     expect(isHelpOrGuideCommand(chatCommand("dev", "help") as never)).toBe(true);
-    expect(isHelpOrGuideCommand(chatCommand("st", "setup", "guide") as never)).toBe(true);
-    expect(isHelpOrGuideCommand(chatCommand("st", "day", "guide") as never)).toBe(true);
-    expect(isHelpOrGuideCommand(chatCommand("st", "night", "guide") as never)).toBe(true);
-    expect(isHelpOrGuideCommand(chatCommand("st", "setup") as never)).toBe(true);
+    expect(isHelpOrGuideCommand(chatCommand("st", "guide") as never)).toBe(true);
   });
 
   it("does not match other st commands", () => {
@@ -92,11 +89,7 @@ describe("shouldDeferSlashCommand", () => {
   });
 
   it("does not ephemeral-defer /st guide checklists", () => {
-    expect(shouldDeferSlashCommand(chatCommand("st", "setup", "guide") as never)).toBe(false);
-    expect(shouldDeferSlashCommand(chatCommand("st", "day", "guide") as never)).toBe(false);
-    expect(shouldDeferSlashCommand(chatCommand("st", "night", "guide") as never)).toBe(false);
-    // Nested guide without group metadata still must not ephemeral-ack.
-    expect(shouldDeferSlashCommand(chatCommand("st", "setup") as never)).toBe(false);
+    expect(shouldDeferSlashCommand(chatCommand("st", "guide") as never)).toBe(false);
   });
 
   it("defers top-level day commands", () => {
@@ -140,8 +133,8 @@ describe("startEarlyDefer", () => {
     vi.mocked(reportError).mockClear();
   });
 
-  it("public-defers /st guide setup and returns acked", async () => {
-    const interaction = chatCommand("st", "setup", "guide");
+  it("public-defers /st guide and returns acked", async () => {
+    const interaction = chatCommand("st", "guide");
     await expect(startEarlyDefer(interaction as never)).resolves.toBe("acked");
     expect(interaction.deferReply).toHaveBeenCalledOnce();
     expect(interaction.reply).not.toHaveBeenCalled();
@@ -155,7 +148,7 @@ describe("startEarlyDefer", () => {
   });
 
   it("returns failed on unknown interaction without throwing", async () => {
-    const interaction = chatCommand("st", "setup", "guide", {
+    const interaction = chatCommand("st", "guide", null, {
       deferReply: vi.fn().mockRejectedValue({ code: 10062 }),
     });
     await expect(startEarlyDefer(interaction as never)).resolves.toBe("failed");
@@ -180,21 +173,21 @@ describe("startEarlyDefer", () => {
   });
 
   it("returns failed on already-acknowledged without throwing", async () => {
-    const interaction = chatCommand("st", "setup", "guide", {
+    const interaction = chatCommand("st", "guide", null, {
       deferReply: vi.fn().mockRejectedValue({ code: 40060 }),
     });
     await expect(startEarlyDefer(interaction as never)).resolves.toBe("failed");
   });
 
   it("returns skipped on unexpected defer errors so the handler can retry", async () => {
-    const interaction = chatCommand("st", "setup", "guide", {
+    const interaction = chatCommand("st", "guide", null, {
       deferReply: vi.fn().mockRejectedValue({ code: 500, message: "Internal Server Error" }),
     });
     await expect(startEarlyDefer(interaction as never)).resolves.toBe("skipped");
   });
 
   it("skips when already deferred", async () => {
-    const interaction = chatCommand("st", "setup", "guide", { deferred: true });
+    const interaction = chatCommand("st", "guide", null, { deferred: true });
     await expect(startEarlyDefer(interaction as never)).resolves.toBe("acked");
     expect(interaction.deferReply).not.toHaveBeenCalled();
   });

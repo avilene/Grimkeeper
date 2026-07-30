@@ -4,7 +4,7 @@ import {
   EmbedBuilder,
   MessageFlags,
 } from "discord.js";
-import { Discord, Slash, SlashGroup, SlashOption } from "discordx";
+import { Discord, Slash, SlashChoice, SlashGroup, SlashOption } from "discordx";
 
 import { canUseBot } from "../access.js";
 import { reportError } from "../error-reporter.js";
@@ -215,30 +215,28 @@ export class StHelpCommands {
 }
 
 /**
- * Nested `/st guide setup|day|night`.
- * Note: `guide` must be a subcommand group only — Discord cannot also have `/st guide` as a plain subcommand.
+ * `/st guide topic:setup|buffet|day|night`.
  */
 @Discord()
-@SlashGroup({
-  name: "guide",
-  description: "Phase checklists for storytellers",
-  root: "st",
-})
-@SlashGroup("guide", "st")
+@SlashGroup({ name: "st", description: "Storyteller commands for an active game" })
+@SlashGroup("st")
 export class StGuideCommands {
-  @Slash({ name: "setup", description: "Checklist: lobby → town setup" })
-  async setup(interaction: CommandInteraction): Promise<void> {
-    await replyStGuide(interaction, "setup");
-  }
-
-  @Slash({ name: "day", description: "Checklist: running a day" })
-  async day(interaction: CommandInteraction): Promise<void> {
-    await replyStGuide(interaction, "day");
-  }
-
-  @Slash({ name: "night", description: "Checklist: running a night" })
-  async night(interaction: CommandInteraction): Promise<void> {
-    await replyStGuide(interaction, "night");
+  @Slash({ name: "guide", description: "Show an ST checklist" })
+  async guide(
+    @SlashChoice({ name: "Setup", value: "setup" })
+    @SlashChoice({ name: "Sushi Buffet", value: "buffet" })
+    @SlashChoice({ name: "Day", value: "day" })
+    @SlashChoice({ name: "Night", value: "night" })
+    @SlashOption({
+      name: "topic",
+      description: "Checklist to show",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    topic: StGuideTopic,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    await replyStGuide(interaction, topic);
   }
 }
 

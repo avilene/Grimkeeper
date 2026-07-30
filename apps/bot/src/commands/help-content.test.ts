@@ -106,8 +106,8 @@ describe("help content", () => {
     expect(stText.toLowerCase()).toContain("close-nominations");
     expect(stText.toLowerCase()).toContain("next-phase");
     expect(stText.toLowerCase()).toContain("add-st");
-    expect(st.data.description).toContain("/st guide setup");
-    expect(stText).toContain("/st guide setup|day|night");
+    expect(st.data.description).toContain("/st guide topic: setup");
+    expect(stText).toContain("/st guide topic: setup|buffet|day|night");
     expect(stText).toContain("/st add-kib / remove-kib");
     for (const embed of stEmbeds) {
       for (const field of embed.data.fields ?? []) {
@@ -123,11 +123,15 @@ describe("help content", () => {
 
   it("builds phase checklists", () => {
     const setup = buildStGuideEmbed("setup");
+    const buffet = buildStGuideEmbed("buffet");
     const day = buildStGuideEmbed("day");
     const night = buildStGuideEmbed("night");
     expect(setup.data.title).toContain("Setup");
     expect(fieldValues(setup)).toContain("/st setup-town");
     expect(fieldValues(setup)).toContain("/st broadcast");
+    expect(buffet.data.title).toContain("Sushi Buffet");
+    expect(fieldValues(buffet)).toContain("/st do buffet-start");
+    expect(fieldValues(buffet)).toContain("Recycle unchosen roles");
     expect(day.data.title).toContain("Day");
     expect(fieldValues(day)).toContain("/st close-nominations");
     expect(fieldValues(day)).toContain("/st next-phase");
@@ -136,7 +140,7 @@ describe("help content", () => {
     expect(fieldValues(night)).toContain("/st mark-dead");
     expect(fieldValues(setup)).not.toContain("/st say");
     expect(fieldValues(night)).not.toContain("/st say");
-    for (const embed of [setup, day, night]) {
+    for (const embed of [setup, buffet, day, night]) {
       for (const field of embed.data.fields ?? []) {
         expect(field.value.length).toBeLessThanOrEqual(1024);
       }

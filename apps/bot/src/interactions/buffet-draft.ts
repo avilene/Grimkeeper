@@ -16,6 +16,7 @@ import {
 
 import {
   canActAsStoryteller,
+  getKibThreadForGame,
   loadEngine,
   persistEvents,
   replyEngineError,
@@ -117,6 +118,23 @@ function roleDisplayName(roleId: string): string {
   return listBotcRoles().find((r) => r.id === roleId)?.name ?? roleId;
 }
 
+/** ST-only completion summary, ordered by seat rather than draft order. */
+export function formatBuffetCompletionSummary(
+  engine: Pick<GameEngine, "getState">,
+): string {
+  const state = engine.getState();
+  const picks = state.buffetDraft?.picks ?? {};
+  const lines = state.players
+    .filter((player) => picks[player.id])
+    .sort((a, b) => (a.seat ?? Number.MAX_SAFE_INTEGER) - (b.seat ?? Number.MAX_SAFE_INTEGER))
+    .map((player) => {
+      const seat = player.seat != null ? `seat ${player.seat} · ` : "";
+      return `• ${seat}**${player.displayName}** → ${roleDisplayName(picks[player.id]!)}`;
+    });
+
+  return ["**Sushi Buffet — roles chosen**", ...lines].join("\n");
+}
+
 async function getPlayerStThread(
   guild: Guild,
   gameId: string,
@@ -182,6 +200,8 @@ async function finishBuffetPick(
   const draft = engine.getState().buffetDraft;
   if (draft?.status === "complete") {
     await upsertPinnedGameStatus(guild, game.channelId, engine);
+    const kib = await getKibThreadForGame(guild, game);
+    await kib?.send({ content: formatBuffetCompletionSummary(engine) }).catch(() => undefined);
     const linkToGame = `<https://grimkeeper.dev/games/${game.id}#sushi-buffet-draft>`;
     await postGameLog(
       guild,

@@ -7,6 +7,7 @@ import {
   parseBuffetMulliganCustomId,
   isBuffetInteraction,
   buildBuffetOfferMessage,
+  formatBuffetCompletionSummary,
 } from "./buffet-draft.js";
 
 const gameId = "6911cd74-25ba-46f5-a57f-e9420bc219af";
@@ -71,5 +72,23 @@ describe("buildBuffetOfferMessage", () => {
       row.components.map((c) => ("data" in c ? (c as { data: { custom_id?: string } }).data.custom_id : undefined)),
     );
     expect(allCustomIds).not.toContain(buffetMulliganCustomId(gameId));
+  });
+});
+
+describe("formatBuffetCompletionSummary", () => {
+  it("lists every picked role in seat order", () => {
+    const engine = {
+      getState: () => ({
+        players: [
+          { id: "p2", displayName: "Bram", seat: 2 },
+          { id: "p1", displayName: "Ada", seat: 1 },
+        ],
+        buffetDraft: { picks: { p1: "washerwoman", p2: "imp" } },
+      }),
+    } as never;
+
+    expect(formatBuffetCompletionSummary(engine)).toBe(
+      "**Sushi Buffet — roles chosen**\n• seat 1 · **Ada** → Washerwoman\n• seat 2 · **Bram** → Imp",
+    );
   });
 });

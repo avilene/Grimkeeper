@@ -115,16 +115,20 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
   },
   ...entriesFromActions(ST_DO_ACTIONS_FOR_HELP, "/st do"),
   {
-    command: "/st guide setup",
+    command: "/st guide topic: setup",
     description: "Checklist: lobby → town setup.",
   },
   {
-    command: "/st guide day",
+    command: "/st guide topic: day",
     description: "Checklist: running a day (noms, votes, resolve, next-phase).",
   },
   {
-    command: "/st guide night",
+    command: "/st guide topic: night",
     description: "Checklist: running a night (broadcast, mark-dead, next-phase).",
+  },
+  {
+    command: "/st guide topic: buffet",
+    description: "Checklist: configuring and running a Sushi Buffet role draft.",
   },
   {
     command: "/st mark",
@@ -532,7 +536,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
       "",
       "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/st log` to recreate it mid-game.",
       "On mobile, prefer **`/st broadcast`**, **`/st next-phase`**, **`/st resolve-next`**, **`/st execute`**, etc. from the slash menu — no autocomplete. Full catalog still on **`/st do`**. Mid-game buttons: **`/st panel`**.",
-      "Phase checklists: **`/st guide setup`**, **`/st guide day`**, **`/st guide night`**.",
+      "Phase checklists: **`/st guide topic: setup`**, **`/st guide topic: buffet`**, **`/st guide topic: day`**, **`/st guide topic: night`**.",
     ].join("\n"),
     fields: [
       {
@@ -547,7 +551,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             "Full action catalog via autocomplete (everything else, plus the shortcuts above).",
           ),
           cmd(
-            "/st guide setup|day|night",
+            "/st guide topic: setup|buffet|day|night",
             "Phase checklist (commands only where the bot is involved).",
           ),
           cmd(
@@ -630,7 +634,7 @@ export function buildDevHelpEmbeds(): EmbedBuilder[] {
   ];
 }
 
-export type StGuideTopic = "setup" | "day" | "night";
+export type StGuideTopic = "setup" | "buffet" | "day" | "night";
 
 function checklist(items: string[]): string {
   return items.map((item) => `☐ ${item}`).join("\n");
@@ -653,7 +657,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
         {
           name: "2. Open town",
           value: checklist([
-            "`/st setup-town` with `players:` @mentions in **seat order** (starts **Night 1**, nominations closed)",
+            "`/st setup-town` with `players:` @mentions in **seat order** (enters **Setup**; nominations closed)",
             "Confirm **Town Voting**, **Whisper Declaration**, **Public Claims**, **Rules** opened",
             "Post house rules in **Rules** (ST write-only)",
             "Optional: `/st mark` in a custom thread to assign Town Voting / Rules / Claims / Whisper Declaration",
@@ -677,8 +681,46 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           name: "Also",
           value: [
             "Full command list: `/st help`",
-            "Day loop: `/st guide day` · Night: `/st guide night`",
+            "Day loop: `/st guide topic: day` · Night: `/st guide topic: night`",
           ].join("\n"),
+        },
+      );
+  }
+
+  if (topic === "buffet") {
+    return new EmbedBuilder()
+      .setColor(GUIDE_COLOR)
+      .setTitle("ST checklist · Sushi Buffet")
+      .setDescription("Configure the private role draft while the game is still in **Setup**.")
+      .addFields(
+        {
+          name: "1. Prepare the game",
+          value: checklist([
+            "`/game setup` — configure the game roles and a kib thread or channel",
+            "`/st setup-town` with players in seat order — creates every player’s private ST thread",
+            "Do not advance to Night 1 yet; the draft can start only during **Setup**",
+          ]),
+        },
+        {
+          name: "2. Configure the role pool",
+          value: checklist([
+            "Admin → Games → this game → **Sushi Buffet Draft** — enable the roles players may choose, then save",
+            "Keep enough Townsfolk, Outsider, Minion, and Demon roles for the current player count",
+            "For a small custom pool, enable **Recycle unchosen roles** so declined offers remain available",
+          ]),
+        },
+        {
+          name: "3. Run and finish",
+          value: checklist([
+            "`/st do buffet-start` — sends the first private offer; players pick in their own ST threads",
+            "For fake/dev players, the ST picks from that player’s ST thread",
+            "`/st do buffet-status` — check picks so far; `/st do buffet-cancel` — stop before completion",
+            "When complete, the complete player → role roster is posted privately in kib; then `/st next-phase` for Night 1",
+          ]),
+        },
+        {
+          name: "Also",
+          value: "Setup: `/st guide topic: setup` · Day: `/st guide topic: day` · Night: `/st guide topic: night` · All commands: `/st help`",
         },
       );
   }
@@ -720,7 +762,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           value: [
             "Whispers are player-side (`/whisper …`); declarations go to Whisper Declaration.",
             "Game over: `/st end` with `winner: good` or `evil`. Then `/st do archive` to freeze town/kib read-only.",
-            "Setup: `/st guide setup` · Night: `/st guide night` · All commands: `/st help`",
+            "Setup: `/st guide topic: setup` · Night: `/st guide topic: night` · All commands: `/st help`",
           ].join("\n"),
         },
       );
@@ -753,7 +795,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
         name: "Also",
         value: [
           "Game over: `/st end` with `winner: good` or `evil`. Then `/st do archive` to freeze town/kib read-only.",
-          "Setup: `/st guide setup` · Day: `/st guide day` · All commands: `/st help`",
+          "Setup: `/st guide topic: setup` · Day: `/st guide topic: day` · All commands: `/st help`",
         ].join("\n"),
       },
     );

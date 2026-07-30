@@ -14,7 +14,7 @@ import { canUseBot } from "../access.js";
 import { reportError } from "../error-reporter.js";
 import { PlayerHelpCommands, StGuideCommands } from "./command-help.js";
 
-describe("StGuideCommands.setup ack handling", () => {
+describe("StGuideCommands.guide ack handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(canUseBot).mockResolvedValue(true);
@@ -31,8 +31,8 @@ describe("StGuideCommands.setup ack handling", () => {
       user: { id: "u1" },
       isChatInputCommand: () => true,
       options: {
-        getSubcommandGroup: () => "guide",
-        getSubcommand: () => "setup",
+        getSubcommandGroup: () => null,
+        getSubcommand: () => "guide",
       },
       deferReply: vi.fn().mockResolvedValue(undefined),
       editReply: vi.fn().mockResolvedValue(undefined),
@@ -44,7 +44,7 @@ describe("StGuideCommands.setup ack handling", () => {
   it("editReplies after a successful defer", async () => {
     const cmd = new StGuideCommands();
     const ix = interaction();
-    await cmd.setup(ix as never);
+    await cmd.guide("setup", ix as never);
     expect(ix.deferReply).toHaveBeenCalledOnce();
     expect(ix.editReply).toHaveBeenCalledOnce();
     const payload = vi.mocked(ix.editReply).mock.calls[0]?.[0] as {
@@ -59,7 +59,7 @@ describe("StGuideCommands.setup ack handling", () => {
     const ix = interaction({
       deferReply: vi.fn().mockRejectedValue({ code: 40060, name: "DiscordAPIError" }),
     });
-    await cmd.setup(ix as never);
+    await cmd.guide("setup", ix as never);
     expect(ix.editReply).toHaveBeenCalledOnce();
     expect(reportError).not.toHaveBeenCalledWith(
       "help.reply.failed",
@@ -77,11 +77,11 @@ describe("StGuideCommands.setup ack handling", () => {
       createdTimestamp: Date.now() - 2_800,
       editReply: vi.fn().mockRejectedValue({ code: 40060, name: "DiscordAPIError" }),
     });
-    await cmd.setup(ix as never);
+    await cmd.guide("setup", ix as never);
     expect(reportError).toHaveBeenCalledWith(
       "help.reply.skipped",
       expect.objectContaining({ code: 40060 }),
-      expect.objectContaining({ subcommandGroup: "guide", subcommand: "setup" }),
+      expect.objectContaining({ subcommandGroup: undefined, subcommand: "guide" }),
     );
     expect(reportError).not.toHaveBeenCalledWith(
       "help.reply.failed",
@@ -97,7 +97,7 @@ describe("StGuideCommands.setup ack handling", () => {
       createdTimestamp: Date.now() - 191,
       deferReply: vi.fn().mockRejectedValue({ code: 10062 }),
     });
-    await cmd.setup(ix as never);
+    await cmd.guide("setup", ix as never);
     expect(reportError).not.toHaveBeenCalled();
     expect(ix.reply).not.toHaveBeenCalled();
     expect(ix.editReply).not.toHaveBeenCalled();
@@ -109,7 +109,7 @@ describe("StGuideCommands.setup ack handling", () => {
       createdTimestamp: Date.now() - 2_800,
       deferReply: vi.fn().mockRejectedValue({ code: 10062 }),
     });
-    await cmd.setup(ix as never);
+    await cmd.guide("setup", ix as never);
     expect(reportError).toHaveBeenCalledWith(
       "help.reply.expired",
       expect.objectContaining({ code: 10062 }),
@@ -122,7 +122,7 @@ describe("StGuideCommands.setup ack handling", () => {
   it("skips defer when already deferred by early ack", async () => {
     const cmd = new StGuideCommands();
     const ix = interaction({ deferred: true });
-    await cmd.setup(ix as never);
+    await cmd.guide("setup", ix as never);
     expect(ix.deferReply).not.toHaveBeenCalled();
     expect(ix.editReply).toHaveBeenCalledOnce();
   });
