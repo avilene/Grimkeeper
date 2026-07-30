@@ -904,7 +904,7 @@ export function createEmptyDayState(dayNumber: number): DayPhaseState {
 export function getNominationTally(
   state: GameState,
   nominationId: string,
-  options?: { ballot?: "effective" | "public" },
+  options?: { ballot?: "effective" | "public" | "private" },
 ): VoteTally {
   const tally: VoteTally = { yes: 0, no: 0, conditional: 0 };
   if (!state.day) return tally;
@@ -913,7 +913,11 @@ export function getNominationTally(
   for (const vote of state.day.votes) {
     if (vote.nominationId !== nominationId) continue;
     const choice =
-      ballot === "public" ? publicBallotChoice(vote) : vote.choice;
+      ballot === "public"
+        ? publicBallotChoice(vote)
+        : ballot === "private"
+          ? privateBallotChoice(vote)
+          : vote.choice;
     if (!choice) continue;
     tally[choice]++;
   }
@@ -1084,7 +1088,7 @@ export class GameEngine {
 
   getNominationTally(
     nominationId: string,
-    options?: { ballot?: "effective" | "public" },
+    options?: { ballot?: "effective" | "public" | "private" },
   ): VoteTally {
     return getNominationTally(this.state, nominationId, options);
   }
@@ -2779,7 +2783,7 @@ export class GameEngine {
 
   formatNominationTally(
     nominationId: string,
-    options?: { revealSecret?: boolean; ballot?: "effective" | "public" },
+    options?: { revealSecret?: boolean; ballot?: "effective" | "public" | "private" },
   ): string {
     const tally = this.getNominationTally(nominationId, {
       ballot: options?.ballot ?? "effective",

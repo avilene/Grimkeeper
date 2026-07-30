@@ -127,7 +127,15 @@ export function parseVoteTrackerButtonCustomId(
 function nominationTrackerBlock(engine: GameEngine, nomination: NominationRecord): string {
   const nominator = engine.getPlayerById(nomination.nominatorId);
   const nominee = engine.getPlayerById(nomination.nomineeId);
-  const tally = engine.formatNominationTally(nomination.id, { revealSecret: true });
+  const publicTally = engine.formatNominationTally(nomination.id, {
+    revealSecret: true,
+    ballot: "public",
+  });
+  const privateTally = engine.formatNominationTally(nomination.id, {
+    revealSecret: true,
+    ballot: "private",
+  });
+  const effectiveTally = engine.formatNominationTally(nomination.id, { revealSecret: true });
   const roll = engine.formatNominationVoteRoll(nomination.id, { audience: "storyteller" });
   const hand = engine.getCountHandPlayer(nomination.id);
   let lockLabel: string;
@@ -147,7 +155,9 @@ function nominationTrackerBlock(engine: GameEngine, nomination: NominationRecord
   return [
     `**${nominator?.displayName ?? "?"}** → **${nominee?.displayName ?? "?"}** (${status})`,
     `_Lock-in order: after nominee, around the circle (nominee last)._`,
-    tally,
+    `Public ballots — ${publicTally}`,
+    `Private ballots — ${privateTally}`,
+    `Effective tally — ${effectiveTally}`,
     roll,
   ].join("\n");
 }

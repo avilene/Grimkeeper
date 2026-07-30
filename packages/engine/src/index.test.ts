@@ -2084,6 +2084,8 @@ describe("GameEngine", () => {
 
     expect(engine.formatNominationTally(nomination.id, { ballot: "public" })).toContain("Yes: 1");
     expect(engine.formatNominationTally(nomination.id, { ballot: "public" })).toContain("No: 0");
+    expect(engine.formatNominationTally(nomination.id, { ballot: "private" })).toContain("Yes: 0");
+    expect(engine.formatNominationTally(nomination.id, { ballot: "private" })).toContain("No: 1");
     expect(engine.formatNominationVoteRoll(nomination.id, { audience: "public" })).toContain(
       "**yes**",
     );
