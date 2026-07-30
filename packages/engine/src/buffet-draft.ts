@@ -40,7 +40,7 @@ export function defaultBuffetConfig(): BuffetDraftConfig {
     enabledRoleIds: listBotcRoles()
       .filter((r) => r.team !== "traveler")
       .map((r) => r.id),
-    recycleUnchosen: false,
+    recycleUnchosen: true,
     mulliganSteps: [3, 2, 1],
     scriptPreset: "all",
   };
