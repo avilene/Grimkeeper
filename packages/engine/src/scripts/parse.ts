@@ -138,9 +138,10 @@ export function getOfficialRole(roleId: string): ScriptRole | undefined {
 }
 
 export function formatScriptRoleName(script: GameScript | null, roleId: string): string {
+  const normalized = roleId.toLowerCase().replace(/\s+/g, "");
   if (script) {
-    const role = script.roles.find((candidate) => candidate.id === roleId);
+    const role = script.roles.find((candidate) => candidate.id === roleId || candidate.name.toLowerCase().replace(/\s+/g, "") === normalized);
     if (role) return role.name;
   }
-  return officialCatalog.get(roleId)?.name ?? titleCaseId(roleId);
+  return officialCatalog.get(normalized)?.name ?? titleCaseId(normalized);
 }

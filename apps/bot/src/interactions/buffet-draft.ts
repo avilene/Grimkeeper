@@ -298,7 +298,7 @@ export async function handleBuffetPick(interaction: ButtonInteraction): Promise<
       await interaction.editReply({
         content: drafter.isFake
           ? `Assigned **${roleName}** to **${drafter.displayName}**. Draft complete!`
-          : `You picked **${roleName}**. The draft is complete!`,
+          : `You picked **${roleName}**!`,
       });
     } else {
       await interaction.editReply({

@@ -845,13 +845,6 @@ export const BOTC_ROLES: BotcRoleRecord[] = [
     "ability": "If you publicly claim to be the Goblin when nominated & are executed that day, your team wins."
   },
   {
-    "id": "mephit",
-    "name": "Mephit",
-    "edition": "",
-    "team": "minion",
-    "ability": "You start knowing a secret word. The 1st good player to say this word becomes evil that night."
-  },
-  {
     "id": "mezepheles",
     "name": "Mezepheles",
     "edition": "",
