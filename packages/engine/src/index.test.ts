@@ -2002,7 +2002,7 @@ describe("GameEngine", () => {
     }
   });
 
-  it("shows optional notes on yes and no votes as well as conditional", () => {
+  it("shows optional notes on yes and no votes only in ST thread as well as conditional", () => {
     const engine = setupTownEngine(3);
     const players = engine.getState().players;
     for (const event of engine.handle({
@@ -2038,8 +2038,8 @@ describe("GameEngine", () => {
     }
 
     const publicRoll = engine.formatNominationVoteRoll(nomination.id, { audience: "public" });
-    expect(publicRoll).toContain("**yes** — Trust them today.");
-    expect(publicRoll).toContain("**no** — Too suspicious.");
+    expect(publicRoll).toContain("**yes**");
+    expect(publicRoll).toContain("**no**");
 
     const stRoll = engine.formatNominationVoteRoll(nomination.id, { audience: "storyteller" });
     expect(stRoll).toContain("**yes** — Trust them today.");
