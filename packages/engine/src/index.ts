@@ -2843,7 +2843,7 @@ export class GameEngine {
         const publicChoice = publicBallotChoice(vote);
         if (publicChoice) {
           const ghostTag = !player.alive ? " (ghost)" : "";
-          status = `**${publicChoice}**${ghostTag}${formatVoteReasonSuffix(vote.reason)}`;
+          status = `**${publicChoice}**${ghostTag}${publicChoice === "conditional" ? formatVoteReasonSuffix(vote.reason) : ''}`;
         } else if (!player.alive && player.ghostVoteUsed) {
           status = "_ghost used (no vote this nomination)_";
         } else if (!player.alive) {
