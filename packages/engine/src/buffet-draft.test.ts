@@ -62,7 +62,7 @@ describe("defaultBuffetConfig", () => {
   it("includes all non-traveler roles by default", () => {
     const config = defaultBuffetConfig();
     expect(config.enabledRoleIds.length).toBeGreaterThan(100);
-    expect(config.recycleUnchosen).toBe(false);
+    expect(config.recycleUnchosen).toBe(true);
     expect(config.mulliganSteps).toEqual([3, 2, 1]);
     expect(config.scriptPreset).toBe("all");
   });
