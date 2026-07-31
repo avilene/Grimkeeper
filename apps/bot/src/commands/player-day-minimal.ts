@@ -128,9 +128,8 @@ async function castPlayerVote(
       return;
     }
 
-    const tally = updatedEngine.formatNominationTally(nomination.id, { revealSecret: true });
     await replyOrEditInteraction(interaction, {
-      content: `Vote recorded (${choice}). ${tally}`,
+      content: `Vote recorded (${choice}).`,
       flags: MessageFlags.Ephemeral,
     });
   } catch (error) {

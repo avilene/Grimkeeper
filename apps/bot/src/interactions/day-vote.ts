@@ -249,52 +249,40 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
     const isSt = engine.isStoryteller(interaction.user.id);
 
     if (interaction.guild) {
-      await refreshNominationEverywhere(interaction.guild, game, engine, parsed.nominationId, {
-        revealSecret: false,
-      });
+    await refreshNominationEverywhere(interaction.guild, game, engine, parsed.nominationId, {
+      revealSecret: false,
+    });
 
-      const nominee = nomination ? engine.getPlayerById(nomination.nomineeId) : null;
-      await postGameLogVoteCast(interaction.guild, game, {
-        voterDiscordId: interaction.user.id,
-        nomineeLabel: nominee?.displayName ?? "nominee",
-        choice,
-        ballot: "public",
-      });
+    const nominee = nomination ? engine.getPlayerById(nomination.nomineeId) : null;
+    await postGameLogVoteCast(interaction.guild, game, {
+      voterDiscordId: interaction.user.id,
+      nomineeLabel: nominee?.displayName ?? "nominee",
+      choice,
+      ballot: "public",
+    });
 
-      // Public result announcement only for public votes cast in the shared vote venue.
-      if (!isSecret) {
-        const voting = await resolveVotingChannel(interaction.guild, game, engine);
-        const openCount =
-          engine.getState().day?.nominations.filter((candidate) => candidate.status === "open")
-            .length ?? 0;
-        const tally = nomination
-          ? engine.formatNominationTally(nomination.id, {
-              revealSecret: true,
-              ballot: "public",
-            })
-          : "";
-        await voting
-          ?.send({
-            content: `<@${interaction.user.id}> voted **${choice}** on **${nominee?.displayName ?? "nominee"}**. ${tally}${openCount > 1 ? `\n_${openCount} nominations still open._` : ""}`,
-            allowedMentions: { users: [] },
-          })
-          .catch(() => undefined);
-      }
+    // Public result announcement only for public votes cast in the shared vote venue.
+    if (!isSecret) {
+      const voting = await resolveVotingChannel(interaction.guild, game, engine);
+      const openCount =
+        engine.getState().day?.nominations.filter((candidate) => candidate.status === "open")
+          .length ?? 0;
+      await voting
+        ?.send({
+          content: `<@${interaction.user.id}> voted **${choice}** on **${nominee?.displayName ?? "nominee"}**.${openCount > 1 ? `\n_${openCount} nominations still open._` : ""}`,
+          allowedMentions: { users: [] },
+        })
+        .catch(() => undefined);
+    }
     }
 
     if (isSecret && !isSt) {
-      await interaction.editReply({ content: "Vote recorded privately." });
-      return true;
+    await interaction.editReply({ content: "Vote recorded privately." });
+    return true;
     }
 
-    const tally = nomination
-      ? engine.formatNominationTally(nomination.id, {
-          revealSecret: true,
-          ballot: "public",
-        })
-      : "";
     await interaction.editReply({
-      content: `Vote recorded (${choice}). ${tally}`,
+    content: `Vote recorded (${choice}).`,
     });
   } catch (error) {
     await replyEngineError(interaction, error);
