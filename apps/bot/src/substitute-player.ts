@@ -177,9 +177,9 @@ export async function substitutePlayerInGame(
     if (thread.archived) {
       await thread.setArchived(false, "Player substituted.").catch(() => undefined);
     }
-    await thread.members.remove(oldDiscordUserId).catch(() => undefined);
+    // Keep the old player in the thread so they can still read along.
     await thread.members.add(newUser.id).catch(() => undefined);
-    const nextName = stPlayerThreadName(displayName);
+    const nextName = `ST ${displayName} (was ${oldDisplayName})`.slice(0, 100);
     if (thread.name !== nextName) {
       await thread.setName(nextName).catch(() => undefined);
     }
@@ -191,7 +191,7 @@ export async function substitutePlayerInGame(
       .catch(() => undefined);
     await thread
       .send({
-        content: `<@${newUser.id}> is now playing this seat (substituted for <@${oldDiscordUserId}>).`,
+        content: `<@${newUser.id}> is now playing this seat (substituted for <@${oldDiscordUserId}>). <@${oldDiscordUserId}> remains in this thread.`,
         allowedMentions: { users: [newUser.id, oldDiscordUserId] },
       })
       .catch(() => undefined);
@@ -209,13 +209,13 @@ export async function substitutePlayerInGame(
     if (whisperThread.archived) {
       await whisperThread.setArchived(false, "Player substituted.").catch(() => undefined);
     }
-    await whisperThread.members.remove(oldDiscordUserId).catch(() => undefined);
+    // Keep the old player in whisper threads so they can still read along.
     await whisperThread.members.add(newUser.id).catch(() => undefined);
   }
 
   const voting = await resolveVotingChannel(guild, game, engine);
   if (voting?.isThread()) {
-    await voting.members.remove(oldDiscordUserId).catch(() => undefined);
+    // Keep the old player in the voting thread so they can still read along.
     await voting.members.add(newUser.id).catch(() => undefined);
   }
 
