@@ -108,9 +108,8 @@ export async function runSetPlayerVote(options: {
       );
     }
 
-    const tally = engine.formatNominationTally(nomination.id, { revealSecret: true });
     await interaction.reply({
-      content: `Set **${voter.displayName}** vote on **${nominee.displayName}** to **${choice}**. ${tally}`,
+      content: `Set **${voter.displayName}** vote on **${nominee.displayName}** to **${choice}**.`,
       flags: MessageFlags.Ephemeral,
     });
     return true;

@@ -3,9 +3,9 @@ set -e
 
 export DATABASE_URL="${DATABASE_URL:-file:/app/data/grimkeeper.db}"
 
-echo "Applying database schema..."
+echo "Applying database migrations..."
 cd /app/packages/database
-./node_modules/.bin/prisma db push --accept-data-loss
+./node_modules/.bin/prisma migrate deploy
 cd /app
 
 echo "Starting Grimkeeper bot..."

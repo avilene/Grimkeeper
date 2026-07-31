@@ -10,6 +10,7 @@ export {
   teamFromRoleId,
 } from "./sync-projection.js";
 export { backfillGameWinnersFromEvents } from "./backfill-winners.js";
+export { migrateVotesToIsPrivate } from "./migrate-votes.js";
 export {
   getPlayerStats,
   getPlayerStatsOverview,

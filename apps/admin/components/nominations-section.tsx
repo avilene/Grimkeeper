@@ -57,8 +57,7 @@ export type EditableVote = {
   voterId: string;
   choice: string | null;
   reason: string | null;
-  privateChoice: string | null;
-  privateReason: string | null;
+  isPrivate: boolean;
 };
 
 /** Existing DB vote or a pending roster placeholder (no row yet). */
@@ -68,8 +67,7 @@ type VoteTableEntry = {
   voterId: string;
   choice: string | null;
   reason: string | null;
-  privateChoice: string | null;
-  privateReason: string | null;
+  isPrivate: boolean;
 };
 
 export type EditableNomination = {
@@ -112,15 +110,16 @@ function playerName(
 function votesSummary(votes: EditableVote[], rosterSize: number): string {
   let publicYes = 0;
   let privateYes = 0;
-  let cast = 0;
+  const castVoters = new Set<string>();
+  const knownVoters = new Set<string>();
   for (const vote of votes) {
-    const hasBallot = Boolean(vote.choice || vote.privateChoice);
-    if (hasBallot) cast += 1;
-    if (vote.choice === "yes") publicYes += 1;
-    if (vote.privateChoice === "yes") privateYes += 1;
+    knownVoters.add(vote.voterId);
+    if (vote.choice) castVoters.add(vote.voterId);
+    if (!vote.isPrivate && vote.choice === "yes") publicYes += 1;
+    if (vote.isPrivate && vote.choice === "yes") privateYes += 1;
   }
-  const size = Math.max(rosterSize, votes.length);
-  return `${cast}/${size} cast · ${publicYes} pub yes · ${privateYes} priv yes`;
+  const size = Math.max(rosterSize, knownVoters.size);
+  return `${castVoters.size}/${size} cast · ${publicYes} pub yes · ${privateYes} priv yes`;
 }
 
 /**
@@ -153,20 +152,23 @@ function buildVoteRoster(
   nomination: EditableNomination,
   players: NominationPlayerOption[],
 ): VoteTableEntry[] {
-  const byVoter = new Map(nomination.votes.map((vote) => [vote.voterId, vote]));
+  // Index existing votes by (voterId, isPrivate).
+  const byKey = new Map(
+    nomination.votes.map((vote) => [`${vote.voterId}:${vote.isPrivate}`, vote]),
+  );
   const orderedPlayers = playersInVoteOrder(players, nomination.nomineeId);
   const rows: VoteTableEntry[] = orderedPlayers.map((player) => {
-    const existing = byVoter.get(player.id);
+    const key = `${player.id}:false`;
+    const existing = byKey.get(key);
     if (existing) {
-      byVoter.delete(player.id);
+      byKey.delete(key);
       return {
         id: existing.id,
         nominationId: nomination.id,
         voterId: existing.voterId,
         choice: existing.choice,
         reason: existing.reason,
-        privateChoice: existing.privateChoice,
-        privateReason: existing.privateReason,
+        isPrivate: false,
       };
     }
     return {
@@ -175,21 +177,19 @@ function buildVoteRoster(
       voterId: player.id,
       choice: null,
       reason: null,
-      privateChoice: null,
-      privateReason: null,
+      isPrivate: false,
     };
   });
 
-  // Votes for players no longer on the roster (keep them editable).
-  for (const leftover of byVoter.values()) {
+  // Append any remaining votes not matched to the roster (private ballots + leftover public).
+  for (const leftover of byKey.values()) {
     rows.push({
       id: leftover.id,
       nominationId: leftover.nominationId,
       voterId: leftover.voterId,
       choice: leftover.choice,
       reason: leftover.reason,
-      privateChoice: leftover.privateChoice,
-      privateReason: leftover.privateReason,
+      isPrivate: leftover.isPrivate,
     });
   }
   return rows;
@@ -249,7 +249,7 @@ function VoteTableRow({
   players: NominationPlayerOption[];
   orderIndex: number;
 }) {
-  const rowKey = vote.id ?? `draft-${vote.nominationId}-${vote.voterId}`;
+  const rowKey = vote.id ?? `draft-${vote.nominationId}-${vote.voterId}-${vote.isPrivate}`;
   const formId = `vote-save-${rowKey}`;
   const [saveResult, saveAction] = useActionState<SaveResult | null, FormData>(
     saveVote.bind(null, gameId, vote.id),
@@ -260,7 +260,7 @@ function VoteTableRow({
     null,
   );
   const pending = !vote.id;
-  const hasBallot = Boolean(vote.choice || vote.privateChoice);
+  const hasBallot = Boolean(vote.choice);
 
   return (
     <TableRow className="hover:bg-transparent align-top">
@@ -268,11 +268,15 @@ function VoteTableRow({
         <form id={formId} action={saveAction} />
         <input form={formId} type="hidden" name="nominationId" value={vote.nominationId} />
         <input form={formId} type="hidden" name="voterId" value={vote.voterId} />
+        <input form={formId} type="hidden" name="isPrivate" value={String(vote.isPrivate)} />
         <div className="space-y-0.5">
           <div className="text-sm font-medium">
             <span className="mr-1.5 text-xs text-muted-foreground">{orderIndex}.</span>
             {playerName(players, vote.voterId)}
           </div>
+          <span className={`text-xs ${vote.isPrivate ? "text-amber-600" : "text-muted-foreground"}`}>
+            {vote.isPrivate ? "private" : "public"}
+          </span>
           {pending ? (
             <p className="text-xs text-muted-foreground">pending</p>
           ) : !hasBallot ? (
@@ -286,7 +290,7 @@ function VoteTableRow({
           name="choice"
           defaultValue={vote.choice ?? ""}
           className={selectClassName}
-          aria-label="Public ballot"
+          aria-label="Ballot choice"
         >
           <option value="">—</option>
           {CHOICES.map((choice) => (
@@ -302,34 +306,8 @@ function VoteTableRow({
           name="reason"
           defaultValue={vote.reason ?? ""}
           className={cn(cellInputClass, "min-w-[10rem]")}
-          placeholder="Public conditional reason"
-          aria-label="Public reason"
-        />
-      </TableCell>
-      <TableCell className="min-w-[7rem]">
-        <select
-          form={formId}
-          name="privateChoice"
-          defaultValue={vote.privateChoice ?? ""}
-          className={selectClassName}
-          aria-label="Private ballot"
-        >
-          <option value="">—</option>
-          {CHOICES.map((choice) => (
-            <option key={choice} value={choice}>
-              {choice}
-            </option>
-          ))}
-        </select>
-      </TableCell>
-      <TableCell className="min-w-[10rem]">
-        <Input
-          form={formId}
-          name="privateReason"
-          defaultValue={vote.privateReason ?? ""}
-          className={cn(cellInputClass, "min-w-[10rem]")}
-          placeholder="Private conditional reason"
-          aria-label="Private reason"
+          placeholder="Conditional reason"
+          aria-label="Reason"
         />
       </TableCell>
       <TableCell>
@@ -562,10 +540,8 @@ function NominationAccordionItem({
                 <TableHeader>
                   <TableRow>
                     <TableHead>Voter</TableHead>
-                    <TableHead>Public</TableHead>
-                    <TableHead>Public reason</TableHead>
-                    <TableHead>Private</TableHead>
-                    <TableHead>Private reason</TableHead>
+                    <TableHead>Choice</TableHead>
+                    <TableHead>Reason</TableHead>
                     <TableHead className="w-36" />
                   </TableRow>
                 </TableHeader>

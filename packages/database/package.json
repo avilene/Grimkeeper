@@ -16,7 +16,11 @@
     "test": "vitest run",
     "db:generate": "prisma generate",
     "db:generate:if-needed": "node scripts/generate-if-stale.mjs",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
     "db:push": "prisma db push && node scripts/generate-if-stale.mjs",
+    "db:migrate-votes": "node scripts/migrate-votes.mjs",
     "db:backfill-winners": "node scripts/backfill-winners.mjs"
   },
   "dependencies": {

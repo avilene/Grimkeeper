@@ -139,7 +139,7 @@ export class StCommandsMinimal {
       type: ApplicationCommandOptionType.String,
       required: false,
     })
-    choice: "yes" | "no" | "conditional" | undefined,
+    choice: string | undefined,
     @SlashOption({
       name: "voter",
       description: "For set-vote: who is voting",
@@ -2392,7 +2392,7 @@ export class StCommandsMinimal {
   }
 
   async setVote(
-    choice: "yes" | "no" | "conditional",
+    choice: string,
     voter: User | undefined,
     nominee: User | undefined,
     reason: string | undefined,

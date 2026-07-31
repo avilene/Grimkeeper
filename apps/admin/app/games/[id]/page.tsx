@@ -122,8 +122,7 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
           voterId: vote.voterId,
           choice: vote.choice,
           reason: vote.reason,
-          privateChoice: vote.privateChoice,
-          privateReason: vote.privateReason,
+          isPrivate: vote.isPrivate,
         })),
       })),
     )

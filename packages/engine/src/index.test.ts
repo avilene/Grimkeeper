@@ -2098,6 +2098,48 @@ describe("GameEngine", () => {
     expect(stRoll).toContain("(public: yes)");
   });
 
+  it("does not show a public-only reason on a private ballot without its own reason", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Split reason test.",
+    })) {
+      engine.apply(event);
+    }
+    const nomination = engine.getState().day!.nominations[0]!;
+    const voter = players[2]!;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: voter.id,
+      choice: "conditional",
+      reason: "If they claim outsider.",
+    })) {
+      engine.apply(event);
+    }
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: voter.id,
+      choice: "yes",
+      privateBallot: true,
+    })) {
+      engine.apply(event);
+    }
+
+    const stRoll = engine.formatNominationVoteRoll(nomination.id, { audience: "storyteller" });
+    expect(stRoll).toContain("**yes** (public: conditional)");
+    expect(stRoll).not.toContain("If they claim outsider.");
+  });
+
   it("force-fails every open nomination regardless of tally", () => {
     const engine = setupTownEngine(3);
     const players = engine.getState().players;
