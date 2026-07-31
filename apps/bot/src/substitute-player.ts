@@ -5,8 +5,8 @@ import { GameCommandKind } from "@grimkeeper/engine";
 import { fetchGuildMemberWithTimeout } from "./access.js";
 import { resolveOrCreatePlayerAlias } from "./commands/alias.js";
 import {
-  listPersonalPlayerThreads,
   loadEngine,
+  loadParentThreadIndex,
   persistEvents,
   refreshAllNominationEverywhere,
   resolveVotingChannel,
@@ -163,13 +163,13 @@ export async function substitutePlayerInGame(
       ? await guild.channels.fetch(storedThreadId).catch(() => null)
       : null;
   if (!thread?.isThread()) {
-    const threads = await listPersonalPlayerThreads(guild, game, engine, {
-      includeArchived: true,
-    });
-    // After substitute, engine display name is new — also try old name for leftover threads.
+    // listPersonalPlayerThreads searches by the *new* player name after syncGameProjection,
+    // so it will miss the old thread (e.g. "ST Star") before it has been renamed.
+    // Search the thread index directly by both old and new display names instead.
+    const threadIndex = await loadParentThreadIndex(guild, game.channelId);
     thread =
-      threads.find((candidate) => candidate.name === stPlayerThreadName(oldDisplayName)) ??
-      threads.find((candidate) => candidate.name === stPlayerThreadName(displayName)) ??
+      threadIndex.get(stPlayerThreadName(oldDisplayName)) ??
+      threadIndex.get(stPlayerThreadName(displayName)) ??
       null;
   }
 
@@ -177,9 +177,9 @@ export async function substitutePlayerInGame(
     if (thread.archived) {
       await thread.setArchived(false, "Player substituted.").catch(() => undefined);
     }
-    await thread.members.remove(oldDiscordUserId).catch(() => undefined);
+    // Keep the old player in the thread so they can still read along.
     await thread.members.add(newUser.id).catch(() => undefined);
-    const nextName = stPlayerThreadName(displayName);
+    const nextName = `ST ${displayName} (was ${oldDisplayName})`.slice(0, 100);
     if (thread.name !== nextName) {
       await thread.setName(nextName).catch(() => undefined);
     }
@@ -191,7 +191,7 @@ export async function substitutePlayerInGame(
       .catch(() => undefined);
     await thread
       .send({
-        content: `<@${newUser.id}> is now playing this seat (substituted for <@${oldDiscordUserId}>).`,
+        content: `<@${newUser.id}> is now playing this seat (substituted for <@${oldDiscordUserId}>). <@${oldDiscordUserId}> remains in this thread.`,
         allowedMentions: { users: [newUser.id, oldDiscordUserId] },
       })
       .catch(() => undefined);
@@ -209,13 +209,13 @@ export async function substitutePlayerInGame(
     if (whisperThread.archived) {
       await whisperThread.setArchived(false, "Player substituted.").catch(() => undefined);
     }
-    await whisperThread.members.remove(oldDiscordUserId).catch(() => undefined);
+    // Keep the old player in whisper threads so they can still read along.
     await whisperThread.members.add(newUser.id).catch(() => undefined);
   }
 
   const voting = await resolveVotingChannel(guild, game, engine);
   if (voting?.isThread()) {
-    await voting.members.remove(oldDiscordUserId).catch(() => undefined);
+    // Keep the old player in the voting thread so they can still read along.
     await voting.members.add(newUser.id).catch(() => undefined);
   }
 
