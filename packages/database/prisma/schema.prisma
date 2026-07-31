@@ -135,16 +135,15 @@ model Vote {
   gameDayId     String
   nominationId  String
   voterId       String
-  /** Public Town Voting ballot (yes / no / conditional). */
+  /** Open-ended ballot value: "yes", "no", "conditional", or any custom string. */
   choice        String?
   reason        String?
-  /** Private ST-thread ballot (yes / no / conditional). */
-  privateChoice String?
-  privateReason String?
+  /** True for private ST-thread ballots; false (default) for public Town Voting ballots. */
+  isPrivate     Boolean    @default(false)
   nomination    Nomination @relation(fields: [nominationId], references: [id], onDelete: Cascade)
   gameDay       GameDay    @relation(fields: [gameDayId], references: [id], onDelete: Cascade)
 
-  @@unique([nominationId, voterId])
+  @@unique([nominationId, voterId, isPrivate])
   @@index([gameDayId])
 }
 

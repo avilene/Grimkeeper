@@ -139,15 +139,14 @@ export async function syncGameProjectionFromEngine(
 
   const voteKeys = new Set<string>();
   for (const vote of day.votes) {
-    voteKeys.add(`${vote.nominationId}:${vote.voterId}`);
-    const publicChoice =
-      vote.publicChoice ?? (vote.privateChoice != null ? null : vote.choice);
-    const privateChoice = vote.privateChoice ?? null;
+    // Key combines nomination, voter, and ballot type.
+    voteKeys.add(`${vote.nominationId}:${vote.voterId}:${vote.isPrivate}`);
     const existing = await prisma.vote.findUnique({
       where: {
-        nominationId_voterId: {
+        nominationId_voterId_isPrivate: {
           nominationId: vote.nominationId,
           voterId: vote.voterId,
+          isPrivate: vote.isPrivate,
         },
       },
     });
@@ -156,12 +155,8 @@ export async function syncGameProjectionFromEngine(
       await prisma.vote.update({
         where: { id: existing.id },
         data: {
-          choice: publicChoice,
+          choice: vote.choice,
           reason: vote.reason,
-          privateChoice,
-          // Engine has a single reason; keep admin privateReason unless this was a private cast.
-          privateReason:
-            privateChoice != null && publicChoice == null ? vote.reason : existing.privateReason,
         },
       });
       continue;
@@ -172,21 +167,20 @@ export async function syncGameProjectionFromEngine(
         gameDayId: gameDay.id,
         nominationId: vote.nominationId,
         voterId: vote.voterId,
-        choice: publicChoice,
+        choice: vote.choice,
         reason: vote.reason,
-        privateChoice,
-        privateReason: privateChoice != null && publicChoice == null ? vote.reason : null,
+        isPrivate: vote.isPrivate,
       },
     });
   }
 
   const dbVotes = await prisma.vote.findMany({
     where: { gameDayId: gameDay.id },
-    select: { id: true, nominationId: true, voterId: true },
+    select: { id: true, nominationId: true, voterId: true, isPrivate: true },
   });
 
   for (const dbVote of dbVotes) {
-    const key = `${dbVote.nominationId}:${dbVote.voterId}`;
+    const key = `${dbVote.nominationId}:${dbVote.voterId}:${dbVote.isPrivate}`;
     if (!voteKeys.has(key)) {
       await prisma.vote.delete({ where: { id: dbVote.id } });
     }

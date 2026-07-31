@@ -40,8 +40,8 @@ const VOTE_CHOICE_FIELD = "choice";
 const VOTE_REASON_FIELD = "reason";
 
 function parseVoteChoice(value: string): VoteChoice | null {
-  if (value === "yes" || value === "no" || value === "conditional") return value;
-  return null;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 async function resolveGameForVoteIds(
@@ -225,7 +225,7 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
   const choiceRaw = interaction.fields.getTextInputValue(VOTE_CHOICE_FIELD).trim().toLowerCase();
   const choice = parseVoteChoice(choiceRaw);
   if (!choice) {
-    await interaction.editReply({ content: "Invalid vote choice. Use yes, no, or conditional." }).catch(() => undefined);
+    await interaction.editReply({ content: "Invalid vote choice. Enter a non-empty value." }).catch(() => undefined);
     return true;
   }
 

@@ -43,7 +43,7 @@ async function respondVoteNomineeAutocomplete(
 async function castPlayerVote(
   interaction: CommandInteraction,
   nomineeDiscordId: string,
-  choice: "yes" | "no" | "conditional",
+  choice: string,
   reason: string | undefined,
   privateBallot: boolean,
 ): Promise<void> {
@@ -352,42 +352,7 @@ export class PlayerDayCommandsMinimal {
       type: ApplicationCommandOptionType.String,
       required: true,
     })
-    choice: "yes" | "no" | "conditional",
-    @SlashOption({
-      name: "reason",
-      description: "Required for conditional votes",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-    })
-    reason: string | undefined,
-    interaction: CommandInteraction,
-  ): Promise<void> {
-    await castPlayerVote(interaction, nomineeDiscordId, choice, reason, false);
-  }
-
-  @Slash({
-    name: "privatevote",
-    description: "Cast a private vote (ST sees it on the kib tracker)",
-  })
-  async privatevote(
-    @SlashOption({
-      name: "nominee",
-      description: "Open nominee to vote on (type to search)",
-      type: ApplicationCommandOptionType.String,
-      required: true,
-      autocomplete: respondVoteNomineeAutocomplete,
-    })
-    nomineeDiscordId: string,
-    @SlashChoice({ name: "Yes", value: "yes" })
-    @SlashChoice({ name: "No", value: "no" })
-    @SlashChoice({ name: "Conditional", value: "conditional" })
-    @SlashOption({
-      name: "choice",
-      description: "Your vote",
-      type: ApplicationCommandOptionType.String,
-      required: true,
-    })
-    choice: "yes" | "no" | "conditional",
+    choice: string,
     @SlashOption({
       name: "reason",
       description: "Required for conditional votes",

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 export type GamePhase = "lobby" | "setup" | "night" | "day" | "ended";
-export type VoteChoice = "yes" | "no" | "conditional";
+/** Open-ended vote value; canonical values are "yes", "no", "conditional" but any string is accepted. */
+export type VoteChoice = string;
 export type VoteVisibility = "public" | "secret";
 export type NominationStatus = "open" | "resolved_pass" | "resolved_fail" | "executed";
 
@@ -392,13 +393,11 @@ export interface NominationRecord {
 export interface VoteRecord {
   nominationId: string;
   voterId: string;
-  /** Effective vote for resolution / count (last cast or ST count). */
+  /** Open-ended ballot value (e.g. "yes", "no", "conditional"). */
   choice: VoteChoice;
   reason: string | null;
-  /** Ballot cast in Town Voting (or ST count). Null if none yet. */
-  publicChoice: VoteChoice | null;
-  /** Ballot cast in a personal ST thread. Null if none yet. */
-  privateChoice: VoteChoice | null;
+  /** True for private ST-thread ballots; false for public Town Voting ballots. */
+  isPrivate: boolean;
 }
 
 export interface DayPhaseState {
@@ -910,47 +909,33 @@ export function getNominationTally(
   if (!state.day) return tally;
   const ballot = options?.ballot ?? "effective";
 
-  for (const vote of state.day.votes) {
-    if (vote.nominationId !== nominationId) continue;
-    const choice =
-      ballot === "public"
-        ? publicBallotChoice(vote)
-        : ballot === "private"
-          ? privateBallotChoice(vote)
-          : vote.choice;
-    if (!choice) continue;
-    tally[choice]++;
+  if (ballot === "effective") {
+    // Per voter: prefer private ballot over public when both exist.
+    const effectiveByVoter = new Map<string, VoteRecord>();
+    for (const vote of state.day.votes) {
+      if (vote.nominationId !== nominationId) continue;
+      const existing = effectiveByVoter.get(vote.voterId);
+      if (!existing || vote.isPrivate) {
+        effectiveByVoter.set(vote.voterId, vote);
+      }
+    }
+    for (const vote of effectiveByVoter.values()) {
+      if (vote.choice === "yes") tally.yes++;
+      else if (vote.choice === "no") tally.no++;
+      else if (vote.choice === "conditional") tally.conditional++;
+    }
+  } else {
+    const targetPrivate = ballot === "private";
+    for (const vote of state.day.votes) {
+      if (vote.nominationId !== nominationId) continue;
+      if (vote.isPrivate !== targetPrivate) continue;
+      if (vote.choice === "yes") tally.yes++;
+      else if (vote.choice === "no") tally.no++;
+      else if (vote.choice === "conditional") tally.conditional++;
+    }
   }
+
   return tally;
-}
-
-/** Public Town Voting ballot; legacy votes (no split fields) count as public. */
-export function publicBallotChoice(vote: VoteRecord): VoteChoice | null {
-  if (vote.publicChoice != null) return vote.publicChoice;
-  if (vote.privateChoice != null) return null;
-  return vote.choice;
-}
-
-export function privateBallotChoice(vote: VoteRecord): VoteChoice | null {
-  return vote.privateChoice ?? null;
-}
-
-export function normalizeVoteRecord(vote: VoteRecord): VoteRecord {
-  const hasSplit =
-    Object.prototype.hasOwnProperty.call(vote, "publicChoice") ||
-    Object.prototype.hasOwnProperty.call(vote, "privateChoice");
-  if (!hasSplit) {
-    return {
-      ...vote,
-      publicChoice: vote.choice,
-      privateChoice: null,
-    };
-  }
-  return {
-    ...vote,
-    publicChoice: vote.publicChoice ?? null,
-    privateChoice: vote.privateChoice ?? null,
-  };
 }
 
 function formatVoteReasonSuffix(reason: string | null | undefined): string {
@@ -960,9 +945,10 @@ function formatVoteReasonSuffix(reason: string | null | undefined): string {
 
 function formatStorytellerVoteStatus(
   player: PlayerState,
-  vote: VoteRecord | undefined,
+  publicVote: VoteRecord | undefined,
+  privateVote: VoteRecord | undefined,
 ): string {
-  if (!vote) {
+  if (!publicVote && !privateVote) {
     if (!player.alive && player.ghostVoteUsed) {
       return "_ghost used (no vote this nomination)_";
     }
@@ -970,17 +956,15 @@ function formatStorytellerVoteStatus(
     return "_pending_";
   }
 
-  const privateChoice = privateBallotChoice(vote);
-  const publicChoice = publicBallotChoice(vote);
   const ghostTag = !player.alive ? " (ghost)" : "";
-  const publicLabel = publicChoice ?? "—";
-  const reason = formatVoteReasonSuffix(vote.reason);
+  const publicLabel = publicVote?.choice ?? "—";
+  const reason = formatVoteReasonSuffix(privateVote?.reason ?? publicVote?.reason);
 
-  if (privateChoice) {
-    return `**${privateChoice}**${ghostTag} (public: ${publicLabel})${reason}`;
+  if (privateVote) {
+    return `**${privateVote.choice}**${ghostTag} (public: ${publicLabel})${reason}`;
   }
-  if (publicChoice) {
-    return `**${publicChoice}**${ghostTag}${reason}`;
+  if (publicVote) {
+    return `**${publicVote.choice}**${ghostTag}${reason}`;
   }
   if (!player.alive && player.ghostVoteUsed) {
     return "_ghost used (no vote this nomination)_";
@@ -992,10 +976,18 @@ function formatStorytellerVoteStatus(
 export function getEffectiveYesVotes(state: GameState, nominationId: string): number {
   if (!state.day) return 0;
 
-  let yes = 0;
+  // Per voter: private vote overrides public for the effective count.
+  const effectiveByVoter = new Map<string, VoteRecord>();
   for (const vote of state.day.votes) {
-    if (vote.nominationId !== nominationId || vote.choice !== "yes") continue;
-    yes++;
+    if (vote.nominationId !== nominationId) continue;
+    const existing = effectiveByVoter.get(vote.voterId);
+    if (!existing || vote.isPrivate) {
+      effectiveByVoter.set(vote.voterId, vote);
+    }
+  }
+  let yes = 0;
+  for (const vote of effectiveByVoter.values()) {
+    if (vote.choice === "yes") yes++;
   }
   return yes;
 }
@@ -2469,22 +2461,19 @@ export class GameEngine {
       }
       case GameEventType.VoteCast: {
         if (!this.state.day) break;
+        const isPrivate = event.privateBallot === true;
         const existingIndex = this.state.day.votes.findIndex(
           (vote) =>
-            vote.nominationId === event.nominationId && vote.voterId === event.voterId,
+            vote.nominationId === event.nominationId &&
+            vote.voterId === event.voterId &&
+            vote.isPrivate === isPrivate,
         );
-        const previous =
-          existingIndex >= 0
-            ? normalizeVoteRecord(this.state.day.votes[existingIndex]!)
-            : null;
-        const privateBallot = event.privateBallot === true;
         const voteRecord: VoteRecord = {
           nominationId: event.nominationId,
           voterId: event.voterId,
           choice: event.choice,
           reason: event.reason,
-          publicChoice: privateBallot ? (previous?.publicChoice ?? null) : event.choice,
-          privateChoice: privateBallot ? event.choice : (previous?.privateChoice ?? null),
+          isPrivate,
         };
         if (existingIndex >= 0) {
           this.state.day.votes[existingIndex] = voteRecord;
@@ -2633,21 +2622,19 @@ export class GameEngine {
       }
       case GameEventType.NominationCountHandAdvanced: {
         if (!this.state.day) break;
+        // Count votes are always public ballots.
         const existingIndex = this.state.day.votes.findIndex(
           (vote) =>
-            vote.nominationId === event.nominationId && vote.voterId === event.voterId,
+            vote.nominationId === event.nominationId &&
+            vote.voterId === event.voterId &&
+            !vote.isPrivate,
         );
-        const previous =
-          existingIndex >= 0
-            ? normalizeVoteRecord(this.state.day.votes[existingIndex]!)
-            : null;
         const voteRecord: VoteRecord = {
           nominationId: event.nominationId,
           voterId: event.voterId,
           choice: event.choice,
           reason: null,
-          publicChoice: event.choice,
-          privateChoice: previous?.privateChoice ?? null,
+          isPrivate: false,
         };
         if (existingIndex >= 0) {
           this.state.day.votes[existingIndex] = voteRecord;
@@ -2820,11 +2807,17 @@ export class GameEngine {
     const ordered = this.getVoteLockInOrder(nomination.nomineeId);
     if (ordered.length === 0) return "_No seated players._";
 
-    const votesByVoter = new Map(
-      day.votes
-        .filter((vote) => vote.nominationId === nominationId)
-        .map((vote) => [vote.voterId, normalizeVoteRecord(vote)] as const),
-    );
+    // Build per-voter buckets for public and private ballots.
+    const publicVoteByVoter = new Map<string, VoteRecord>();
+    const privateVoteByVoter = new Map<string, VoteRecord>();
+    for (const vote of day.votes) {
+      if (vote.nominationId !== nominationId) continue;
+      if (vote.isPrivate) {
+        privateVoteByVoter.set(vote.voterId, vote);
+      } else {
+        publicVoteByVoter.set(vote.voterId, vote);
+      }
+    }
 
     const handPlayerId =
       nomination.countHandIndex != null
@@ -2833,24 +2826,16 @@ export class GameEngine {
 
     const lines = ordered.map((player, index) => {
       const seat = player.seat != null ? `seat ${player.seat}` : "unseated";
-      const vote = votesByVoter.get(player.id);
       const deadTag = player.alive ? "" : " [dead]";
       const underHand = player.id === handPlayerId;
+      const publicVote = publicVoteByVoter.get(player.id);
+      const privateVote = privateVoteByVoter.get(player.id);
       let status: string;
       if (audience === "storyteller") {
-        status = formatStorytellerVoteStatus(player, vote);
-      } else if (vote) {
-        const publicChoice = publicBallotChoice(vote);
-        if (publicChoice) {
-          const ghostTag = !player.alive ? " (ghost)" : "";
-          status = `**${publicChoice}**${ghostTag}${publicChoice === "conditional" ? formatVoteReasonSuffix(vote.reason) : ''}`;
-        } else if (!player.alive && player.ghostVoteUsed) {
-          status = "_ghost used (no vote this nomination)_";
-        } else if (!player.alive) {
-          status = "_ghost available — pending_";
-        } else {
-          status = "_pending_";
-        }
+        status = formatStorytellerVoteStatus(player, publicVote, privateVote);
+      } else if (publicVote) {
+        const ghostTag = !player.alive ? " (ghost)" : "";
+        status = `**${publicVote.choice}**${ghostTag}${publicVote.choice === "conditional" ? formatVoteReasonSuffix(publicVote.reason) : ''}`;
       } else if (!player.alive && player.ghostVoteUsed) {
         status = "_ghost used (no vote this nomination)_";
       } else if (!player.alive) {

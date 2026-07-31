@@ -27,7 +27,7 @@ import {
 import { log } from "./logger.js";
 
 function isVoteChoice(value: string): value is VoteChoice {
-  return value === "yes" || value === "no" || value === "conditional";
+  return value.trim().length > 0;
 }
 
 /** True when projection deadline differs from the engine (including null ↔ set). */
@@ -171,24 +171,25 @@ export async function reconcileDayProjectionIntoEngine(
     }
 
     for (const vote of nom.votes) {
-      const publicChoice =
-        vote.choice && isVoteChoice(vote.choice) ? vote.choice : null;
-      const privateChoice =
-        vote.privateChoice && isVoteChoice(vote.privateChoice) ? vote.privateChoice : null;
+      const isPrivate = vote.isPrivate;
+      const choice = vote.choice && isVoteChoice(vote.choice) ? vote.choice : null;
 
-      const readCurrent = () =>
+      const readCurrentForBallot = () =>
         engine
           .getState()
           .day?.votes.find(
-            (row) => row.nominationId === nom.id && row.voterId === vote.voterId,
+            (row) =>
+              row.nominationId === nom.id &&
+              row.voterId === vote.voterId &&
+              row.isPrivate === isPrivate,
           );
 
-      const beforePublic = readCurrent();
+      const before = readCurrentForBallot();
       if (
-        publicChoice &&
+        choice &&
         !(
-          beforePublic?.publicChoice === publicChoice &&
-          (beforePublic.reason ?? null) === (vote.reason ?? null)
+          before?.choice === choice &&
+          (before.reason ?? null) === (vote.reason ?? null)
         )
       ) {
         await appendAndApply(engine, {
@@ -196,29 +197,10 @@ export async function reconcileDayProjectionIntoEngine(
           gameId: state.gameId,
           nominationId: nom.id,
           voterId: vote.voterId,
-          choice: publicChoice,
+          choice,
           reason: vote.reason,
           manualSet: true,
-          privateBallot: false,
-          timestamp: now(),
-        });
-        appended += 1;
-      }
-
-      const beforePrivate = readCurrent();
-      if (
-        privateChoice &&
-        beforePrivate?.privateChoice !== privateChoice
-      ) {
-        await appendAndApply(engine, {
-          type: GameEventType.VoteCast,
-          gameId: state.gameId,
-          nominationId: nom.id,
-          voterId: vote.voterId,
-          choice: privateChoice,
-          reason: vote.privateReason ?? vote.reason,
-          manualSet: true,
-          privateBallot: true,
+          privateBallot: isPrivate,
           timestamp: now(),
         });
         appended += 1;
