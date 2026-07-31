@@ -22,6 +22,23 @@ if [ -f "$DB_PATH" ]; then
   if [ "$HAS_MIGRATIONS" = "no" ]; then
     echo "Existing database has no migration history — baselining init migration..."
     ./node_modules/.bin/prisma migrate resolve --applied "20260731063241_init"
+    # migrate resolve marks the migration as applied without executing its SQL.
+    # Apply any schema additions that exist in the init migration but may be absent
+    # from a database that was previously managed by `db push`.
+    node -e "
+      try {
+        const db = require('./node_modules/better-sqlite3')('${DB_PATH}');
+        const cols = db.prepare('PRAGMA table_info(Vote)').all();
+        if (!cols.some(function(c) { return c.name === 'isPrivate'; })) {
+          process.stderr.write('Patching Vote table: adding isPrivate column...\n');
+          db.exec('ALTER TABLE Vote ADD COLUMN isPrivate BOOLEAN NOT NULL DEFAULT false');
+          db.exec('DROP INDEX IF EXISTS Vote_nominationId_voterId_key');
+          db.exec('CREATE UNIQUE INDEX IF NOT EXISTS Vote_nominationId_voterId_isPrivate_key ON Vote (nominationId, voterId, isPrivate)');
+          process.stderr.write('Vote.isPrivate column added.\n');
+        }
+        db.close();
+      } catch (e) { process.stderr.write(e.message + '\n'); process.exit(1); }
+    "
   fi
 fi
 
