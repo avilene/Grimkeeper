@@ -10,25 +10,42 @@ import { prisma } from "./client.js";
  *   and an `isPrivate` boolean.
  *
  * This migration reads the old columns via a raw SQL query and creates the missing private-ballot
- * rows before the old columns are dropped by `prisma db push`.
+ * rows while the database still has both the legacy private-vote columns and the new
+ * `isPrivate` uniqueness constraint.
  *
- * Run AFTER running `prisma db push` with the new schema (which adds `isPrivate` and drops
- * `privateChoice`/`privateReason`). If old columns are already gone this script is a no-op.
+ * Run against a transitional schema where `isPrivate` already exists but `privateChoice` and
+ * `privateReason` have not been dropped yet. If the legacy columns are already gone this script
+ * is a no-op.
  */
 export async function migrateVotesToIsPrivate(): Promise<{ created: number }> {
-  // Use a raw query to read the old columns (they may not exist in the new Prisma client).
-  const oldRows = await prisma.$queryRaw<
-    Array<{
-      id: string;
-      gameDayId: string;
-      nominationId: string;
-      voterId: string;
-      privateChoice: string | null;
-      privateReason: string | null;
-    }>
-  >`SELECT id, "gameDayId", "nominationId", "voterId", "privateChoice", "privateReason"
-    FROM "Vote"
-    WHERE "privateChoice" IS NOT NULL`;
+  let oldRows: Array<{
+    id: string;
+    gameDayId: string;
+    nominationId: string;
+    voterId: string;
+    privateChoice: string | null;
+    privateReason: string | null;
+  }>;
+  try {
+    // Use a raw query to read the old columns (they may not exist in the new Prisma client).
+    oldRows = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        gameDayId: string;
+        nominationId: string;
+        voterId: string;
+        privateChoice: string | null;
+        privateReason: string | null;
+      }>
+    >`SELECT id, "gameDayId", "nominationId", "voterId", "privateChoice", "privateReason"
+      FROM "Vote"
+      WHERE "privateChoice" IS NOT NULL`;
+  } catch (error) {
+    if (isMissingLegacyVoteColumnError(error)) {
+      return { created: 0 };
+    }
+    throw error;
+  }
 
   let created = 0;
   for (const row of oldRows) {
@@ -61,4 +78,15 @@ export async function migrateVotesToIsPrivate(): Promise<{ created: number }> {
   }
 
   return { created };
+}
+
+function isMissingLegacyVoteColumnError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return (
+    error.message.includes("privateChoice") ||
+    error.message.includes("privateReason")
+  ) && (
+    error.message.includes("no such column") ||
+    error.message.includes("does not exist")
+  );
 }

@@ -958,7 +958,9 @@ function formatStorytellerVoteStatus(
 
   const ghostTag = !player.alive ? " (ghost)" : "";
   const publicLabel = publicVote?.choice ?? "—";
-  const reason = formatVoteReasonSuffix(privateVote?.reason ?? publicVote?.reason);
+  const reason = privateVote
+    ? formatVoteReasonSuffix(privateVote.reason)
+    : formatVoteReasonSuffix(publicVote?.reason);
 
   if (privateVote) {
     return `**${privateVote.choice}**${ghostTag} (public: ${publicLabel})${reason}`;

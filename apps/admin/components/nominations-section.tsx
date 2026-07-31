@@ -110,14 +110,16 @@ function playerName(
 function votesSummary(votes: EditableVote[], rosterSize: number): string {
   let publicYes = 0;
   let privateYes = 0;
-  let cast = 0;
+  const castVoters = new Set<string>();
+  const knownVoters = new Set<string>();
   for (const vote of votes) {
-    if (vote.choice) cast += 1;
+    knownVoters.add(vote.voterId);
+    if (vote.choice) castVoters.add(vote.voterId);
     if (!vote.isPrivate && vote.choice === "yes") publicYes += 1;
     if (vote.isPrivate && vote.choice === "yes") privateYes += 1;
   }
-  const size = Math.max(rosterSize, votes.filter((v) => !v.isPrivate).length);
-  return `${cast}/${size} cast · ${publicYes} pub yes · ${privateYes} priv yes`;
+  const size = Math.max(rosterSize, knownVoters.size);
+  return `${castVoters.size}/${size} cast · ${publicYes} pub yes · ${privateYes} priv yes`;
 }
 
 /**
