@@ -66,7 +66,7 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
           },
         },
       },
-      reminders: { orderBy: { fireAt: "asc" }, take: 50 },
+      reminders: { orderBy: { fireAt: "desc" }, take: 50 },
     },
   });
   if (!game) notFound();
@@ -126,7 +126,7 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
         })),
       })),
     )
-    .sort((a, b) => a.dayNumber - b.dayNumber || a.order - b.order || a.id.localeCompare(b.id));
+    .sort((a, b) => b.dayNumber - a.dayNumber || b.order - a.order || b.id.localeCompare(a.id));
 
   return (
     <div className="space-y-6">

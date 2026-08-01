@@ -157,29 +157,31 @@ function buildVoteRoster(
     nomination.votes.map((vote) => [`${vote.voterId}:${vote.isPrivate}`, vote]),
   );
   const orderedPlayers = playersInVoteOrder(players, nomination.nomineeId);
-  const rows: VoteTableEntry[] = orderedPlayers.map((player) => {
-    const key = `${player.id}:false`;
-    const existing = byKey.get(key);
-    if (existing) {
-      byKey.delete(key);
+  const rows: VoteTableEntry[] = orderedPlayers.flatMap((player) =>
+    [false, true].map((isPrivate) => {
+      const key = `${player.id}:${isPrivate}`;
+      const existing = byKey.get(key);
+      if (existing) {
+        byKey.delete(key);
+        return {
+          id: existing.id,
+          nominationId: nomination.id,
+          voterId: existing.voterId,
+          choice: existing.choice,
+          reason: existing.reason,
+          isPrivate,
+        };
+      }
       return {
-        id: existing.id,
+        id: null,
         nominationId: nomination.id,
-        voterId: existing.voterId,
-        choice: existing.choice,
-        reason: existing.reason,
-        isPrivate: false,
+        voterId: player.id,
+        choice: null,
+        reason: null,
+        isPrivate,
       };
-    }
-    return {
-      id: null,
-      nominationId: nomination.id,
-      voterId: player.id,
-      choice: null,
-      reason: null,
-      isPrivate: false,
-    };
-  });
+    }),
+  );
 
   // Append any remaining votes not matched to the roster (private ballots + leftover public).
   for (const leftover of byKey.values()) {
@@ -529,8 +531,9 @@ function NominationAccordionItem({
             <div className="space-y-1">
               <h4 className="text-sm font-medium">Votes</h4>
               <p className="text-xs text-muted-foreground">
-                Full seat circle in Town Voting order (first after the nominee, nominee last).
-                Pending rows are created when you set a ballot.
+                Full seat circle in Town Voting order (first after the nominee, nominee last),
+                with separate public and private ballot rows for each voter. Pending rows are
+                created when you set a ballot.
               </p>
             </div>
             {voteRoster.length === 0 ? (
@@ -602,7 +605,7 @@ export function NominationsSection({
   const sortedNominations = useMemo(
     () =>
       [...nominations].sort(
-        (a, b) => a.dayNumber - b.dayNumber || a.order - b.order || a.id.localeCompare(b.id),
+        (a, b) => b.dayNumber - a.dayNumber || b.order - a.order || b.id.localeCompare(a.id),
       ),
     [nominations],
   );
