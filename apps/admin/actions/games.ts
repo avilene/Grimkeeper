@@ -429,6 +429,16 @@ async function assertPlayersOnGame(gameId: string, playerIds: string[]) {
   }
 }
 
+async function requestDiscordNomsRefreshIfLive(gameId: string): Promise<void> {
+  const game = await prisma.game.findUnique({
+    where: { id: gameId },
+    select: { source: true },
+  });
+  if (game && !isStatsOnlyGame(game.source)) {
+    await requestDiscordNomsRefresh(gameId);
+  }
+}
+
 export async function saveNomination(
   gameId: string,
   nominationId: string | null,
@@ -510,6 +520,7 @@ export async function saveNomination(
       });
     }
 
+    await requestDiscordNomsRefreshIfLive(gameId);
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: nominationId ? "Nomination saved." : "Nomination created." };
   } catch (err) {
@@ -532,6 +543,7 @@ export async function deleteNomination(
     if (result.count === 0) {
       return { ok: false, message: "Nomination not found on this game." };
     }
+    await requestDiscordNomsRefreshIfLive(gameId);
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: "Nomination deleted." };
   } catch (err) {
@@ -602,6 +614,7 @@ export async function saveVote(
       });
     }
 
+    await requestDiscordNomsRefreshIfLive(gameId);
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: voteId ? "Vote saved." : "Vote set." };
   } catch (err) {
@@ -624,6 +637,7 @@ export async function deleteVote(
     if (result.count === 0) {
       return { ok: false, message: "Vote not found on this game." };
     }
+    await requestDiscordNomsRefreshIfLive(gameId);
     revalidatePath(`/games/${gameId}`);
     return { ok: true, message: "Vote deleted." };
   } catch (err) {
