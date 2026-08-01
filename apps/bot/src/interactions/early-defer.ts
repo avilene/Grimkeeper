@@ -150,14 +150,15 @@ export function startEarlyDefer(interaction: Interaction): Promise<EarlyDeferRes
     return Promise.resolve("skipped");
   }
 
-  warnIfAckLate(command, ageAtStartMs);
-
   const ack = helpOrGuide
     ? command.deferReply()
     : command.reply({ content: INTERACTION_PENDING_CONTENT, flags: MessageFlags.Ephemeral });
 
   return ack.then(
-    () => "acked" as const,
+    () => {
+      warnIfAckLate(command, ageAtStartMs);
+      return "acked" as const;
+    },
     (error: unknown) => {
       const ageMs = Date.now() - command.createdTimestamp;
       handleAckFailure(command, ageMs, error);
