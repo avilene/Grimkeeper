@@ -72,6 +72,12 @@ function setupTownEngine(playerCount = 3): GameEngine {
     minPlayers: 2,
   });
   for (const event of setupEvents) engine.apply(event);
+  const nightEvents = engine.handle({
+    kind: GameCommandKind.AdvancePhase,
+    gameId,
+    targetPhase: "night",
+  });
+  for (const event of nightEvents) engine.apply(event);
   const dayEvents = engine.handle({
     kind: GameCommandKind.AdvancePhase,
     gameId,
