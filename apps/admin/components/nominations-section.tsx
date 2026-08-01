@@ -551,7 +551,7 @@ function NominationAccordionItem({
                 <TableBody>
                   {voteRoster.map((vote, index) => (
                     <VoteTableRow
-                      key={vote.id ?? `draft-${vote.voterId}`}
+                      key={vote.id ?? `draft-${vote.voterId}-${String(vote.isPrivate)}`}
                       gameId={gameId}
                       vote={vote}
                       players={players}

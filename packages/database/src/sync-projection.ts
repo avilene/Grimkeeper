@@ -180,6 +180,9 @@ export async function syncGameProjectionFromEngine(
   });
 
   for (const dbVote of dbVotes) {
+    // Private votes may be set directly via the admin UI and won't appear in the engine
+    // event log — never delete them here so admin-set private ballots are preserved.
+    if (dbVote.isPrivate) continue;
     const key = `${dbVote.nominationId}:${dbVote.voterId}:${dbVote.isPrivate}`;
     if (!voteKeys.has(key)) {
       await prisma.vote.delete({ where: { id: dbVote.id } });
