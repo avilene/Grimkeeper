@@ -605,7 +605,7 @@ export function NominationsSection({
   const sortedNominations = useMemo(
     () =>
       [...nominations].sort(
-        (a, b) => a.dayNumber - b.dayNumber || a.order - b.order || a.id.localeCompare(b.id),
+        (a, b) => b.dayNumber - a.dayNumber || b.order - a.order || b.id.localeCompare(a.id),
       ),
     [nominations],
   );
