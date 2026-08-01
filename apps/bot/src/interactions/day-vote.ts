@@ -40,8 +40,15 @@ const VOTE_CHOICE_FIELD = "choice";
 const VOTE_REASON_FIELD = "reason";
 
 function parseVoteChoice(value: string): VoteChoice | null {
-  const trimmed = value.trim().toLowerCase();
-  return trimmed.length > 0 ? trimmed : null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+
+  const canonical = trimmed.toLowerCase();
+  if (canonical === "yes" || canonical === "no" || canonical === "conditional") {
+    return canonical;
+  }
+
+  return trimmed;
 }
 
 async function resolveGameForVoteIds(
@@ -107,20 +114,20 @@ export async function handleVoteButton(interaction: ButtonInteraction): Promise<
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
             .setCustomId(VOTE_CHOICE_FIELD)
-            .setLabel("Vote (yes / no / conditional)")
+            .setLabel("Vote")
             .setStyle(TextInputStyle.Short)
             .setRequired(true)
-            .setMaxLength(12)
-            .setPlaceholder("yes, no, or conditional"),
+            .setMaxLength(100)
+            .setPlaceholder("yes, no, conditional, or any custom vote"),
         ),
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
             .setCustomId(VOTE_REASON_FIELD)
-            .setLabel("Reason (required if conditional)")
+            .setLabel("Note (optional; required for conditional)")
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(false)
             .setMaxLength(500)
-            .setPlaceholder("Optional unless voting conditional"),
+            .setPlaceholder("Optional note for the storyteller"),
         ),
       );
 
@@ -222,7 +229,7 @@ export async function handleVoteModalSubmit(interaction: ModalSubmitInteraction)
     return true;
   }
 
-  const choiceRaw = interaction.fields.getTextInputValue(VOTE_CHOICE_FIELD).trim().toLowerCase();
+  const choiceRaw = interaction.fields.getTextInputValue(VOTE_CHOICE_FIELD);
   const choice = parseVoteChoice(choiceRaw);
   if (!choice) {
     await interaction.editReply({ content: "Invalid vote choice. Enter a non-empty value." }).catch(() => undefined);
