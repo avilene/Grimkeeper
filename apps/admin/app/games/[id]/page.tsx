@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import {
   getGameEvents,
   isStatsOnlyGame,
@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { canViewGame, getAccessProfile, homePathForAccess } from "@/lib/access";
 import { prisma } from "@/lib/db";
 import { consumeFlash } from "@/lib/flash";
+import { redirectAdminNotFound } from "@/lib/not-found";
 import { shortId } from "@/lib/utils";
 
 function catalogRoleOptions(): RoleOption[] {
@@ -69,7 +70,13 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
       reminders: { orderBy: { fireAt: "desc" }, take: 50 },
     },
   });
-  if (!game) notFound();
+  if (!game) {
+    await redirectAdminNotFound({
+      gameId: id,
+      reason: "missing_game",
+      route: "/games/[id]",
+    });
+  }
 
   const statsOnly = isStatsOnlyGame(game.source);
   const storedEvents = await getGameEvents(game.id);

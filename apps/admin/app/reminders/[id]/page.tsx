@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { ReminderForm } from "@/components/reminder-form";
 import { Button } from "@/components/ui/button";
 import { canViewGame, getAccessProfile, homePathForAccess } from "@/lib/access";
 import { prisma } from "@/lib/db";
+import { redirectAdminNotFound } from "@/lib/not-found";
 import { requireAdmin } from "@/lib/session";
 import { shortId } from "@/lib/utils";
 
@@ -20,7 +21,13 @@ export default async function ReminderDetailPage({
 }) {
   const { id } = await params;
   const reminder = await prisma.gameReminder.findUnique({ where: { id } });
-  if (!reminder) notFound();
+  if (!reminder) {
+    await redirectAdminNotFound({
+      reason: "missing_reminder",
+      reminderId: id,
+      route: "/reminders/[id]",
+    });
+  }
 
   if (reminder.gameId) {
     const access = await getAccessProfile();

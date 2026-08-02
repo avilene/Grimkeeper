@@ -28,6 +28,25 @@ export function adminTracesSampleRate(): number {
   return process.env.NODE_ENV === "production" ? 0.1 : 1.0;
 }
 
+function withAdminScope(
+  level: "error" | "warning",
+  context: Record<string, unknown>,
+  callback: () => void,
+): void {
+  Sentry.withScope((scope) => {
+    scope.setLevel(level);
+    for (const [key, value] of Object.entries(context)) {
+      if (value === undefined) continue;
+      if (key === "action" && typeof value === "string") {
+        scope.setTag("action", value);
+        continue;
+      }
+      scope.setExtra(key, value);
+    }
+    callback();
+  });
+}
+
 /**
  * Report a handled server-action failure to Sentry.
  * Skips Next.js redirect/notFound digests (those are control flow, not errors).
@@ -38,16 +57,7 @@ export function captureAdminException(
 ): void {
   if (error && typeof error === "object" && "digest" in error) return;
 
-  Sentry.withScope((scope) => {
-    scope.setLevel("error");
-    for (const [key, value] of Object.entries(context)) {
-      if (value === undefined) continue;
-      if (key === "action" && typeof value === "string") {
-        scope.setTag("action", value);
-        continue;
-      }
-      scope.setExtra(key, value);
-    }
+  withAdminScope("error", context, () => {
     if (error instanceof Error) {
       Sentry.captureException(error);
       return;
@@ -57,4 +67,13 @@ export function captureAdminException(
       { extra: { original: error } },
     );
   });
+}
+
+export async function captureAdminNotFound(
+  context: Record<string, unknown> = {},
+): Promise<void> {
+  withAdminScope("warning", context, () => {
+    Sentry.captureMessage("admin.not_found", "warning");
+  });
+  await Sentry.flush(2_000);
 }

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 
 import {
   addQueueMemberAction,
@@ -24,6 +23,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { getQueueEntryById, parseScriptImageUrls, prisma } from "@/lib/db";
 import { consumeFlash } from "@/lib/flash";
+import { redirectAdminNotFound } from "@/lib/not-found";
 import { requireAdmin } from "@/lib/session";
 import { shortId } from "@/lib/utils";
 
@@ -57,7 +57,13 @@ export default async function QueueEntryPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const flash = await consumeFlash();
   const entry = await getQueueEntryById(id);
-  if (!entry) notFound();
+  if (!entry) {
+    await redirectAdminNotFound({
+      entryId: id,
+      reason: "missing_queue_entry",
+      route: "/queues/entries/[id]",
+    });
+  }
 
   const board = await prisma.stQueueBoard.findUnique({ where: { id: entry.boardId } });
   const imageLines = parseScriptImageUrls(entry.scriptImageUrls).join("\n");
