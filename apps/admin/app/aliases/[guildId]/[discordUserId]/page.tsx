@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 
 import { AliasForm } from "@/components/alias-form";
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
+import { redirectAdminNotFound } from "@/lib/not-found";
 import { requireAdmin } from "@/lib/session";
 
 export async function generateMetadata({
@@ -22,10 +22,16 @@ export default async function AliasDetailPage({
 }) {
   await requireAdmin();
   const { guildId, discordUserId } = await params;
-  const aliasRow = await prisma.playerAlias.findUnique({
-    where: { guildId_discordUserId: { guildId, discordUserId } },
-  });
-  if (!aliasRow) notFound();
+  const aliasRow =
+    (await prisma.playerAlias.findUnique({
+      where: { guildId_discordUserId: { guildId, discordUserId } },
+    })) ??
+    (await redirectAdminNotFound({
+      discordUserId,
+      guildId,
+      reason: "missing_player_alias",
+      route: "/aliases/[guildId]/[discordUserId]",
+    }));
 
   return (
     <div className="space-y-6">
