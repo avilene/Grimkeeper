@@ -121,7 +121,7 @@ export function buildDiscordLogEmbed(
 ): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setTitle(source)
-    .setColor(embedColorForSource(source, Boolean(options.message)))
+    .setColor(embedColorForSource(source, Boolean(options.message) || Boolean(options.stack)))
     .setTimestamp(parseEmbedTimestamp(meta))
     .addFields({ name: "Details", value: yamlField({ source, ...meta }), inline: false });
 
