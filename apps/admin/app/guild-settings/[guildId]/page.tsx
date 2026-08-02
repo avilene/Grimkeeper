@@ -21,14 +21,13 @@ export default async function GuildSettingsDetailPage({
 }) {
   await requireAdmin();
   const { guildId } = await params;
-  const row = await prisma.guildSettings.findUnique({ where: { guildId } });
-  if (!row) {
-    await redirectAdminNotFound({
+  const row =
+    (await prisma.guildSettings.findUnique({ where: { guildId } })) ??
+    (await redirectAdminNotFound({
       guildId,
       reason: "missing_guild_settings",
       route: "/guild-settings/[guildId]",
-    });
-  }
+    }));
 
   return (
     <div className="space-y-6">

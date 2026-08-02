@@ -20,14 +20,13 @@ export default async function ReminderDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const reminder = await prisma.gameReminder.findUnique({ where: { id } });
-  if (!reminder) {
-    await redirectAdminNotFound({
+  const reminder =
+    (await prisma.gameReminder.findUnique({ where: { id } })) ??
+    (await redirectAdminNotFound({
       reason: "missing_reminder",
       reminderId: id,
       route: "/reminders/[id]",
-    });
-  }
+    }));
 
   if (reminder.gameId) {
     const access = await getAccessProfile();

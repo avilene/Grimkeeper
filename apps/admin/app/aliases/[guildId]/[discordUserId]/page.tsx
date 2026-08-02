@@ -22,17 +22,16 @@ export default async function AliasDetailPage({
 }) {
   await requireAdmin();
   const { guildId, discordUserId } = await params;
-  const aliasRow = await prisma.playerAlias.findUnique({
-    where: { guildId_discordUserId: { guildId, discordUserId } },
-  });
-  if (!aliasRow) {
-    await redirectAdminNotFound({
+  const aliasRow =
+    (await prisma.playerAlias.findUnique({
+      where: { guildId_discordUserId: { guildId, discordUserId } },
+    })) ??
+    (await redirectAdminNotFound({
       discordUserId,
       guildId,
       reason: "missing_player_alias",
       route: "/aliases/[guildId]/[discordUserId]",
-    });
-  }
+    }));
 
   return (
     <div className="space-y-6">

@@ -54,29 +54,28 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
   if (!canViewGame(access, id)) redirect(homePathForAccess(access));
 
   const flash = await consumeFlash();
-  const game = await prisma.game.findUnique({
-    where: { id },
-    include: {
-      players: { orderBy: [{ seat: "asc" }, { displayName: "asc" }] },
-      gameDays: {
-        orderBy: { dayNumber: "asc" },
-        include: {
-          nominations: {
-            orderBy: { order: "asc" },
-            include: { votes: { orderBy: { id: "asc" } } },
+  const game =
+    (await prisma.game.findUnique({
+      where: { id },
+      include: {
+        players: { orderBy: [{ seat: "asc" }, { displayName: "asc" }] },
+        gameDays: {
+          orderBy: { dayNumber: "asc" },
+          include: {
+            nominations: {
+              orderBy: { order: "asc" },
+              include: { votes: { orderBy: { id: "asc" } } },
+            },
           },
         },
+        reminders: { orderBy: { fireAt: "desc" }, take: 50 },
       },
-      reminders: { orderBy: { fireAt: "desc" }, take: 50 },
-    },
-  });
-  if (!game) {
-    await redirectAdminNotFound({
+    })) ??
+    (await redirectAdminNotFound({
       gameId: id,
       reason: "missing_game",
       route: "/games/[id]",
-    });
-  }
+    }));
 
   const statsOnly = isStatsOnlyGame(game.source);
   const storedEvents = await getGameEvents(game.id);

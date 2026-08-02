@@ -56,14 +56,13 @@ export default async function QueueEntryPage({ params }: { params: Promise<{ id:
   await requireAdmin();
   const { id } = await params;
   const flash = await consumeFlash();
-  const entry = await getQueueEntryById(id);
-  if (!entry) {
-    await redirectAdminNotFound({
+  const entry =
+    (await getQueueEntryById(id)) ??
+    (await redirectAdminNotFound({
       entryId: id,
       reason: "missing_queue_entry",
       route: "/queues/entries/[id]",
-    });
-  }
+    }));
 
   const board = await prisma.stQueueBoard.findUnique({ where: { id: entry.boardId } });
   const imageLines = parseScriptImageUrls(entry.scriptImageUrls).join("\n");
