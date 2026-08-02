@@ -1,5 +1,6 @@
 import {
   ActionRowBuilder,
+  AllowedMentionsTypes,
   MessageFlags,
   UserSelectMenuBuilder,
   type ButtonInteraction,
@@ -99,6 +100,25 @@ async function ensureDeferred(
       .reply({ content: INTERACTION_PENDING_CONTENT, flags: MessageFlags.Ephemeral })
       .catch(() => undefined);
   }
+}
+
+function describePanelActionError(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return "Unexpected error running panel action.";
+}
+
+async function postPanelErrorToKibThread(
+  interaction: ButtonInteraction | UserSelectMenuInteraction,
+  error: unknown,
+): Promise<void> {
+  const channel = interaction.channel;
+  if (!channel?.isTextBased() || channel.isDMBased()) return;
+  await channel
+    .send({
+      content: `⚠️ ST action error: ${describePanelActionError(error)}`,
+      allowedMentions: { parse: [] as AllowedMentionsTypes[] },
+    })
+    .catch(() => undefined);
 }
 
 export async function handleStPanelButton(interaction: ButtonInteraction): Promise<boolean> {
@@ -272,6 +292,7 @@ export async function handleStPanelButton(interaction: ButtonInteraction): Promi
 
     await interaction.editReply({ content: "Unknown panel action." });
   } catch (error) {
+    await postPanelErrorToKibThread(interaction, error);
     try {
       await replyEngineError(interaction, error);
     } catch (replyError) {
@@ -309,6 +330,7 @@ export async function handleStPanelUserSelect(
     const { game, engine, guild } = ctx;
     await runPanelUserAction(parsed.action, selected.id, game, guild, engine, interaction);
   } catch (error) {
+    await postPanelErrorToKibThread(interaction, error);
     try {
       const message =
         error instanceof Error ? error.message : "Unexpected error running panel action.";
