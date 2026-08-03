@@ -361,6 +361,38 @@ export class PlayerDayCommandsMinimal {
     reason: string | undefined,
     interaction: CommandInteraction,
   ): Promise<void> {
+    await castPlayerVote(interaction, nomineeDiscordId, choice, reason, false);
+  }
+
+  @Slash({ name: "privatevote", description: "Cast a private vote on an open nomination" })
+  async privatevote(
+    @SlashOption({
+      name: "nominee",
+      description: "Open nominee to vote on (type to search)",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+      autocomplete: respondVoteNomineeAutocomplete,
+    })
+    nomineeDiscordId: string,
+    @SlashChoice({ name: "Yes", value: "yes" })
+    @SlashChoice({ name: "No", value: "no" })
+    @SlashChoice({ name: "Conditional", value: "conditional" })
+    @SlashOption({
+      name: "choice",
+      description: "Your vote",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    choice: string,
+    @SlashOption({
+      name: "reason",
+      description: "Required for conditional votes",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    reason: string | undefined,
+    interaction: CommandInteraction,
+  ): Promise<void> {
     await castPlayerVote(interaction, nomineeDiscordId, choice, reason, true);
   }
 
