@@ -17,6 +17,7 @@ import {
   computeRemainingSlots,
   applySummonerNoDemonSetup,
   formatBuffetDrunkFixLine,
+  formatHermitUnchosenOutsidersLine,
 } from "@grimkeeper/engine";
 
 import { minPlayersForMode } from "../bot-mode.js";
@@ -2634,10 +2635,12 @@ export class StCommandsMinimal {
           return `• **${player?.displayName ?? pid}** → ${role?.name ?? rid}${beliefLabel}`;
         });
         const drunkLine = formatBuffetDrunkFixLine(draft);
+        const hermitLine = formatHermitUnchosenOutsidersLine(draft);
         await replyOrEditInteraction(interaction, {
           content: [
             `**Sushi Buffet — Complete**`,
             ...pickLines,
+            ...(hermitLine ? ["", hermitLine] : []),
             ...(drunkLine ? ["", drunkLine] : []),
           ].join("\n"),
           flags: MessageFlags.Ephemeral,

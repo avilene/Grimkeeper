@@ -11,6 +11,7 @@ import { getGameById, prisma } from "@grimkeeper/database";
 import {
   GameCommandKind,
   formatBuffetDrunkFixLine,
+  formatHermitUnchosenOutsidersLine,
   type GameEngine,
   listBotcRoles,
 } from "@grimkeeper/engine";
@@ -150,6 +151,10 @@ export function formatBuffetCompletionSummary(
 
   const parts = ["**Sushi Buffet — roles chosen**", ...lines];
   if (draft) {
+    const hermitLine = formatHermitUnchosenOutsidersLine(draft);
+    if (hermitLine) {
+      parts.push("", hermitLine);
+    }
     const drunkLine = formatBuffetDrunkFixLine(draft);
     if (drunkLine) {
       parts.push("", drunkLine);

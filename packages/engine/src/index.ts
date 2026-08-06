@@ -29,12 +29,14 @@ import {
   applyAssignDrunk,
   applyAssignLunatic,
   assignSecretRoles,
+  collectBuffetPreAssignments,
   chooseOutsiderAdjustment,
   computeRemainingSlots,
   defaultBuffetConfig,
   validatePoolForComposition,
   planMarionetteSeatSwaps,
   shuffle,
+  isBuffetSecretRole,
   OUTSIDER_SETUP_DELTAS,
 } from "./buffet-draft.js";
 
@@ -58,7 +60,11 @@ export {
   BUFFET_HIDDEN_BY_DEFAULT,
   describeBuffetDrunkFix,
   formatBuffetDrunkFixLine,
+  formatHermitUnchosenOutsidersLine,
+  listUnchosenOutsidersForHermit,
   applyAssignLunatic,
+  collectBuffetPreAssignments,
+  isBuffetSecretRole,
 } from "./buffet-draft.js";
 
 export type Team = "good" | "evil" | "traveler";
@@ -1677,8 +1683,23 @@ export class GameEngine {
         if (seatedPlayers.length < 1) {
           throw new GameEngineError("No seated players. Run setup-town first.");
         }
-        if (this.state.players.some((p) => p.roleId)) {
-          throw new GameEngineError("Some players already have roles assigned.");
+        const nonSecretRoles = this.state.players.filter(
+          (p) => p.roleId && !isBuffetSecretRole(p.roleId),
+        );
+        if (nonSecretRoles.length > 0) {
+          throw new GameEngineError(
+            "Some players already have roles assigned. Clear them first, or only pre-assign secret roles (Lunatic / Marionette / Drunk).",
+          );
+        }
+        const preCheck = collectBuffetPreAssignments(
+          this.state.players,
+          this.state.buffetDraft?.secretAssignments ?? {},
+        );
+        const secretValues = Object.values(preCheck);
+        if (new Set(secretValues).size !== secretValues.length) {
+          throw new GameEngineError(
+            "The same secret role is assigned to more than one player.",
+          );
         }
         const config = this.state.buffetDraft?.config ?? defaultBuffetConfig();
         const pool = buildInitialPool(config.enabledRoleIds);
@@ -2328,7 +2349,10 @@ export class GameEngine {
           config.enabledRoleIds,
         );
         const draftOrder = shuffle(seatedPlayers.map((p) => p.id));
-        const preAssignments = this.state.buffetDraft?.secretAssignments ?? {};
+        const preAssignments = collectBuffetPreAssignments(
+          this.state.players,
+          this.state.buffetDraft?.secretAssignments ?? {},
+        );
         const { secretAssignments, remainingSlots } = assignSecretRoles(
           config.enabledRoleIds,
           baseSlots,

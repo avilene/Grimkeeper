@@ -147,4 +147,30 @@ describe("formatBuffetCompletionSummary", () => {
 
     expect(formatBuffetCompletionSummary(engine)).not.toMatch(/Drunk/i);
   });
+
+  it("lists unchosen outsiders when hermit was drafted", () => {
+    const engine = {
+      getState: () => ({
+        players: [
+          { id: "p1", displayName: "Ada", seat: 1 },
+          { id: "p2", displayName: "Bram", seat: 2 },
+        ],
+        buffetDraft: {
+          picks: { p1: "hermit", p2: "imp" },
+          beliefs: {},
+          remainingSlots: { townsfolk: 0, outsider: 0, minion: 0, demon: 0 },
+          config: {
+            enabledRoleIds: ["hermit", "butler", "recluse", "imp"],
+          },
+          secretAssignments: {},
+        },
+      }),
+    } as never;
+
+    const text = formatBuffetCompletionSummary(engine);
+    expect(text).toContain("**Ada** → Hermit");
+    expect(text).toMatch(/unchosen Outsiders/i);
+    expect(text).toMatch(/Butler/i);
+    expect(text).toMatch(/Recluse/i);
+  });
 });

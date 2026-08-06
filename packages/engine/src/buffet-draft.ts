@@ -5,14 +5,14 @@ import { listBotcRoles } from "./scripts/botc-catalog.js";
 export type BuffetScriptPreset = "all" | "tb" | "bmr" | "snv";
 
 /** Roles players never click — assigned behind the scenes or by the ST. */
-export const BUFFET_SECRET_ROLES = ["lunatic", "marionette", "drunk", "hermit"] as const;
+export const BUFFET_SECRET_ROLES = ["lunatic", "marionette", "drunk"] as const;
 export type BuffetSecretRole = (typeof BUFFET_SECRET_ROLES)[number];
 
 /**
  * Excluded from the default enabled pool (ST can still turn them on in admin).
- * Marionette / Lunatic / Hermit are never player-pickable either.
+ * Marionette / Lunatic are never player-pickable either.
  */
-export const BUFFET_HIDDEN_BY_DEFAULT = ["hermit", "marionette", "lunatic"] as const;
+export const BUFFET_HIDDEN_BY_DEFAULT = ["marionette", "lunatic"] as const;
 
 export type BuffetOfferKind = "standard" | "lilmonsta-minion";
 
@@ -28,6 +28,8 @@ export const OUTSIDER_SETUP_DELTAS: Record<string, number[]> = {
   /** Official Balloonist is [+0 or +1 Outsider]. */
   balloonist: [0, 1],
   godfather: [-1, 1],
+  /** Official Hermit is [-0 or -1 Outsider]. */
+  hermit: [0, -1],
 };
 
 export interface BuffetDraftConfig {
@@ -104,12 +106,30 @@ export function isBuffetSecretRole(roleId: string): roleId is BuffetSecretRole {
   return (BUFFET_SECRET_ROLES as readonly string[]).includes(roleId);
 }
 
+/**
+ * Merge idle buffet secretAssignments with secret roles already set on seated players
+ * (e.g. Lunatic assigned in the admin roles UI before `/st do buffet-start`).
+ * Player role wins when both exist for the same player.
+ */
+export function collectBuffetPreAssignments(
+  players: Array<{ id: string; seat: number | null; roleId: string | null }>,
+  draftSecrets: Record<string, BuffetSecretRole> = {},
+): Record<string, BuffetSecretRole> {
+  const result: Record<string, BuffetSecretRole> = { ...draftSecrets };
+  for (const player of players) {
+    if (player.seat === null) continue;
+    if (!player.roleId || !isBuffetSecretRole(player.roleId)) continue;
+    result[player.id] = player.roleId;
+  }
+  return result;
+}
+
 export function buildInitialPool(enabledRoleIds: string[]): string[] {
   const catalogIds = new Set(listBotcRoles().map((r) => r.id));
   return enabledRoleIds.filter((id) => catalogIds.has(id));
 }
 
-/** Pool roles players can actually click — excludes Drunk / Hermit / Lunatic / Marionette. */
+/** Pool roles players can actually click — excludes Drunk / Lunatic / Marionette. */
 export function buildPickablePool(enabledRoleIds: string[]): string[] {
   return buildInitialPool(enabledRoleIds).filter((id) => !isBuffetSecretRole(id));
 }
@@ -276,15 +296,28 @@ export function assignSecretRoles(
     remainingSlots[team] = Math.max(0, (remainingSlots[team] ?? 0) - 1);
   };
 
-  // Honor ST pre-assignments (e.g. Lunatic chosen before buffet-start).
+  // Honor ST pre-assignments (buffet-assign-* or roles set on players before start).
   for (const [playerId, roleId] of Object.entries(preAssignments)) {
     if (!draftOrder.includes(playerId)) continue;
     if (secretAssignments[playerId]) continue;
     if (Object.values(secretAssignments).includes(roleId)) continue;
-    if (!enabled.has(roleId)) continue;
+    // Pre-assignments are honored even when the role is off in the buffet selector.
     const team = roleTeam(roleId);
     if (!team) continue;
-    assign(roleId, team, playerId);
+    if ((remainingSlots[team] ?? 0) <= 0) {
+      // e.g. Lunatic on a 7-player game (0 outsiders) — borrow a townsfolk slot.
+      if (team === "outsider" && (remainingSlots.townsfolk ?? 0) > 0) {
+        remainingSlots.townsfolk = (remainingSlots.townsfolk ?? 0) - 1;
+        remainingSlots.outsider = (remainingSlots.outsider ?? 0) + 1;
+      } else if (team === "minion" && (remainingSlots.townsfolk ?? 0) > 0) {
+        remainingSlots.townsfolk = (remainingSlots.townsfolk ?? 0) - 1;
+        remainingSlots.minion = (remainingSlots.minion ?? 0) + 1;
+      } else {
+        continue;
+      }
+    }
+    secretAssignments[playerId] = roleId;
+    remainingSlots[team] = Math.max(0, (remainingSlots[team] ?? 0) - 1);
   }
 
   // Force when pickable pool cannot cover the team slot without secret roles.
@@ -353,6 +386,33 @@ export function formatBuffetDrunkFixLine(state: BuffetDraftState): string | null
   const n = fix.unfilledOutsiders;
   const slots = n === 1 ? "1 unfilled outsider slot" : `${n} unfilled outsider slots`;
   return `Need Drunk to fix the count (${slots}). Use \`/st do buffet-assign-drunk player:@…\`.`;
+}
+
+/**
+ * Enabled Outsiders that nobody received as a true role (excluding Hermit itself).
+ * Used when Hermit is in play so the ST can decide which Outsider abilities apply.
+ */
+export function listUnchosenOutsidersForHermit(state: BuffetDraftState): string[] {
+  if (!Object.values(state.picks).includes("hermit")) return [];
+  const chosen = new Set<string>([
+    ...Object.values(state.picks),
+    ...Object.values(state.secretAssignments),
+  ]);
+  return buildInitialPool(state.config.enabledRoleIds)
+    .filter((id) => roleTeam(id) === "outsider" && id !== "hermit" && !chosen.has(id))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+/** ST hint when Hermit was drafted; null when Hermit is not in the picks. */
+export function formatHermitUnchosenOutsidersLine(state: BuffetDraftState): string | null {
+  if (!Object.values(state.picks).includes("hermit")) return null;
+  const ids = listUnchosenOutsidersForHermit(state);
+  const catalog = new Map(listBotcRoles().map((r) => [r.id, r.name]));
+  if (ids.length === 0) {
+    return "Hermit is in play — no other enabled Outsiders were left unchosen.";
+  }
+  const names = ids.map((id) => catalog.get(id) ?? id);
+  return `Hermit is in play — unchosen Outsiders (pick abilities from these): ${names.join(", ")}.`;
 }
 
 /**

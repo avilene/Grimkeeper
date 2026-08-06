@@ -16,12 +16,15 @@ import {
   assignSecretRoles,
   describeBuffetDrunkFix,
   formatBuffetDrunkFixLine,
+  formatHermitUnchosenOutsidersLine,
+  listUnchosenOutsidersForHermit,
   applyAssignLunatic,
   buildLilMonstaMinionOffer,
   buildNextOffer,
   planMarionetteSeatSwaps,
   seatsAreNeighbors,
   shuffle,
+  OUTSIDER_SETUP_DELTAS,
   type BuffetDraftState,
 } from "./buffet-draft.js";
 import { listBotcRoles } from "./scripts/botc-catalog.js";
@@ -80,13 +83,13 @@ function engineWithTown(playerCount: number, options?: { fake?: boolean }): Game
 }
 
 describe("defaultBuffetConfig", () => {
-  it("includes most non-traveler roles but hides hermit/marionette/lunatic", () => {
+  it("includes most non-traveler roles but hides marionette/lunatic", () => {
     const config = defaultBuffetConfig();
     expect(config.enabledRoleIds.length).toBeGreaterThan(100);
     expect(config.recycleUnchosen).toBe(true);
     expect(config.mulliganSteps).toEqual([3, 2, 1]);
     expect(config.scriptPreset).toBe("all");
-    expect(config.enabledRoleIds).not.toContain("hermit");
+    expect(config.enabledRoleIds).toContain("hermit");
     expect(config.enabledRoleIds).not.toContain("marionette");
     expect(config.enabledRoleIds).not.toContain("lunatic");
     expect(config.enabledRoleIds).toContain("drunk");
@@ -103,7 +106,7 @@ describe("buildInitialPool", () => {
 });
 
 describe("buildPickablePool", () => {
-  it("excludes drunk, hermit, lunatic, and marionette", () => {
+  it("excludes drunk, lunatic, and marionette but allows hermit", () => {
     const pool = buildPickablePool([
       "washerwoman",
       "drunk",
@@ -114,8 +117,8 @@ describe("buildPickablePool", () => {
     ]);
     expect(pool).toContain("washerwoman");
     expect(pool).toContain("imp");
+    expect(pool).toContain("hermit");
     expect(pool).not.toContain("drunk");
-    expect(pool).not.toContain("hermit");
     expect(pool).not.toContain("lunatic");
     expect(pool).not.toContain("marionette");
   });
@@ -169,6 +172,13 @@ describe("outsider setup adjustments", () => {
     const delta = chooseOutsiderAdjustment("godfather", 0, () => 0);
     expect(delta).toBe(1);
   });
+
+  it("chooseOutsiderAdjustment for hermit is 0 or -1", () => {
+    expect(OUTSIDER_SETUP_DELTAS.hermit).toEqual([0, -1]);
+    expect(chooseOutsiderAdjustment("hermit", 1, () => 0)).toBe(0);
+    expect(chooseOutsiderAdjustment("hermit", 1, () => 0.99)).toBe(-1);
+    expect(chooseOutsiderAdjustment("hermit", 0, () => 0.99)).toBe(0);
+  });
 });
 
 describe("drawOffer", () => {
@@ -201,7 +211,6 @@ describe("drawOffer", () => {
     for (let i = 0; i < 30; i++) {
       const offer = drawOffer(pool, slots, 3);
       expect(offer).not.toContain("drunk");
-      expect(offer).not.toContain("hermit");
       expect(offer).not.toContain("lunatic");
       expect(offer).not.toContain("marionette");
     }
@@ -273,6 +282,17 @@ describe("assignSecretRoles", () => {
     );
     expect(secretAssignments).toEqual({ p3: "lunatic" });
     expect(remainingSlots.outsider).toBe(0);
+  });
+
+  it("honors pre-assigned lunatic even when not in the buffet selector", () => {
+    const { secretAssignments } = assignSecretRoles(
+      ["washerwoman", "librarian", "imp", "poisoner", "butler"],
+      { townsfolk: 2, outsider: 1, minion: 1, demon: 1 },
+      ["p1", "p2", "p3", "p4", "p5"],
+      () => 0.99,
+      { p2: "lunatic" },
+    );
+    expect(secretAssignments).toEqual({ p2: "lunatic" });
   });
 
   it("never auto-assigns drunk (ST assigns via AssignBuffetDrunk)", () => {
@@ -390,6 +410,60 @@ describe("describeBuffetDrunkFix", () => {
     draft.remainingSlots.outsider = 1;
     draft.picks["player-1"] = "drunk";
     expect(describeBuffetDrunkFix(draft)?.needed).toBe(false);
+  });
+});
+
+describe("listUnchosenOutsidersForHermit", () => {
+  function makeDraft(): BuffetDraftState {
+    return {
+      status: "complete",
+      config: {
+        ...defaultBuffetConfig(),
+        enabledRoleIds: [
+          "washerwoman",
+          "hermit",
+          "butler",
+          "recluse",
+          "saint",
+          "drunk",
+          "imp",
+        ],
+      },
+      pool: [],
+      remainingSlots: { townsfolk: 0, outsider: 0, minion: 0, demon: 0 },
+      draftOrder: ["player-1", "player-2"],
+      currentIndex: 2,
+      currentOffer: null,
+      mulligansUsed: {},
+      picks: { "player-1": "hermit", "player-2": "imp" },
+      secretAssignments: {},
+      beliefs: {},
+      inPlayDemon: null,
+    };
+  }
+
+  it("returns enabled outsiders not taken when hermit is in play", () => {
+    expect(listUnchosenOutsidersForHermit(makeDraft())).toEqual([
+      "butler",
+      "drunk",
+      "recluse",
+      "saint",
+    ]);
+    expect(formatHermitUnchosenOutsidersLine(makeDraft())).toMatch(/Butler/i);
+  });
+
+  it("excludes secret-assigned outsiders from the unchosen list", () => {
+    const draft = makeDraft();
+    draft.secretAssignments = { "player-2": "drunk" };
+    draft.picks = { "player-1": "hermit", "player-2": "drunk" };
+    expect(listUnchosenOutsidersForHermit(draft)).not.toContain("drunk");
+  });
+
+  it("returns null copy when hermit was not picked", () => {
+    const draft = makeDraft();
+    draft.picks = { "player-1": "butler", "player-2": "imp" };
+    expect(listUnchosenOutsidersForHermit(draft)).toEqual([]);
+    expect(formatHermitUnchosenOutsidersLine(draft)).toBeNull();
   });
 });
 
@@ -758,7 +832,7 @@ describe("GameEngine buffet draft integration", () => {
     ).toThrow(/setup/i);
   });
 
-  it("rejects StartBuffetDraft when players already have roles", () => {
+  it("rejects StartBuffetDraft when players already have non-secret roles", () => {
     const engine = engineWithTown(7);
     engine.apply({
       type: GameEventType.RoleAssigned,
@@ -770,6 +844,27 @@ describe("GameEngine buffet draft integration", () => {
     expect(() =>
       engine.handle({ kind: GameCommandKind.StartBuffetDraft, gameId }),
     ).toThrow(/role/i);
+  });
+
+  it("respects Lunatic assigned on a player before buffet-start", () => {
+    const engine = engineWithTown(7);
+    engine.apply({
+      type: GameEventType.RoleAssigned,
+      gameId,
+      playerId: "player-3",
+      roleId: "lunatic",
+      timestamp: new Date().toISOString(),
+    });
+    const events = engine.handle({ kind: GameCommandKind.StartBuffetDraft, gameId });
+    for (const e of events) engine.apply(e);
+    const draft = engine.getState().buffetDraft;
+    expect(draft?.secretAssignments["player-3"]).toBe("lunatic");
+    if (draft?.currentOffer?.playerId === "player-3") {
+      const roles = listBotcRoles();
+      for (const id of draft.currentOffer.roleIds) {
+        expect(roles.find((r) => r.id === id)?.team).toBe("demon");
+      }
+    }
   });
 
   it("emits BuffetDraftStarted + BuffetChoicesOffered on start", () => {
@@ -798,9 +893,15 @@ describe("GameEngine buffet draft integration", () => {
     for (const e of startEvents) engine.apply(e);
     const offer = engine.getState().buffetDraft?.currentOffer;
     expect(offer?.roleIds).not.toContain("drunk");
-    expect(offer?.roleIds).not.toContain("hermit");
     expect(offer?.roleIds).not.toContain("lunatic");
     expect(offer?.roleIds).not.toContain("marionette");
+  });
+
+  it("can offer hermit when outsider slots remain", () => {
+    const pool = buildPickablePool(defaultBuffetConfig().enabledRoleIds);
+    expect(pool).toContain("hermit");
+    const outsiderOffer = drawOfferByTeam(pool, "outsider", pool.length);
+    expect(outsiderOffer).toContain("hermit");
   });
 
   it("starts with no demon slots when summoner is enabled", () => {
