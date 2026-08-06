@@ -3,9 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Menu } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
 export type AppSidebarProps = {
@@ -53,7 +61,7 @@ function NavLink({
   );
 }
 
-export function AppSidebar({
+function SidebarPanel({
   home,
   canListGames,
   isAdmin,
@@ -62,7 +70,8 @@ export function AppSidebar({
   name,
   userId,
   signOutAction,
-}: AppSidebarProps) {
+  className,
+}: AppSidebarProps & { className?: string }) {
   const pathname = usePathname();
   const adminActive = isAdmin && isAdminPath(pathname);
   const [adminOpen, setAdminOpen] = useState(adminActive);
@@ -74,7 +83,7 @@ export function AppSidebar({
   }, [adminActive]);
 
   return (
-    <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-border bg-card/80 backdrop-blur">
+    <div className={cn("flex h-full flex-col bg-card/80 backdrop-blur", className)}>
       <div className="border-b border-border px-4 py-4">
         <Link href={home} className="text-sm font-semibold tracking-tight hover:text-primary">
           Grimkeeper
@@ -183,6 +192,49 @@ export function AppSidebar({
           </Button>
         </form>
       </div>
-    </aside>
+    </div>
+  );
+}
+
+export function AppSidebar(props: AppSidebarProps) {
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  return (
+    <>
+      <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/90 px-4 backdrop-blur md:hidden">
+        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          <SheetTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="size-9 shrink-0 px-0"
+              aria-label="Open navigation"
+            >
+              <Menu className="size-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" showCloseButton={false} className="w-56 gap-0 p-0">
+            <SheetHeader className="sr-only">
+              <SheetTitle>Navigation</SheetTitle>
+              <SheetDescription>Admin panel navigation</SheetDescription>
+            </SheetHeader>
+            <SidebarPanel {...props} />
+          </SheetContent>
+        </Sheet>
+        <Link href={props.home} className="text-sm font-semibold tracking-tight hover:text-primary">
+          Grimkeeper
+        </Link>
+      </header>
+
+      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 border-r border-border md:flex md:flex-col">
+        <SidebarPanel {...props} />
+      </aside>
+    </>
   );
 }
