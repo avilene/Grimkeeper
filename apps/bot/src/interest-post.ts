@@ -172,7 +172,7 @@ export function buildInterestComponents(post: NonNullable<InterestPostWithSignup
       .setDisabled(disabled),
     new ButtonBuilder()
       .setCustomId(interestButtonCustomId("kib", post.id))
-      .setLabel("Keep in Mind")
+      .setLabel("KIB")
       .setEmoji("👀")
       .setStyle(ButtonStyle.Primary)
       .setDisabled(disabled),

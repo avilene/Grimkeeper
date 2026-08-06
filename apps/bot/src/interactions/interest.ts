@@ -43,6 +43,18 @@ const FIELD_TITLE = "title";
 const FIELD_DESCRIPTION = "description";
 const FIELD_SCRIPT_URL = "script_url";
 
+const MISSING_CHANNEL_ACCESS =
+  "Couldn't update the interest post in this channel. Add the Grimkeeper bot with **View Channel** and **Send Messages**, then try again.";
+
+function isMissingAccessError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code: unknown }).code === 50001,
+  );
+}
+
 async function ensureDeferred(
   interaction: ButtonInteraction | ModalSubmitInteraction,
 ): Promise<void> {
@@ -50,25 +62,30 @@ async function ensureDeferred(
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 }
 
+/**
+ * Ephemeral ack for the clicker. After `interaction.update()` the interaction is
+ * already replied — use followUp so we don't overwrite the public interest post.
+ */
 async function safeEdit(
   interaction: ButtonInteraction | ModalSubmitInteraction,
   content: string,
   components?: ReturnType<typeof buildDeleteConfirmComponents>,
 ): Promise<void> {
+  const payload = {
+    content,
+    components: components ?? [],
+    embeds: [] as never[],
+  };
   try {
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({
-        content,
-        components: components ?? [],
-        embeds: [],
-      });
-    } else {
-      await interaction.reply({
-        content,
-        components: components ?? [],
-        flags: MessageFlags.Ephemeral,
-      });
+    if (interaction.deferred) {
+      await interaction.editReply(payload);
+      return;
     }
+    if (interaction.replied) {
+      await interaction.followUp({ ...payload, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
   } catch (error) {
     if (!isRecoverableInteractionResponseError(error)) throw error;
     if (isUnknownInteractionError(error)) {
@@ -161,23 +178,56 @@ function buildEditModal(post: {
   return modal;
 }
 
+/**
+ * Refresh the public interest message.
+ * Prefer `interaction.update()` on button clicks — that uses the interaction token and
+ * does not require View Channel (unlike `message.edit()` via the channel REST API).
+ */
 async function refreshInterestMessage(
   interaction: ButtonInteraction | ModalSubmitInteraction,
   post: NonNullable<Awaited<ReturnType<typeof getInterestPostById>>>,
-): Promise<void> {
+): Promise<"updated" | "edited" | "missing-access" | "skipped"> {
   const payload = buildInterestMessagePayload(post);
-  if (interaction.isButton() && interaction.message) {
-    await interaction.message.edit(payload);
-    return;
+
+  if (interaction.isButton() && !interaction.deferred && !interaction.replied) {
+    try {
+      await interaction.update(payload);
+      return "updated";
+    } catch (error) {
+      if (isMissingAccessError(error)) return "missing-access";
+      throw error;
+    }
   }
-  if (!post.messageId || !interaction.channel || !("messages" in interaction.channel)) return;
-  const message = await interaction.channel.messages.fetch(post.messageId).catch(() => null);
-  if (message) await message.edit(payload);
+
+  try {
+    if (interaction.isButton() && interaction.message) {
+      await interaction.message.edit(payload);
+      return "edited";
+    }
+    if (!post.messageId || !interaction.channel || !("messages" in interaction.channel)) {
+      return "skipped";
+    }
+    const message = await interaction.channel.messages.fetch(post.messageId).catch(() => null);
+    if (!message) return "skipped";
+    await message.edit(payload);
+    return "edited";
+  } catch (error) {
+    if (isMissingAccessError(error)) {
+      void reportError("interest.refresh.missing_access", error, {
+        interestId: post.id,
+        guildId: interaction.guildId,
+        channelId: interaction.channelId,
+        userId: interaction.user.id,
+      });
+      return "missing-access";
+    }
+    throw error;
+  }
 }
 
 const SIGNUP_LABEL: Record<InterestSignupState, string> = {
   playing: "Playing",
-  kib: "Keep in Mind",
+  kib: "KIB",
   backup: "Backup",
 };
 
@@ -213,8 +263,13 @@ export async function handleInterestButton(interaction: ButtonInteraction): Prom
       return true;
     }
 
-    await refreshInterestMessage(interaction, updated);
+    const refresh = await refreshInterestMessage(interaction, updated);
     await ensureDeferred(interaction);
+
+    if (refresh === "missing-access") {
+      await safeEdit(interaction, MISSING_CHANNEL_ACCESS);
+      return true;
+    }
 
     const still = updated.signups.find((s) => s.userId === interaction.user.id);
     if (!still) {
@@ -258,8 +313,12 @@ export async function handleInterestButton(interaction: ButtonInteraction): Prom
       return true;
     }
     const updated = await closeInterestPost(post.id);
-    await refreshInterestMessage(interaction, updated);
+    const refresh = await refreshInterestMessage(interaction, updated);
     await ensureDeferred(interaction);
+    if (refresh === "missing-access") {
+      await safeEdit(interaction, `Closed **${updated.title}**, but ${MISSING_CHANNEL_ACCESS}`);
+      return true;
+    }
     await safeEdit(interaction, `Closed **${updated.title}**. Signups are locked.`);
     return true;
   }
@@ -356,8 +415,16 @@ export async function handleInterestModalSubmit(
     scriptUrl,
   });
 
-  await refreshInterestMessage(interaction, updated);
+  // Modal submit can't update() the interest message — needs channel access.
+  const refresh = await refreshInterestMessage(interaction, updated);
   await ensureDeferred(interaction);
+  if (refresh === "missing-access") {
+    await safeEdit(
+      interaction,
+      `Saved **${updated.title}** in the database, but ${MISSING_CHANNEL_ACCESS}`,
+    );
+    return true;
+  }
   await safeEdit(interaction, `Updated **${updated.title}**.`);
   return true;
 }

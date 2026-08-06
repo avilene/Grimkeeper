@@ -23,13 +23,22 @@ function isLikelyImageAttachment(attachment: Attachment): boolean {
   return /\.(png|jpe?g|gif|webp)$/i.test(attachment.name ?? "");
 }
 
+function isMissingAccessError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code: unknown }).code === 50001,
+  );
+}
+
 @Discord()
 @SlashGroup({ name: "interest", description: "Interest checks (signups before a real game)" })
 @SlashGroup("interest")
 export class InterestCommands {
   @Slash({
     name: "create",
-    description: "Post an interest check with Playing / Keep in Mind / Backup signups",
+    description: "Post an interest check with Playing / KIB / Backup signups",
   })
   async create(
     @SlashOption({
@@ -98,6 +107,15 @@ export class InterestCommands {
       return;
     }
 
+    const channel = interaction.channel;
+    if (!channel || !("send" in channel)) {
+      await replyOrEditInteraction(interaction, {
+        content: "Couldn't post in this channel.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     const post = await createInterestPost({
       guildId: interaction.guildId,
       channelId: interaction.channelId,
@@ -112,31 +130,24 @@ export class InterestCommands {
     const payload = buildInterestMessagePayload(post);
 
     try {
-      // Public reply is the interest post (must not early-defer this command).
-      if (interaction.deferred || interaction.replied) {
-        const channel = interaction.channel;
-        if (!channel || !("send" in channel)) {
-          await deleteInterestPost(post.id);
-          await replyOrEditInteraction(interaction, {
-            content: "Couldn't post in this channel.",
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
-        }
-        const message = await channel.send(payload);
-        await setInterestPostMessageId(post.id, message.id);
+      // Post via channel API (not interaction.reply) so we fail clearly when the bot
+      // lacks View Channel / Send Messages — signup buttons need that access too.
+      const message = await channel.send(payload);
+      await setInterestPostMessageId(post.id, message.id);
+      await replyOrEditInteraction(interaction, {
+        content: `Interest check posted: ${message.url}`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await deleteInterestPost(post.id).catch(() => undefined);
+      if (isMissingAccessError(error)) {
         await replyOrEditInteraction(interaction, {
-          content: `Interest check posted: ${message.url}`,
+          content:
+            "Missing access to this channel. Add the Grimkeeper bot with **View Channel** and **Send Messages**, then try again.",
           flags: MessageFlags.Ephemeral,
         });
         return;
       }
-
-      await interaction.reply(payload);
-      const message = await interaction.fetchReply();
-      await setInterestPostMessageId(post.id, message.id);
-    } catch (error) {
-      await deleteInterestPost(post.id).catch(() => undefined);
       throw error;
     }
   }

@@ -107,6 +107,10 @@ describe("shouldDeferSlashCommand", () => {
     expect(shouldDeferSlashCommand(chatCommand("role", null) as never)).toBe(false);
   });
 
+  it("defers /interest create (channel.send + ephemeral ack)", () => {
+    expect(shouldDeferSlashCommand(chatCommand("interest", "create") as never)).toBe(true);
+  });
+
   it("does not ephemeral-defer modal-opening /st queue commands", () => {
     expect(shouldDeferSlashCommand(chatCommand("st", "join", "queue") as never)).toBe(false);
     expect(shouldDeferSlashCommand(chatCommand("st", "edit", "queue") as never)).toBe(false);

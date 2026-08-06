@@ -8,6 +8,7 @@ import {
   parseInterestButtonCustomId,
   parseInterestConfirmCustomId,
   parseInterestModalCustomId,
+  buildInterestComponents,
   buildInterestEmbed,
 } from "./interest-post.js";
 
@@ -92,6 +93,28 @@ describe("buildInterestEmbed", () => {
     expect(open.data.title).toBe("🎲 Interest Check");
     expect(open.data.description).toContain("Playing (1/12)");
     expect(open.data.description).toContain("KIB (1)");
+
+    const components = buildInterestComponents({
+      id: "1",
+      guildId: "g",
+      channelId: "c",
+      messageId: "m",
+      ownerId: "111",
+      title: "Trouble Brewing",
+      description: "",
+      scriptUrl: "",
+      imageUrl: "",
+      maxPlayers: 12,
+      closed: false,
+      createdAt: new Date("2026-01-01"),
+      updatedAt: new Date("2026-01-01"),
+      signups: [],
+    });
+    const publicLabels = components[0]!.components.map((c) => {
+      const data = "data" in c ? c.data : undefined;
+      return data && "label" in data ? data.label : undefined;
+    });
+    expect(publicLabels).toEqual(["Sign Up", "KIB", "Backup"]);
 
     const closed = buildInterestEmbed({
       id: "1",

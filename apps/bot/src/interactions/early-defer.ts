@@ -53,7 +53,7 @@ export function isModalOpeningCommand(interaction: Interaction): boolean {
 
 /**
  * Ephemeral "Working…" early ack for slower slash handlers (not help/guide/modals).
- * `/interest create` must stay undeferred so the public reply can be the interest post.
+ * `/interest create` posts via channel.send + ephemeral ack (needs bot channel access).
  */
 export function shouldDeferSlashCommand(interaction: Interaction): boolean {
   if (!interaction.isChatInputCommand()) return false;
@@ -65,6 +65,10 @@ export function shouldDeferSlashCommand(interaction: Interaction): boolean {
   }
 
   if (interaction.commandName === "game") {
+    return true;
+  }
+
+  if (interaction.commandName === "interest") {
     return true;
   }
 
