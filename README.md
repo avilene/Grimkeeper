@@ -83,7 +83,8 @@ Also: `/st do buffet-status`, `/st do buffet-cancel`, `/st do buffet-configure` 
 **Setup rules applied automatically during the draft:**
 
 - Outsider-count roles (Baron, Fang Gu, Vigormortis, Balloonist, Godfather) adjust remaining outsider/townsfolk slots when picked
-- **Drunk** / **Hermit** / **Lunatic** / **Marionette** are never offered as pick buttons. Hermit, Lunatic, and Marionette are **off by default** in the admin pool (enable them if you want secret Lunatic/Marionette assignment).
+- **Drunk** / **Hermit** / **Lunatic** / **Marionette** are never offered as pick buttons. Hermit, Lunatic, and Marionette are **off by default** in the admin pool.
+- **Lunatic**: enable in admin, then ST pre-assign with `/st do buffet-assign-lunatic player:@…` (before or during the draft; they get demon choices).
 - **Drunk** is ST-assigned when outsider mods need it: `/st do buffet-assign-drunk player:@…` (unpicked players get townsfolk choices; already-picked Townsfolk can be converted).
 - **Lil' Monsta** can be picked, then the same player immediately chooses which Minion they are (Lil' Monsta isn't a player)
 - **Summoner** enabled in the pool → no Demon in the bag from the start (demon slots become townsfolk)

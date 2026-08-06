@@ -438,6 +438,13 @@ export class StCommandsMinimal {
         }
         await this.buffetAssignDrunk(player, interaction);
         return;
+      case "buffet-assign-lunatic":
+        if (!player) {
+          await missingOption(interaction, "player", "buffet-assign-lunatic");
+          return;
+        }
+        await this.buffetAssignLunatic(player, interaction);
+        return;
       case "buffet-configure": {
         await this.buffetConfigure(recycle, interaction);
         return;
@@ -2773,6 +2780,59 @@ export class StCommandsMinimal {
               ? "Their Townsfolk pick was converted (they keep that belief)."
               : "They will see Townsfolk choices on their turn.",
         ].join(" "),
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async buffetAssignLunatic(player: User, interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const target = engine.getPlayerByDiscordId(player.id);
+      if (!target) {
+        await replyOrEditInteraction(interaction, {
+          content: "That user is not in this game.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const events = engine.handle({
+        kind: GameCommandKind.AssignBuffetLunatic,
+        gameId: game.id,
+        playerId: target.id,
+      });
+      await persistEvents(engine, events);
+      await syncGameProjection(game.id, engine);
+
+      const draft = engine.getState().buffetDraft;
+      const offer = draft?.currentOffer;
+      if (offer?.playerId === target.id) {
+        const { postBuffetOffer } = await import("../interactions/buffet-draft.js");
+        await postBuffetOffer(guild, game, engine, offer);
+      }
+
+      const when =
+        draft?.status === "idle"
+          ? "They will get Demon choices when the draft starts."
+          : offer?.playerId === target.id
+            ? "Their current offer was rebuilt with Demon choices."
+            : "They will see Demon choices on their turn.";
+
+      await postGameLog(
+        guild,
+        game,
+        `<@${interaction.user.id}> assigned **Lunatic** to **${target.displayName}**.`,
+      );
+      await replyOrEditInteraction(interaction, {
+        content: `Assigned **Lunatic** to **${target.displayName}**. ${when}`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

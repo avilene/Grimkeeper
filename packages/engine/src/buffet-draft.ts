@@ -239,14 +239,15 @@ export function drawOfferByTeam(pool: string[], team: RoleType, count: number): 
 /**
  * Decide secret Lunatic / Marionette assignments for this draft.
  * Drunk is never auto-assigned — the ST picks who is Drunk when outsider mods need it.
- * Forces assignment when pickable roles alone cannot fill a team slot;
- * otherwise includes them with probability ≈ K / N (dealt into the rack).
+ * Lunatic may be ST pre-assigned (see `preAssignments`); otherwise forced only when
+ * pickable outsiders cannot cover the slot. Marionette keeps force + probabilistic.
  */
 export function assignSecretRoles(
   enabledRoleIds: string[],
   slots: Record<RoleType, number>,
   draftOrder: string[],
   rng: () => number = Math.random,
+  preAssignments: Record<string, BuffetSecretRole> = {},
 ): {
   secretAssignments: Record<string, BuffetSecretRole>;
   remainingSlots: Record<RoleType, number>;
@@ -260,19 +261,36 @@ export function assignSecretRoles(
   const pickableCount = (team: RoleType) =>
     pickable.filter((id) => roleTeam(id) === team).length;
 
-  const assign = (roleId: BuffetSecretRole, team: RoleType) => {
+  const assign = (roleId: BuffetSecretRole, team: RoleType, preferredPlayerId?: string) => {
     if (Object.values(secretAssignments).includes(roleId)) return;
     if (!enabled.has(roleId)) return;
     if ((remainingSlots[team] ?? 0) <= 0) return;
-    const playerId = availablePlayers.find((id) => !secretAssignments[id]);
+    const playerId =
+      preferredPlayerId &&
+      draftOrder.includes(preferredPlayerId) &&
+      !secretAssignments[preferredPlayerId]
+        ? preferredPlayerId
+        : availablePlayers.find((id) => !secretAssignments[id]);
     if (!playerId) return;
     secretAssignments[playerId] = roleId;
     remainingSlots[team] = Math.max(0, (remainingSlots[team] ?? 0) - 1);
   };
 
+  // Honor ST pre-assignments (e.g. Lunatic chosen before buffet-start).
+  for (const [playerId, roleId] of Object.entries(preAssignments)) {
+    if (!draftOrder.includes(playerId)) continue;
+    if (secretAssignments[playerId]) continue;
+    if (Object.values(secretAssignments).includes(roleId)) continue;
+    if (!enabled.has(roleId)) continue;
+    const team = roleTeam(roleId);
+    if (!team) continue;
+    assign(roleId, team, playerId);
+  }
+
   // Force when pickable pool cannot cover the team slot without secret roles.
   if (
     enabled.has("lunatic") &&
+    !Object.values(secretAssignments).includes("lunatic") &&
     (remainingSlots.outsider ?? 0) > pickableCount("outsider")
   ) {
     assign("lunatic", "outsider");
@@ -299,7 +317,7 @@ export function assignSecretRoles(
     assign(roleId, team);
   };
 
-  tryProbabilistic("lunatic", "outsider");
+  // Lunatic is ST-chosen (pre-assign / force-only); Marionette may still roll in.
   tryProbabilistic("marionette", "minion");
 
   return { secretAssignments, remainingSlots };
@@ -405,6 +423,66 @@ export function applyAssignDrunk(
   };
 }
 
+/**
+ * ST assigns Lunatic to a player (pre-draft or mid-draft).
+ * Requires Lunatic enabled in the buffet selector.
+ * Idle: stored until buffet-start. Active (unpicked): reserves outsider; demon belief offers.
+ */
+export function applyAssignLunatic(
+  state: BuffetDraftState,
+  playerId: string,
+): BuffetDraftState {
+  if (!state.config.enabledRoleIds.includes("lunatic")) {
+    throw new Error("Lunatic is not enabled in the buffet role pool.");
+  }
+  if (Object.values(state.secretAssignments).includes("lunatic")) {
+    throw new Error("Lunatic is already assigned to another player.");
+  }
+  if (Object.values(state.picks).includes("lunatic")) {
+    throw new Error("Lunatic is already assigned.");
+  }
+  if (state.secretAssignments[playerId]) {
+    throw new Error("That player already has a secret assignment.");
+  }
+  if (state.picks[playerId]) {
+    throw new Error("That player already picked — assign Lunatic before their turn.");
+  }
+
+  if (state.status === "idle") {
+    return {
+      ...state,
+      secretAssignments: { ...state.secretAssignments, [playerId]: "lunatic" },
+    };
+  }
+
+  if (state.status !== "active") {
+    throw new Error("Can only assign Lunatic before or during an active draft.");
+  }
+
+  if (!state.draftOrder.includes(playerId)) {
+    throw new Error("That player is not in this draft.");
+  }
+  if ((state.remainingSlots.outsider ?? 0) < 1) {
+    throw new Error("No outsider slots left to assign Lunatic.");
+  }
+
+  return {
+    ...state,
+    remainingSlots: {
+      ...state.remainingSlots,
+      outsider: (state.remainingSlots.outsider ?? 0) - 1,
+    },
+    secretAssignments: { ...state.secretAssignments, [playerId]: "lunatic" },
+    currentOffer:
+      state.currentOffer?.playerId === playerId ? null : state.currentOffer,
+  };
+}
+
+/** Demons from the buffet selector — used for Lunatic belief offers (not the live pool). */
+export function enabledDemonsForLunatic(enabledRoleIds: string[]): string[] {
+  return buildInitialPool(enabledRoleIds).filter((id) => roleTeam(id) === "demon");
+}
+
 function drawOfferForPlayer(
   state: BuffetDraftState,
   playerId: string,
@@ -416,7 +494,10 @@ function drawOfferForPlayer(
   }
   const secret = state.secretAssignments[playerId];
   if (secret === "lunatic") {
-    return drawOfferByTeam(state.pool, "demon", count);
+    // Belief only — may include demons already drafted by another player.
+    const demons = enabledDemonsForLunatic(state.config.enabledRoleIds);
+    if (demons.length === 0) return [];
+    return shuffle(demons).slice(0, Math.min(count, demons.length));
   }
   if (secret === "marionette" || secret === "drunk") {
     return drawOfferByTeam(state.pool, "townsfolk", count);

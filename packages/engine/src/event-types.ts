@@ -42,6 +42,7 @@ export const GameEventType = {
   BuffetMulliganUsed: "BuffetMulliganUsed",
   BuffetDraftCompleted: "BuffetDraftCompleted",
   BuffetDrunkAssigned: "BuffetDrunkAssigned",
+  BuffetLunaticAssigned: "BuffetLunaticAssigned",
 } as const;
 
 export type GameEventType = (typeof GameEventType)[keyof typeof GameEventType];

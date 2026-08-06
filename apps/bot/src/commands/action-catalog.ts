@@ -95,6 +95,11 @@ export const ST_DO_ACTIONS: DoAction[] = [
     needs: ["player"],
   },
   {
+    name: "buffet-assign-lunatic",
+    description: "Pre-assign Lunatic to a player (enable Lunatic in admin first); they get demon choices",
+    needs: ["player"],
+  },
+  {
     name: "buffet-configure",
     description: "Configure buffet draft options: recycle unchosen on/off",
     needs: ["recycle?"],

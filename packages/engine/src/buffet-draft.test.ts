@@ -16,7 +16,9 @@ import {
   assignSecretRoles,
   describeBuffetDrunkFix,
   formatBuffetDrunkFixLine,
+  applyAssignLunatic,
   buildLilMonstaMinionOffer,
+  buildNextOffer,
   planMarionetteSeatSwaps,
   seatsAreNeighbors,
   shuffle,
@@ -261,6 +263,18 @@ describe("assignSecretRoles", () => {
     expect(secretAssignments).toEqual({});
   });
 
+  it("honors ST pre-assigned lunatic", () => {
+    const { secretAssignments, remainingSlots } = assignSecretRoles(
+      ["washerwoman", "librarian", "imp", "poisoner", "lunatic", "butler"],
+      { townsfolk: 2, outsider: 1, minion: 1, demon: 1 },
+      ["p1", "p2", "p3", "p4", "p5"],
+      () => 0.99,
+      { p3: "lunatic" },
+    );
+    expect(secretAssignments).toEqual({ p3: "lunatic" });
+    expect(remainingSlots.outsider).toBe(0);
+  });
+
   it("never auto-assigns drunk (ST assigns via AssignBuffetDrunk)", () => {
     const { secretAssignments } = assignSecretRoles(
       ["washerwoman", "librarian", "imp", "poisoner", "drunk"],
@@ -270,6 +284,16 @@ describe("assignSecretRoles", () => {
     );
     expect(Object.values(secretAssignments)).not.toContain("drunk");
     expect(secretAssignments).toEqual({});
+  });
+
+  it("does not probabilistically assign lunatic (ST pre-assigns)", () => {
+    const { secretAssignments } = assignSecretRoles(
+      ["washerwoman", "butler", "recluse", "imp", "poisoner", "lunatic"],
+      { townsfolk: 1, outsider: 1, minion: 1, demon: 1 },
+      ["p1", "p2", "p3", "p4"],
+      () => 0,
+    );
+    expect(Object.values(secretAssignments)).not.toContain("lunatic");
   });
 });
 
@@ -366,6 +390,50 @@ describe("describeBuffetDrunkFix", () => {
     draft.remainingSlots.outsider = 1;
     draft.picks["player-1"] = "drunk";
     expect(describeBuffetDrunkFix(draft)?.needed).toBe(false);
+  });
+});
+
+describe("applyAssignLunatic", () => {
+  function makeIdle(): BuffetDraftState {
+    return {
+      status: "idle",
+      config: {
+        ...defaultBuffetConfig(),
+        enabledRoleIds: [...defaultBuffetConfig().enabledRoleIds, "lunatic"],
+      },
+      pool: [],
+      remainingSlots: { townsfolk: 0, outsider: 0, minion: 0, demon: 0 },
+      draftOrder: [],
+      currentIndex: 0,
+      currentOffer: null,
+      mulligansUsed: {},
+      picks: {},
+      secretAssignments: {},
+      beliefs: {},
+      inPlayDemon: null,
+    };
+  }
+
+  it("pre-assigns on idle draft without touching slots", () => {
+    const next = applyAssignLunatic(makeIdle(), "player-1");
+    expect(next.secretAssignments["player-1"]).toBe("lunatic");
+    expect(next.remainingSlots.outsider).toBe(0);
+  });
+
+  it("rejects when lunatic is not enabled", () => {
+    const draft = makeIdle();
+    draft.config.enabledRoleIds = draft.config.enabledRoleIds.filter((id) => id !== "lunatic");
+    expect(() => applyAssignLunatic(draft, "player-1")).toThrow(/not enabled/i);
+  });
+
+  it("reserves an outsider slot during an active draft", () => {
+    const draft = makeIdle();
+    draft.status = "active";
+    draft.draftOrder = ["player-1", "player-2"];
+    draft.remainingSlots = { townsfolk: 2, outsider: 1, minion: 1, demon: 1 };
+    const next = applyAssignLunatic(draft, "player-2");
+    expect(next.secretAssignments["player-2"]).toBe("lunatic");
+    expect(next.remainingSlots.outsider).toBe(0);
   });
 });
 
@@ -621,17 +689,41 @@ describe("applyMulligan", () => {
   it("mulligan for lunatic still offers demons", () => {
     const draft = makeDraft();
     draft.secretAssignments = { "player-1": "lunatic" };
-    draft.remainingSlots = { townsfolk: 5, outsider: 0, minion: 1, demon: 1 };
+    draft.config = {
+      ...draft.config,
+      enabledRoleIds: ["washerwoman", "imp", "zombuul", "fanggu", "poisoner"],
+    };
+    draft.pool = ["washerwoman", "poisoner"]; // real Imp already drafted — gone from pool
+    draft.remainingSlots = { townsfolk: 5, outsider: 0, minion: 1, demon: 0 };
     draft.currentOffer = {
       playerId: "player-1",
       roleIds: ["imp"],
       mulliganStep: 0,
     };
     const { newOffer } = applyMulligan(draft, "player-1");
+    expect(newOffer.length).toBeGreaterThan(0);
     const roles = listBotcRoles();
     for (const id of newOffer) {
       expect(roles.find((r) => r.id === id)?.team).toBe("demon");
     }
+    // May include Imp even though it is no longer in the live draft pool.
+    expect(newOffer.every((id) => ["imp", "zombuul", "fanggu"].includes(id))).toBe(true);
+  });
+
+  it("lunatic first offer can include demons already removed from the pool", () => {
+    const draft = makeDraft();
+    draft.secretAssignments = { "player-1": "lunatic" };
+    draft.config = {
+      ...draft.config,
+      enabledRoleIds: ["washerwoman", "imp", "zombuul", "poisoner"],
+      mulliganSteps: [2, 1],
+    };
+    draft.pool = ["washerwoman", "poisoner"];
+    draft.remainingSlots = { townsfolk: 2, outsider: 0, minion: 1, demon: 0 };
+    draft.currentOffer = null;
+    const offer = buildNextOffer(draft);
+    expect(offer?.roleIds).toHaveLength(2);
+    expect(offer?.roleIds.every((id) => id === "imp" || id === "zombuul")).toBe(true);
   });
 });
 

@@ -27,6 +27,7 @@ import {
   applyMulligan,
   applySummonerNoDemonSetup,
   applyAssignDrunk,
+  applyAssignLunatic,
   assignSecretRoles,
   chooseOutsiderAdjustment,
   computeRemainingSlots,
@@ -57,6 +58,7 @@ export {
   BUFFET_HIDDEN_BY_DEFAULT,
   describeBuffetDrunkFix,
   formatBuffetDrunkFixLine,
+  applyAssignLunatic,
 } from "./buffet-draft.js";
 
 export type Team = "good" | "evil" | "traveler";
@@ -336,6 +338,11 @@ export interface BuffetDrunkAssignedEvent extends GameEventBase {
   playerId: string;
 }
 
+export interface BuffetLunaticAssignedEvent extends GameEventBase {
+  type: typeof GameEventType.BuffetLunaticAssigned;
+  playerId: string;
+}
+
 export type GameEvent =
   | GameCreatedEvent
   | PlayerAddedEvent
@@ -379,7 +386,8 @@ export type GameEvent =
   | BuffetRolePickedEvent
   | BuffetMulliganUsedEvent
   | BuffetDraftCompletedEvent
-  | BuffetDrunkAssignedEvent;
+  | BuffetDrunkAssignedEvent
+  | BuffetLunaticAssignedEvent;
 
 export interface PlayerState {
   id: string;
@@ -768,6 +776,12 @@ export interface AssignBuffetDrunkCommand {
   playerId: string;
 }
 
+export interface AssignBuffetLunaticCommand {
+  kind: typeof GameCommandKind.AssignBuffetLunatic;
+  gameId: string;
+  playerId: string;
+}
+
 export type GameCommand =
   | CreateGameCommand
   | AddPlayerCommand
@@ -814,7 +828,8 @@ export type GameCommand =
   | PickBuffetRoleCommand
   | MulliganBuffetCommand
   | CancelBuffetDraftCommand
-  | AssignBuffetDrunkCommand;
+  | AssignBuffetDrunkCommand
+  | AssignBuffetLunaticCommand;
 
 export const DEFAULT_MIN_PLAYERS = 5;
 export const DEV_MIN_PLAYERS = 3;
@@ -1731,6 +1746,28 @@ export class GameEngine {
         }
         break;
       }
+      case GameCommandKind.AssignBuffetLunatic: {
+        const draft = this.state.buffetDraft;
+        if (!draft) {
+          throw new GameEngineError(
+            "Configure the buffet role pool first and enable Lunatic in admin.",
+          );
+        }
+        if (draft.status !== "idle" && draft.status !== "active") {
+          throw new GameEngineError("Can only assign Lunatic before or during the draft.");
+        }
+        if (!this.state.players.some((p) => p.id === command.playerId && p.seat !== null)) {
+          throw new GameEngineError("That player is not seated in this game.");
+        }
+        try {
+          applyAssignLunatic(draft, command.playerId);
+        } catch (error) {
+          throw new GameEngineError(
+            error instanceof Error ? error.message : "Cannot assign Lunatic.",
+          );
+        }
+        break;
+      }
     }
   }
 
@@ -2291,10 +2328,13 @@ export class GameEngine {
           config.enabledRoleIds,
         );
         const draftOrder = shuffle(seatedPlayers.map((p) => p.id));
+        const preAssignments = this.state.buffetDraft?.secretAssignments ?? {};
         const { secretAssignments, remainingSlots } = assignSecretRoles(
           config.enabledRoleIds,
           baseSlots,
           draftOrder,
+          Math.random,
+          preAssignments,
         );
         const pool = buildPickablePool(config.enabledRoleIds);
         const pickableError = validatePoolForComposition(pool, remainingSlots);
@@ -2476,6 +2516,38 @@ export class GameEngine {
           if (!offer || offer.roleIds.length === 0) {
             throw new GameEngineError(
               "Assigned Drunk but could not build townsfolk choices for that player.",
+            );
+          }
+          events.push({
+            type: GameEventType.BuffetChoicesOffered,
+            gameId: command.gameId,
+            offer,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        return events;
+      }
+      case GameCommandKind.AssignBuffetLunatic: {
+        const draft = this.state.buffetDraft!;
+        // Ensure idle draft exists when validating seeded it on state.
+        const newState = applyAssignLunatic(draft, command.playerId);
+        const events: GameEvent[] = [
+          {
+            type: GameEventType.BuffetLunaticAssigned,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+        if (
+          newState.status === "active" &&
+          !newState.currentOffer &&
+          newState.draftOrder[newState.currentIndex] === command.playerId
+        ) {
+          const offer = buildNextOffer(newState);
+          if (!offer || offer.roleIds.length === 0) {
+            throw new GameEngineError(
+              "Assigned Lunatic but could not build demon choices for that player.",
             );
           }
           events.push({
@@ -2809,7 +2881,12 @@ export class GameEngine {
         break;
       }
       case GameEventType.BuffetDraftConfigured: {
-        // Always reset to idle when (re)configuring — also used by CancelBuffetDraft
+        // Keep ST pre-assignments (e.g. Lunatic) when those roles stay enabled.
+        const kept = Object.fromEntries(
+          Object.entries(this.state.buffetDraft?.secretAssignments ?? {}).filter(([, role]) =>
+            event.config.enabledRoleIds.includes(role),
+          ),
+        ) as BuffetDraftState["secretAssignments"];
         this.state.buffetDraft = {
           status: "idle",
           config: event.config,
@@ -2820,7 +2897,7 @@ export class GameEngine {
           currentOffer: null,
           mulligansUsed: {},
           picks: {},
-          secretAssignments: {},
+          secretAssignments: kept,
           beliefs: {},
           inPlayDemon: null,
         };
@@ -2887,6 +2964,12 @@ export class GameEngine {
             player.roleId = trueRole;
           }
         }
+        break;
+      }
+      case GameEventType.BuffetLunaticAssigned: {
+        const draft = this.state.buffetDraft;
+        if (!draft) break;
+        this.state.buffetDraft = applyAssignLunatic(draft, event.playerId);
         break;
       }
     }
