@@ -3,8 +3,8 @@ import { ciReporters } from "../../scripts/vitest-ci-reporters.ts";
 
 export default defineConfig({
   test: {
-    name: "engine",
+    name: "database",
     include: ["src/**/*.test.ts"],
-    ...(ciReporters("engine") ? { reporters: ciReporters("engine") } : {}),
+    reporters: ciReporters("database"),
   },
 });
