@@ -1,7 +1,7 @@
 # Build context: monorepo root (see docker-compose admin.build).
 FROM node:24-bookworm-slim AS build
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ \
+  && apt-get install -y --no-install-recommends ca-certificates python3 make g++ \
   && rm -rf /var/lib/apt/lists/* \
   && corepack enable && corepack prepare pnpm@11.9.0 --activate
 
