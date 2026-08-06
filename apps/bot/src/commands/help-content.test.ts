@@ -89,6 +89,7 @@ describe("help content", () => {
     expect(st.data.title).toBe("Storyteller guide");
     expect(stEmbeds.length).toBeGreaterThan(1);
     expect(st.data.description).toContain("/game setup");
+    expect(st.data.description).toContain("add the Grimkeeper bot");
     expect(st.data.description).toContain("log thread");
     expect(st.data.description).toContain("/st next-phase");
     expect(st.data.description).toContain("/st broadcast");
@@ -129,9 +130,11 @@ describe("help content", () => {
     expect(setup.data.title).toContain("Setup");
     expect(fieldValues(setup)).toContain("/st setup-town");
     expect(fieldValues(setup)).toContain("/st broadcast");
+    expect(fieldValues(setup)).toContain("add the Grimkeeper bot");
     expect(buffet.data.title).toContain("Sushi Buffet");
     expect(fieldValues(buffet)).toContain("/st do buffet-start");
     expect(fieldValues(buffet)).toContain("Recycle unchosen roles");
+    expect(fieldValues(buffet)).toContain("add the Grimkeeper bot");
     expect(day.data.title).toContain("Day");
     expect(fieldValues(day)).toContain("/st close-nominations");
     expect(fieldValues(day)).toContain("/st next-phase");

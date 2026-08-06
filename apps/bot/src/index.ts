@@ -131,11 +131,16 @@ client.on("interactionCreate", (interaction) => {
       const queueHandlers = stQueueEnabled
         ? await import("./interactions/st-queue.js")
         : null;
+      const { handleInterestButton, handleInterestModalSubmit } = await import(
+        "./interactions/interest.js"
+      );
       if (interaction.isButton()) {
         if (queueHandlers) {
           const handledQueue = await queueHandlers.handleStQueueButton(interaction);
           if (handledQueue) return;
         }
+        const handledInterest = await handleInterestButton(interaction);
+        if (handledInterest) return;
         const { handleHelpPageButton } = await import("./commands/help-pagination.js");
         const handledHelp = await handleHelpPageButton(interaction);
         if (handledHelp) return;
@@ -168,6 +173,8 @@ client.on("interactionCreate", (interaction) => {
           const handledQueue = await queueHandlers.handleStQueueModalSubmit(interaction);
           if (handledQueue) return;
         }
+        const handledInterestModal = await handleInterestModalSubmit(interaction);
+        if (handledInterestModal) return;
         const handled = await handleVoteModalSubmit(interaction);
         if (handled) return;
       }

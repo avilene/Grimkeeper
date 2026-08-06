@@ -23,6 +23,7 @@ src/
     role.ts                /role character lookup
     st-queue.ts            /st queue commands
     st-reminders.ts        /st reminder commands
+    interest.ts            /interest create (interest-check posts)
     stats.ts               /stats command
     whisper.ts             /whisper command
     … (others)
@@ -32,6 +33,7 @@ src/
     lock-votes.ts          Lock votes button
     st-panel.ts            ST control panel buttons and user-selects
     st-queue.ts            ST queue button / modal / select handlers
+    interest.ts            Interest check button / modal handlers
     buffet-draft.ts        Sushi Buffet pick + mulligan buttons
     interaction-dedup.ts   Idempotency: prevent double-processing an interaction
     interaction-response.ts Helpers for defer / reply / edit
@@ -46,6 +48,7 @@ src/
   seating-chart.ts         Seat-order embed
   st-control-panel.ts      ST kib control panel embed + refresh
   st-queue-board.ts        ST queue panel in a dedicated thread
+  interest-post.ts         Interest check embed + button builders
   backpacker.ts            Game save/restore helpers
   load-commands.ts         Dynamic import of all command modules at startup
   discord-noms-refresh-scheduler.ts  Polls DB for pending Discord nomination refreshes

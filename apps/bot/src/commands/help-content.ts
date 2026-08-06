@@ -527,7 +527,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
     title: "Storyteller guide",
     description: [
       "**Quick start**",
-      "1. `/game setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles (optional `kib_thread:` channel/thread + `log_thread:`)",
+      "1. `/game setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles (optional `kib_thread:` channel/thread + `log_thread:`). If you pass a kib **channel**, add the Grimkeeper bot to that channel first.",
       "2. `/st setup-town` with `players:` @mentions in **seat order** (any player count)",
       "3. `/st broadcast` from kib to send the same message to all player threads",
       "4. `/st reminder schedule` / `/st reminder batch` for scheduled pings (ST role or allowlist)",
@@ -651,6 +651,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           name: "1. Lobby",
           value: checklist([
             "`/game setup` — pick existing `st:`, `player_role:`, `kib:` (optional `kib_thread:` channel or thread + `log_thread:`)",
+            "If `kib_thread:` is a **channel**, add the Grimkeeper bot to it first (so panels, log, and commands work there)",
             "Confirm kib + ST log look right (log nests under a kib channel when kib is a channel)",
           ]),
         },
@@ -696,7 +697,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
         {
           name: "1. Prepare the game",
           value: checklist([
-            "`/game setup` — configure the game roles and a kib thread or channel",
+            "`/game setup` — configure the game roles and a kib thread or channel (if kib is a channel, add the Grimkeeper bot to it first)",
             "`/st setup-town` with players in seat order — creates every player’s private ST thread",
             "Do not advance to Night 1 yet; the draft can start only during **Setup**",
           ]),

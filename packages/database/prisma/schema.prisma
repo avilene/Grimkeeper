@@ -255,3 +255,43 @@ model GuildSettings {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
+
+/** Lightweight interest-check post (separate from games / ST queue). */
+model InterestPost {
+  id          String           @id @default(cuid())
+  guildId     String
+  channelId   String
+  messageId   String?
+  ownerId     String
+  title       String
+  description String           @default("")
+  scriptUrl   String           @default("")
+  imageUrl    String           @default("")
+  /** Optional playing-list capacity; null = unlimited. */
+  maxPlayers  Int?
+  closed      Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  signups     InterestSignup[]
+
+  @@index([guildId])
+  @@index([guildId, channelId])
+  @@index([messageId])
+  @@index([ownerId])
+}
+
+/** One signup row per user on an interest post (playing | kib | backup). */
+model InterestSignup {
+  id         String       @id @default(cuid())
+  interestId String
+  userId     String
+  /** playing | kib | backup */
+  state      String
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  post       InterestPost @relation(fields: [interestId], references: [id], onDelete: Cascade)
+
+  @@unique([interestId, userId])
+  @@index([interestId])
+  @@index([userId])
+}

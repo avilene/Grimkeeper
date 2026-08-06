@@ -17,6 +17,7 @@ export async function loadCommandModules(): Promise<void> {
   if (stQueueEnabled) {
     await import("./commands/st-queue.js");
   }
+  await import("./commands/interest.js");
   await import("./commands/command-help.js");
   await import("./commands/dev-minimal.js");
 
@@ -38,6 +39,7 @@ export async function loadCommandModules(): Promise<void> {
       "stats",
       "role",
       "st",
+      "interest",
       "dev",
     ],
   });

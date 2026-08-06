@@ -20,6 +20,7 @@ src/
   player-alias.ts     Player alias upsert / resolve
   whispers.ts         Game whisper thread tracking
   st-queue.ts         ST queue boards, entries, and members
+  interest.ts         Interest-check posts and signups (playing/kib/backup)
   guild-settings.ts   Per-guild config (archive category, etc.)
   discord-noms-refresh.ts  Async flag table: request Discord nomination refresh from bot
   logging.ts          Prisma query logging adapter

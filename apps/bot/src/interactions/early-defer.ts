@@ -51,7 +51,10 @@ export function isModalOpeningCommand(interaction: Interaction): boolean {
   );
 }
 
-/** Ephemeral "Working…" early ack for slower slash handlers (not help/guide/modals). */
+/**
+ * Ephemeral "Working…" early ack for slower slash handlers (not help/guide/modals).
+ * `/interest create` must stay undeferred so the public reply can be the interest post.
+ */
 export function shouldDeferSlashCommand(interaction: Interaction): boolean {
   if (!interaction.isChatInputCommand()) return false;
   if (isHelpOrGuideCommand(interaction)) return false;

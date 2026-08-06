@@ -118,6 +118,22 @@ export {
   upsertGuildSettings,
   resolveArchiveCategoryId,
 } from "./guild-settings.js";
+export {
+  isInterestSignupState,
+  nextInterestSignupState,
+  getInterestPostById,
+  getInterestPostByMessage,
+  createInterestPost,
+  setInterestPostMessageId,
+  updateInterestPost,
+  closeInterestPost,
+  deleteInterestPost,
+  getSignupStateForUser,
+  setInterestSignup,
+  signupsByState,
+  type InterestSignupState,
+  type InterestPostWithSignups,
+} from "./interest.js";
 
 export type StoredGameEvent = GameEvent;
 
