@@ -5,6 +5,6 @@ export default defineConfig({
   test: {
     name: "database",
     include: ["src/**/*.test.ts"],
-    reporters: ciReporters("database"),
+    ...(ciReporters("database") ? { reporters: ciReporters("database") } : {}),
   },
 });

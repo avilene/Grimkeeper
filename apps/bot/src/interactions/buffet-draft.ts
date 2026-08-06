@@ -10,6 +10,7 @@ import {
 import { getGameById, prisma } from "@grimkeeper/database";
 import {
   GameCommandKind,
+  formatBuffetDrunkFixLine,
   type GameEngine,
   listBotcRoles,
 } from "@grimkeeper/engine";
@@ -68,6 +69,7 @@ export function buildBuffetOfferMessage(
   gameId: string,
   mulliganStep: number,
   mulliganStepsCount: number,
+  offerKind: "standard" | "lilmonsta-minion" = "standard",
 ): { content: string; components: ActionRowBuilder<ButtonBuilder>[] } {
   const catalog = new Map(listBotcRoles().map((r) => [r.id, r]));
   const hasMoreMulligans = mulliganStep + 1 < mulliganStepsCount;
@@ -98,7 +100,10 @@ export function buildBuffetOfferMessage(
     );
   }
 
-  const intro = "**Sushi Buffet — choose your role!**\nPick one of the options below.";
+  const intro =
+    offerKind === "lilmonsta-minion"
+      ? "**Sushi Buffet — Lil' Monsta!**\nLil' Monsta isn't a player. Choose which **Minion** you are:"
+      : "**Sushi Buffet — choose your role!**\nPick one of the options below.";
   const mulliganNote = hasMoreMulligans
     ? " You can also mulligan for fewer choices."
     : " No mulligans remaining.";
@@ -123,16 +128,35 @@ export function formatBuffetCompletionSummary(
   engine: Pick<GameEngine, "getState">,
 ): string {
   const state = engine.getState();
-  const picks = state.buffetDraft?.picks ?? {};
+  const draft = state.buffetDraft;
+  const picks = draft?.picks ?? {};
+  const beliefs = draft?.beliefs ?? {};
   const lines = state.players
     .filter((player) => picks[player.id])
     .sort((a, b) => (a.seat ?? Number.MAX_SAFE_INTEGER) - (b.seat ?? Number.MAX_SAFE_INTEGER))
     .map((player) => {
       const seat = player.seat != null ? `seat ${player.seat} · ` : "";
-      return `• ${seat}**${player.displayName}** → ${roleDisplayName(picks[player.id]!)}`;
+      const trueRole = roleDisplayName(picks[player.id]!);
+      const belief = beliefs[player.id];
+      const detail = belief
+        ? `${trueRole} (thinks: ${roleDisplayName(belief)})`
+        : trueRole;
+      return `• ${seat}**${player.displayName}** → ${detail}`;
     });
 
-  return ["**Sushi Buffet — roles chosen**", ...lines].join("\n");
+  if (draft?.inPlayDemon === "lilmonsta") {
+    lines.push("• _(no player)_ → **Lil' Monsta** (Demon)");
+  }
+
+  const parts = ["**Sushi Buffet — roles chosen**", ...lines];
+  if (draft) {
+    const drunkLine = formatBuffetDrunkFixLine(draft);
+    if (drunkLine) {
+      parts.push("", drunkLine);
+    }
+  }
+
+  return parts.join("\n");
 }
 
 async function getPlayerStThread(
@@ -166,7 +190,12 @@ export async function postBuffetOffer(
   guild: Guild,
   game: { id: string; channelId: string; kibThreadId?: string | null },
   engine: GameEngine,
-  offer: { playerId: string; roleIds: string[]; mulliganStep: number },
+  offer: {
+    playerId: string;
+    roleIds: string[];
+    mulliganStep: number;
+    offerKind?: "standard" | "lilmonsta-minion";
+  },
 ): Promise<void> {
   const player = engine.getState().players.find((p) => p.id === offer.playerId);
   if (!player) return;
@@ -178,6 +207,7 @@ export async function postBuffetOffer(
     game.id,
     offer.mulliganStep,
     draft.config.mulliganSteps.length,
+    offer.offerKind ?? "standard",
   );
 
   const thread = await getPlayerStThread(guild, game.id, player.discordUserId);
@@ -289,9 +319,29 @@ export async function handleBuffetPick(interaction: ButtonInteraction): Promise<
     });
     await persistEvents(engine, events);
     await disableOfferButtons(interaction);
-    await revealRoleForDrafter(guild, game, drafter, roleId);
 
-    const roleName = roleDisplayName(roleId);
+    const updatedDraft = engine.getState().buffetDraft;
+    const pendingLilMonstaFollowUp =
+      roleId === "lilmonsta" && !updatedDraft?.picks[drafter.id];
+
+    if (pendingLilMonstaFollowUp) {
+      await finishBuffetPick(guild, game, engine);
+      await interaction.editReply({
+        content: drafter.isFake
+          ? `**Lil' Monsta** selected for **${drafter.displayName}** — choose their Minion in their ST thread.`
+          : "**Lil' Monsta** isn't a player — pick which **Minion** you are in the next prompt.",
+      });
+      return true;
+    }
+
+    // Pretenders see their belief role, not the true token.
+    const revealRoleId =
+      updatedDraft?.beliefs[drafter.id] ??
+      updatedDraft?.picks[drafter.id] ??
+      roleId;
+    await revealRoleForDrafter(guild, game, drafter, revealRoleId);
+
+    const roleName = roleDisplayName(revealRoleId);
     const outcome = await finishBuffetPick(guild, game, engine);
 
     if (outcome === "complete") {

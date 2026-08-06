@@ -80,6 +80,14 @@ Optional role-draft mode (like [Grim Bits Draft Buffet](https://grimbits.com/dra
 
 Also: `/st do buffet-status`, `/st do buffet-cancel`, `/st do buffet-configure` (`recycle:` true/false).
 
+**Setup rules applied automatically during the draft:**
+
+- Outsider-count roles (Baron, Fang Gu, Vigormortis, Balloonist, Godfather) adjust remaining outsider/townsfolk slots when picked
+- **Drunk** / **Hermit** / **Lunatic** / **Marionette** are never offered as pick buttons. Hermit, Lunatic, and Marionette are **off by default** in the admin pool (enable them if you want secret Lunatic/Marionette assignment).
+- **Drunk** is ST-assigned when outsider mods need it: `/st do buffet-assign-drunk player:@…` (unpicked players get townsfolk choices; already-picked Townsfolk can be converted).
+- **Lil' Monsta** can be picked, then the same player immediately chooses which Minion they are (Lil' Monsta isn't a player)
+- **Summoner** enabled in the pool → no Demon in the bag from the start (demon slots become townsfolk)
+
 **Dev shortcut (`DEV_MODE=true`):** `/dev bot-game` seats 8 fake players (optional real `@mentions`) and opens town threads in one step. Add `buffet:true` to start a buffet draft — offers appear in each player's ST thread (ST picks for bots).
 
 ## Deploy to Railway

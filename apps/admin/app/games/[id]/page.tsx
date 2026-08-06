@@ -241,8 +241,10 @@ export default async function GameDetailPage({ params }: { params: Promise<{ id:
         <section className="space-y-3">
           <h2 className="text-lg font-semibold" id="sushi-buffet-draft">Sushi Buffet Draft</h2>
           <p className="text-sm text-muted-foreground">
-            Configure the role pool for a Sushi Buffet draft. All roles are enabled by default.
-            Uncheck roles to remove them from the pool. Once configured, run{" "}
+            Configure the role pool for a Sushi Buffet draft. Hermit, Lunatic, and Marionette
+            start disabled (and cannot be player-picked). Drunk is never player-picked — assign
+            it in Discord with <code>/st do buffet-assign-drunk</code> when outsider mods need it.
+            Uncheck other roles to remove them from the pool. Once configured, run{" "}
             <code>/st do buffet-start</code> in Discord to begin the draft.
           </p>
           {buffetState?.status === "active" ? (

@@ -18,23 +18,24 @@ import {
   type BuffetDraftConfig,
   type BuffetDraftState,
   type BuffetCurrentOffer,
+  type BuffetSecretRole,
   buildInitialPool,
+  buildPickablePool,
+  buildNextOffer,
+  buildLilMonstaMinionOffer,
   applyPick,
   applyMulligan,
+  applySummonerNoDemonSetup,
+  applyAssignDrunk,
+  assignSecretRoles,
+  chooseOutsiderAdjustment,
   computeRemainingSlots,
   defaultBuffetConfig,
   validatePoolForComposition,
+  planMarionetteSeatSwaps,
   shuffle,
-  drawOffer,
+  OUTSIDER_SETUP_DELTAS,
 } from "./buffet-draft.js";
-
-function buildNextOfferFromPool(
-  pool: string[],
-  slots: Record<string, number>,
-  count: number,
-): string[] {
-  return drawOffer(pool, slots as Record<string, number>, count);
-}
 
 export * from "./command-kinds.js";
 export * from "./event-types.js";
@@ -43,10 +44,19 @@ export {
   type BuffetDraftState,
   type BuffetCurrentOffer,
   type BuffetScriptPreset,
+  type BuffetSecretRole,
+  type BuffetOfferKind,
   defaultBuffetConfig,
   buildInitialPool,
+  buildPickablePool,
   computeRemainingSlots,
   validatePoolForComposition,
+  applySummonerNoDemonSetup,
+  OUTSIDER_SETUP_DELTAS,
+  BUFFET_SECRET_ROLES,
+  BUFFET_HIDDEN_BY_DEFAULT,
+  describeBuffetDrunkFix,
+  formatBuffetDrunkFixLine,
 } from "./buffet-draft.js";
 
 export type Team = "good" | "evil" | "traveler";
@@ -292,6 +302,8 @@ export interface BuffetDraftStartedEvent extends GameEventBase {
   draftOrder: string[];
   pool: string[];
   remainingSlots: Record<string, number>;
+  /** Players secretly assigned Lunatic / Marionette (not offered as picks). */
+  secretAssignments?: Record<string, BuffetSecretRole>;
 }
 
 export interface BuffetChoicesOfferedEvent extends GameEventBase {
@@ -302,7 +314,10 @@ export interface BuffetChoicesOfferedEvent extends GameEventBase {
 export interface BuffetRolePickedEvent extends GameEventBase {
   type: typeof GameEventType.BuffetRolePicked;
   playerId: string;
+  /** Role the player clicked (belief role for Lunatic / Marionette). */
   roleId: string;
+  /** Outsider ↔ townsfolk delta applied by this pick (Baron, Fang Gu, …). */
+  outsiderAdjustment?: number;
 }
 
 export interface BuffetMulliganUsedEvent extends GameEventBase {
@@ -314,6 +329,11 @@ export interface BuffetMulliganUsedEvent extends GameEventBase {
 export interface BuffetDraftCompletedEvent extends GameEventBase {
   type: typeof GameEventType.BuffetDraftCompleted;
   assignments: Array<{ playerId: string; roleId: string }>;
+}
+
+export interface BuffetDrunkAssignedEvent extends GameEventBase {
+  type: typeof GameEventType.BuffetDrunkAssigned;
+  playerId: string;
 }
 
 export type GameEvent =
@@ -358,7 +378,8 @@ export type GameEvent =
   | BuffetChoicesOfferedEvent
   | BuffetRolePickedEvent
   | BuffetMulliganUsedEvent
-  | BuffetDraftCompletedEvent;
+  | BuffetDraftCompletedEvent
+  | BuffetDrunkAssignedEvent;
 
 export interface PlayerState {
   id: string;
@@ -741,6 +762,12 @@ export interface CancelBuffetDraftCommand {
   gameId: string;
 }
 
+export interface AssignBuffetDrunkCommand {
+  kind: typeof GameCommandKind.AssignBuffetDrunk;
+  gameId: string;
+  playerId: string;
+}
+
 export type GameCommand =
   | CreateGameCommand
   | AddPlayerCommand
@@ -786,7 +813,8 @@ export type GameCommand =
   | StartBuffetDraftCommand
   | PickBuffetRoleCommand
   | MulliganBuffetCommand
-  | CancelBuffetDraftCommand;
+  | CancelBuffetDraftCommand
+  | AssignBuffetDrunkCommand;
 
 export const DEFAULT_MIN_PLAYERS = 5;
 export const DEV_MIN_PLAYERS = 3;
@@ -1639,7 +1667,10 @@ export class GameEngine {
         }
         const config = this.state.buffetDraft?.config ?? defaultBuffetConfig();
         const pool = buildInitialPool(config.enabledRoleIds);
-        const slots = computeRemainingSlots(seatedPlayers.length, command.devMode);
+        const slots = applySummonerNoDemonSetup(
+          computeRemainingSlots(seatedPlayers.length, command.devMode),
+          config.enabledRoleIds,
+        );
         const poolError = validatePoolForComposition(pool, slots);
         if (poolError) {
           throw new GameEngineError(poolError);
@@ -1686,6 +1717,20 @@ export class GameEngine {
           throw new GameEngineError("No active buffet draft to cancel.");
         }
         break;
+      case GameCommandKind.AssignBuffetDrunk: {
+        const draft = this.state.buffetDraft;
+        if (!draft || (draft.status !== "active" && draft.status !== "complete")) {
+          throw new GameEngineError("No buffet draft to assign Drunk on.");
+        }
+        try {
+          applyAssignDrunk(draft, command.playerId);
+        } catch (error) {
+          throw new GameEngineError(
+            error instanceof Error ? error.message : "Cannot assign Drunk.",
+          );
+        }
+        break;
+      }
     }
   }
 
@@ -2241,45 +2286,120 @@ export class GameEngine {
       case GameCommandKind.StartBuffetDraft: {
         const config = this.state.buffetDraft?.config ?? defaultBuffetConfig();
         const seatedPlayers = this.state.players.filter((p) => p.seat !== null);
-        const slots = computeRemainingSlots(seatedPlayers.length, command.devMode);
-        const pool = buildInitialPool(config.enabledRoleIds);
+        const baseSlots = applySummonerNoDemonSetup(
+          computeRemainingSlots(seatedPlayers.length, command.devMode),
+          config.enabledRoleIds,
+        );
         const draftOrder = shuffle(seatedPlayers.map((p) => p.id));
-        const offerCount = config.mulliganSteps[0] ?? 3;
-        const firstPlayerId = draftOrder[0]!;
-        const roleIds = buildNextOfferFromPool(pool, slots, offerCount);
+        const { secretAssignments, remainingSlots } = assignSecretRoles(
+          config.enabledRoleIds,
+          baseSlots,
+          draftOrder,
+        );
+        const pool = buildPickablePool(config.enabledRoleIds);
+        const pickableError = validatePoolForComposition(pool, remainingSlots);
+        if (pickableError) {
+          throw new GameEngineError(pickableError);
+        }
+        const draftPreview: BuffetDraftState = {
+          status: "active",
+          config,
+          pool,
+          remainingSlots,
+          draftOrder,
+          currentIndex: 0,
+          currentOffer: null,
+          mulligansUsed: {},
+          picks: {},
+          secretAssignments,
+          beliefs: {},
+          inPlayDemon: null,
+        };
+        const firstOffer = buildNextOffer(draftPreview);
+        if (!firstOffer || firstOffer.roleIds.length === 0) {
+          throw new GameEngineError("Could not build the first buffet offer — check the role pool.");
+        }
         return [
           {
             type: GameEventType.BuffetDraftStarted,
             gameId: command.gameId,
             draftOrder,
             pool,
-            remainingSlots: slots as Record<string, number>,
+            remainingSlots: remainingSlots as Record<string, number>,
+            secretAssignments,
             timestamp: new Date().toISOString(),
           },
           {
             type: GameEventType.BuffetChoicesOffered,
             gameId: command.gameId,
-            offer: { playerId: firstPlayerId, roleIds, mulliganStep: 0 },
+            offer: firstOffer,
             timestamp: new Date().toISOString(),
           },
         ];
       }
       case GameCommandKind.PickBuffetRole: {
         const draft = this.state.buffetDraft!;
-        const newDraftState = applyPick(draft, command.playerId, command.roleId);
+        const offerKind = draft.currentOffer?.offerKind ?? "standard";
+        const isPretender = Boolean(draft.secretAssignments[command.playerId]);
+        const outsiderAdjustment =
+          isPretender || command.roleId === "lilmonsta" || offerKind === "lilmonsta-minion"
+            ? 0
+            : command.roleId in OUTSIDER_SETUP_DELTAS
+              ? chooseOutsiderAdjustment(command.roleId, draft.remainingSlots.outsider ?? 0)
+              : 0;
+        const newDraftState = applyPick(draft, command.playerId, command.roleId, {
+          outsiderAdjustment,
+        });
         const events: GameEvent[] = [
           {
             type: GameEventType.BuffetRolePicked,
             gameId: command.gameId,
             playerId: command.playerId,
             roleId: command.roleId,
+            outsiderAdjustment: outsiderAdjustment || undefined,
             timestamp: new Date().toISOString(),
           },
         ];
+
+        // Lil' Monsta: same player immediately chooses which Minion they are.
+        if (
+          command.roleId === "lilmonsta" &&
+          offerKind === "standard" &&
+          !newDraftState.picks[command.playerId]
+        ) {
+          const minionOffer = buildLilMonstaMinionOffer(newDraftState, command.playerId);
+          if (minionOffer.roleIds.length === 0) {
+            throw new GameEngineError(
+              "Lil' Monsta was picked but no Minion roles remain in the pool.",
+            );
+          }
+          events.push({
+            type: GameEventType.BuffetChoicesOffered,
+            gameId: command.gameId,
+            offer: minionOffer,
+            timestamp: new Date().toISOString(),
+          });
+          return events;
+        }
+
         if (newDraftState.status === "complete") {
           const assignments = Object.entries(newDraftState.picks).map(
             ([playerId, roleId]) => ({ playerId, roleId }),
           );
+          const seatSwaps = planMarionetteSeatSwaps(
+            this.state.players,
+            newDraftState.picks,
+            newDraftState.inPlayDemon,
+          );
+          for (const swap of seatSwaps) {
+            events.push({
+              type: GameEventType.SeatPicked,
+              gameId: command.gameId,
+              playerId: swap.playerId,
+              seat: swap.seat,
+              timestamp: new Date().toISOString(),
+            });
+          }
           events.push({
             type: GameEventType.BuffetDraftCompleted,
             gameId: command.gameId,
@@ -2293,17 +2413,16 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           });
         } else {
-          const nextPlayerId = newDraftState.draftOrder[newDraftState.currentIndex]!;
-          const offerCount = draft.config.mulliganSteps[0] ?? 3;
-          const roleIds = buildNextOfferFromPool(
-            newDraftState.pool,
-            newDraftState.remainingSlots,
-            offerCount,
-          );
+          const nextOffer = buildNextOffer(newDraftState);
+          if (!nextOffer || nextOffer.roleIds.length === 0) {
+            throw new GameEngineError(
+              "Could not build the next buffet offer — remaining slots may be unfillable.",
+            );
+          }
           events.push({
             type: GameEventType.BuffetChoicesOffered,
             gameId: command.gameId,
-            offer: { playerId: nextPlayerId, roleIds, mulliganStep: 0 },
+            offer: nextOffer,
             timestamp: new Date().toISOString(),
           });
         }
@@ -2316,6 +2435,7 @@ export class GameEngine {
           playerId: command.playerId,
           roleIds: newOffer,
           mulliganStep: (draft.currentOffer?.mulliganStep ?? 0) + 1,
+          offerKind: draft.currentOffer?.offerKind ?? "standard",
         };
         return [
           {
@@ -2338,6 +2458,34 @@ export class GameEngine {
             timestamp: new Date().toISOString(),
           },
         ];
+      }
+      case GameCommandKind.AssignBuffetDrunk: {
+        const draft = this.state.buffetDraft!;
+        const newState = applyAssignDrunk(draft, command.playerId);
+        const events: GameEvent[] = [
+          {
+            type: GameEventType.BuffetDrunkAssigned,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+        // If we cleared their offer (it was their turn), rebuild townsfolk choices.
+        if (!newState.currentOffer && newState.draftOrder[newState.currentIndex] === command.playerId) {
+          const offer = buildNextOffer(newState);
+          if (!offer || offer.roleIds.length === 0) {
+            throw new GameEngineError(
+              "Assigned Drunk but could not build townsfolk choices for that player.",
+            );
+          }
+          events.push({
+            type: GameEventType.BuffetChoicesOffered,
+            gameId: command.gameId,
+            offer,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        return events;
       }
       default:
         return [];
@@ -2672,6 +2820,9 @@ export class GameEngine {
           currentOffer: null,
           mulligansUsed: {},
           picks: {},
+          secretAssignments: {},
+          beliefs: {},
+          inPlayDemon: null,
         };
         break;
       }
@@ -2681,12 +2832,15 @@ export class GameEngine {
           status: "active",
           config,
           pool: event.pool,
-          remainingSlots: event.remainingSlots as Record<string, number>,
+          remainingSlots: event.remainingSlots as BuffetDraftState["remainingSlots"],
           draftOrder: event.draftOrder,
           currentIndex: 0,
           currentOffer: null,
           mulligansUsed: {},
           picks: {},
+          secretAssignments: event.secretAssignments ?? {},
+          beliefs: {},
+          inPlayDemon: null,
         };
         break;
       }
@@ -2699,7 +2853,9 @@ export class GameEngine {
       case GameEventType.BuffetRolePicked: {
         const draft = this.state.buffetDraft;
         if (!draft) break;
-        const newState = applyPick(draft, event.playerId, event.roleId);
+        const newState = applyPick(draft, event.playerId, event.roleId, {
+          outsiderAdjustment: event.outsiderAdjustment ?? 0,
+        });
         this.state.buffetDraft = newState;
         break;
       }
@@ -2717,6 +2873,19 @@ export class GameEngine {
         if (this.state.buffetDraft) {
           this.state.buffetDraft.status = "complete";
           this.state.buffetDraft.currentOffer = null;
+        }
+        break;
+      }
+      case GameEventType.BuffetDrunkAssigned: {
+        const draft = this.state.buffetDraft;
+        if (!draft) break;
+        this.state.buffetDraft = applyAssignDrunk(draft, event.playerId);
+        const trueRole = this.state.buffetDraft.picks[event.playerId];
+        if (trueRole) {
+          const player = this.state.players.find((p) => p.id === event.playerId);
+          if (player?.roleId) {
+            player.roleId = trueRole;
+          }
         }
         break;
       }

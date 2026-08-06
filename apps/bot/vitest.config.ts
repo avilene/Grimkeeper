@@ -5,6 +5,6 @@ export default defineConfig({
   test: {
     name: "bot",
     include: ["src/**/*.test.ts"],
-    reporters: ciReporters("bot"),
+    ...(ciReporters("bot") ? { reporters: ciReporters("bot") } : {}),
   },
 });

@@ -44,6 +44,7 @@ export const GameCommandKind = {
   PickBuffetRole: "PickBuffetRole",
   MulliganBuffet: "MulliganBuffet",
   CancelBuffetDraft: "CancelBuffetDraft",
+  AssignBuffetDrunk: "AssignBuffetDrunk",
 } as const;
 
 export type GameCommandKind = (typeof GameCommandKind)[keyof typeof GameCommandKind];

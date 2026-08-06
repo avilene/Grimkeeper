@@ -90,6 +90,11 @@ export const ST_DO_ACTIONS: DoAction[] = [
   { name: "buffet-status", description: "Show current Sushi Buffet draft status (who's picking, pool size, picks so far)" },
   { name: "buffet-cancel", description: "Cancel the active Sushi Buffet draft (clears draft state, roles unchanged)" },
   {
+    name: "buffet-assign-drunk",
+    description: "ST-assign Drunk to a player (for outsider-count setups); they get townsfolk choices",
+    needs: ["player"],
+  },
+  {
     name: "buffet-configure",
     description: "Configure buffet draft options: recycle unchosen on/off",
     needs: ["recycle?"],

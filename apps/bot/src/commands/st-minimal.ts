@@ -15,6 +15,8 @@ import {
   validatePoolForComposition,
   buildInitialPool,
   computeRemainingSlots,
+  applySummonerNoDemonSetup,
+  formatBuffetDrunkFixLine,
 } from "@grimkeeper/engine";
 
 import { minPlayersForMode } from "../bot-mode.js";
@@ -428,6 +430,13 @@ export class StCommandsMinimal {
         return;
       case "buffet-cancel":
         await this.buffetCancel(interaction);
+        return;
+      case "buffet-assign-drunk":
+        if (!player) {
+          await missingOption(interaction, "player", "buffet-assign-drunk");
+          return;
+        }
+        await this.buffetAssignDrunk(player, interaction);
         return;
       case "buffet-configure": {
         await this.buffetConfigure(recycle, interaction);
@@ -2515,7 +2524,10 @@ export class StCommandsMinimal {
         return;
       }
 
-      const slots = computeRemainingSlots(seatedPlayers.length);
+      const slots = applySummonerNoDemonSetup(
+        computeRemainingSlots(seatedPlayers.length),
+        config.enabledRoleIds,
+      );
       const pool = buildInitialPool(config.enabledRoleIds);
       const poolError = validatePoolForComposition(pool, slots);
       if (poolError) {
@@ -2608,10 +2620,19 @@ export class StCommandsMinimal {
         const pickLines = Object.entries(draft.picks).map(([pid, rid]) => {
           const player = engine.getState().players.find((p) => p.id === pid);
           const role = catalog.get(rid);
-          return `• **${player?.displayName ?? pid}** → ${role?.name ?? rid}`;
+          const belief = draft.beliefs[pid];
+          const beliefLabel = belief
+            ? ` (thinks: ${catalog.get(belief)?.name ?? belief})`
+            : "";
+          return `• **${player?.displayName ?? pid}** → ${role?.name ?? rid}${beliefLabel}`;
         });
+        const drunkLine = formatBuffetDrunkFixLine(draft);
         await replyOrEditInteraction(interaction, {
-          content: `**Sushi Buffet — Complete**\n${pickLines.join("\n")}`,
+          content: [
+            `**Sushi Buffet — Complete**`,
+            ...pickLines,
+            ...(drunkLine ? ["", drunkLine] : []),
+          ].join("\n"),
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -2620,11 +2641,24 @@ export class StCommandsMinimal {
       const currentPlayer = draft.currentOffer
         ? engine.getState().players.find((p) => p.id === draft.currentOffer!.playerId)
         : null;
+      const currentSecret = draft.currentOffer
+        ? draft.secretAssignments[draft.currentOffer.playerId]
+        : undefined;
 
       const pickLines = Object.entries(draft.picks).map(([pid, rid]) => {
         const player = engine.getState().players.find((p) => p.id === pid);
         const role = catalog.get(rid);
-        return `• **${player?.displayName ?? pid}** → ${role?.name ?? rid}`;
+        const belief = draft.beliefs[pid];
+        const beliefLabel = belief
+          ? ` (thinks: ${catalog.get(belief)?.name ?? belief})`
+          : "";
+        return `• **${player?.displayName ?? pid}** → ${role?.name ?? rid}${beliefLabel}`;
+      });
+
+      const secretLines = Object.entries(draft.secretAssignments).map(([pid, role]) => {
+        const player = engine.getState().players.find((p) => p.id === pid);
+        const pending = !draft.picks[pid];
+        return `• **${player?.displayName ?? pid}** → ${role}${pending ? " (pending pick)" : ""}`;
       });
 
       const remaining = draft.draftOrder.length - draft.currentIndex;
@@ -2635,14 +2669,26 @@ export class StCommandsMinimal {
         demon: draft.pool.filter((id) => catalog.get(id)?.team === "demon").length,
       };
 
+      const slots = draft.remainingSlots;
       const lines = [
         `**Sushi Buffet — In Progress** (${draft.currentIndex}/${draft.draftOrder.length} picked)`,
-        `Currently picking: **${currentPlayer?.displayName ?? "—"}**`,
+        `Currently picking: **${currentPlayer?.displayName ?? "—"}**${
+          currentSecret
+            ? ` _(secret ${currentSecret})_`
+            : draft.currentOffer?.offerKind === "lilmonsta-minion"
+              ? " _(Lil' Monsta → choose Minion)_"
+              : ""
+        }`,
         `Remaining: ${remaining} player(s)`,
+        `Slots left: TF ${slots.townsfolk}, OS ${slots.outsider}, MN ${slots.minion}, DM ${slots.demon}`,
+        draft.inPlayDemon === "lilmonsta" ? "In play (no player): **Lil' Monsta**" : null,
         `Pool: ${draft.pool.length} roles (TF: ${poolCounts.townsfolk}, OS: ${poolCounts.outsider}, MN: ${poolCounts.minion}, DM: ${poolCounts.demon})`,
         "",
+        ...(secretLines.length > 0
+          ? ["**Secret assignments (ST only):**", ...secretLines, ""]
+          : []),
         ...(pickLines.length > 0 ? ["**Picks so far:**", ...pickLines] : ["No picks yet."]),
-      ];
+      ].filter((line): line is string => line != null);
 
       await replyOrEditInteraction(interaction, {
         content: lines.join("\n"),
@@ -2675,6 +2721,59 @@ export class StCommandsMinimal {
       );
       await replyOrEditInteraction(interaction, {
         content: "Sushi Buffet draft cancelled. Player roles are unchanged.",
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async buffetAssignDrunk(player: User, interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const target = engine.getPlayerByDiscordId(player.id);
+      if (!target) {
+        await replyOrEditInteraction(interaction, {
+          content: "That user is not in this game.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const events = engine.handle({
+        kind: GameCommandKind.AssignBuffetDrunk,
+        gameId: game.id,
+        playerId: target.id,
+      });
+      await persistEvents(engine, events);
+      await syncGameProjection(game.id, engine);
+
+      const draft = engine.getState().buffetDraft;
+      const offer = draft?.currentOffer;
+      if (offer?.playerId === target.id) {
+        const { postBuffetOffer } = await import("../interactions/buffet-draft.js");
+        await postBuffetOffer(guild, game, engine, offer);
+      }
+
+      await postGameLog(
+        guild,
+        game,
+        `<@${interaction.user.id}> assigned **Drunk** to **${target.displayName}**.`,
+      );
+      await replyOrEditInteraction(interaction, {
+        content: [
+          `Assigned **Drunk** to **${target.displayName}**.`,
+          offer?.playerId === target.id
+            ? "Their current offer was rebuilt with Townsfolk choices."
+            : draft?.picks[target.id] === "drunk"
+              ? "Their Townsfolk pick was converted (they keep that belief)."
+              : "They will see Townsfolk choices on their turn.",
+        ].join(" "),
+        flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       await replyEngineError(interaction, error);

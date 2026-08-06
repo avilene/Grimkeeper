@@ -152,6 +152,8 @@ function eventFields(event: GameEvent): Record<string, unknown> {
       };
     case GameEventType.BuffetDraftCompleted:
       return { assignmentCount: event.assignments.length };
+    case GameEventType.BuffetDrunkAssigned:
+      return { playerId: event.playerId };
   }
 }
 

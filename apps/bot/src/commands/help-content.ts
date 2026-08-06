@@ -715,6 +715,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           value: checklist([
             "`/st do buffet-start` — sends the first private offer; players pick in their own ST threads",
             "For fake/dev players, the ST picks from that player’s ST thread",
+            "After outsider-count roles (Baron, etc.), `/st do buffet-assign-drunk player:@…` if you need a Drunk",
             "`/st do buffet-status` — check picks so far; `/st do buffet-cancel` — stop before completion",
             "When complete, the complete player → role roster is posted privately in kib; then `/st next-phase` for Night 1",
           ]),

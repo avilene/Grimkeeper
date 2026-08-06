@@ -66,10 +66,24 @@ describe("buildBuffetOfferMessage", () => {
     expect(content).not.toMatch(/pick for/i);
   });
 
+  it("uses a Lil' Monsta follow-up intro for minion choice", () => {
+    const { content } = buildBuffetOfferMessage(
+      ["poisoner", "baron"],
+      gameId,
+      0,
+      3,
+      "lilmonsta-minion",
+    );
+    expect(content).toMatch(/Lil' Monsta/i);
+    expect(content).toMatch(/Minion/i);
+  });
+
   it("omits mulligan button on last step", () => {
     const { components } = buildBuffetOfferMessage(["imp"], gameId, 2, 3);
     const allCustomIds = components.flatMap((row) =>
-      row.components.map((c) => ("data" in c ? (c as { data: { custom_id?: string } }).data.custom_id : undefined)),
+      row.components.map((c) =>
+        "data" in c ? (c as { data: { custom_id?: string } }).data.custom_id : undefined,
+      ),
     );
     expect(allCustomIds).not.toContain(buffetMulliganCustomId(gameId));
   });
@@ -83,12 +97,54 @@ describe("formatBuffetCompletionSummary", () => {
           { id: "p2", displayName: "Bram", seat: 2 },
           { id: "p1", displayName: "Ada", seat: 1 },
         ],
-        buffetDraft: { picks: { p1: "washerwoman", p2: "imp" } },
+        buffetDraft: {
+          picks: { p1: "washerwoman", p2: "imp" },
+          beliefs: {},
+          remainingSlots: { townsfolk: 0, outsider: 0, minion: 0, demon: 0 },
+          config: { enabledRoleIds: ["washerwoman", "imp"] },
+          secretAssignments: {},
+        },
       }),
     } as never;
 
     expect(formatBuffetCompletionSummary(engine)).toBe(
       "**Sushi Buffet — roles chosen**\n• seat 1 · **Ada** → Washerwoman\n• seat 2 · **Bram** → Imp",
     );
+  });
+
+  it("mentions drunk need only when drunk is enabled and outsider slots remain", () => {
+    const engine = {
+      getState: () => ({
+        players: [{ id: "p1", displayName: "Ada", seat: 1 }],
+        buffetDraft: {
+          picks: { p1: "washerwoman" },
+          beliefs: {},
+          remainingSlots: { townsfolk: 0, outsider: 1, minion: 0, demon: 0 },
+          config: { enabledRoleIds: ["washerwoman", "drunk", "baron"] },
+          secretAssignments: {},
+        },
+      }),
+    } as never;
+
+    const text = formatBuffetCompletionSummary(engine);
+    expect(text).toContain("**Ada** → Washerwoman");
+    expect(text).toMatch(/Need Drunk/i);
+  });
+
+  it("omits drunk hint when drunk is not in the selector", () => {
+    const engine = {
+      getState: () => ({
+        players: [{ id: "p1", displayName: "Ada", seat: 1 }],
+        buffetDraft: {
+          picks: { p1: "washerwoman" },
+          beliefs: {},
+          remainingSlots: { townsfolk: 0, outsider: 2, minion: 0, demon: 0 },
+          config: { enabledRoleIds: ["washerwoman", "baron"] },
+          secretAssignments: {},
+        },
+      }),
+    } as never;
+
+    expect(formatBuffetCompletionSummary(engine)).not.toMatch(/Drunk/i);
   });
 });
