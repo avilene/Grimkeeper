@@ -1,4 +1,4 @@
-/** Official BotC characters (incl. travelers) from the script-tool / townsquare catalog. */
+/** Official BotC characters (incl. travelers & experimental) from the wiki / script-tool catalog. */
 export type BotcRoleTeam = "townsfolk" | "outsider" | "minion" | "demon" | "traveler";
 
 export type BotcRoleRecord = {
@@ -768,6 +768,62 @@ export const BOTC_ROLES: BotcRoleRecord[] = [
     "ability": "You have the ability of the recently killed executee. If they are evil, you are poisoned until a good player dies by execution."
   },
   {
+    "id": "steward",
+    "name": "Steward",
+    "edition": "",
+    "team": "townsfolk",
+    "ability": "You start knowing 1 good player."
+  },
+  {
+    "id": "knight",
+    "name": "Knight",
+    "edition": "",
+    "team": "townsfolk",
+    "ability": "You start knowing 2 players that are not the Demon."
+  },
+  {
+    "id": "shugenja",
+    "name": "Shugenja",
+    "edition": "",
+    "team": "townsfolk",
+    "ability": "You start knowing if your closest evil player is clockwise or anti-clockwise. If equidistant, this info is arbitrary."
+  },
+  {
+    "id": "highpriestess",
+    "name": "High Priestess",
+    "edition": "",
+    "team": "townsfolk",
+    "ability": "Each night, you learn which player the Storyteller believes you should talk to most."
+  },
+  {
+    "id": "villageidiot",
+    "name": "Village Idiot",
+    "edition": "",
+    "team": "townsfolk",
+    "ability": "Each night, choose a player: you learn their alignment. [+0 to +2 Village Idiots. 1 of the extras is drunk]"
+  },
+  {
+    "id": "alsaahir",
+    "name": "Alsaahir",
+    "edition": "",
+    "team": "townsfolk",
+    "ability": "Each day, if you publicly guess which players are Minion(s) and which are Demon(s), good wins."
+  },
+  {
+    "id": "princess",
+    "name": "Princess",
+    "edition": "",
+    "team": "townsfolk",
+    "ability": "On your 1st day, if you nominated & executed a player, the Demon doesn't kill tonight."
+  },
+  {
+    "id": "banshee",
+    "name": "Banshee",
+    "edition": "",
+    "team": "townsfolk",
+    "ability": "If the Demon kills you, all players learn this. From now on, you may nominate twice per day and vote twice per nomination."
+  },
+  {
     "id": "snitch",
     "name": "Snitch",
     "edition": "",
@@ -815,6 +871,41 @@ export const BOTC_ROLES: BotcRoleRecord[] = [
     "edition": "",
     "team": "outsider",
     "ability": "If you were the player most responsible for your team losing, you change alignment & win, even if dead."
+  },
+  {
+    "id": "hermit",
+    "name": "Hermit",
+    "edition": "",
+    "team": "outsider",
+    "ability": "You have all Outsider abilities. [-0 or -1 Outsider]"
+  },
+  {
+    "id": "ogre",
+    "name": "Ogre",
+    "edition": "",
+    "team": "outsider",
+    "ability": "On your 1st night, choose a player (not yourself): you become their alignment (you don't know which) even if drunk or poisoned."
+  },
+  {
+    "id": "plaguedoctor",
+    "name": "Plague Doctor",
+    "edition": "",
+    "team": "outsider",
+    "ability": "When you die, the Storyteller gains a Minion ability."
+  },
+  {
+    "id": "hatter",
+    "name": "Hatter",
+    "edition": "",
+    "team": "outsider",
+    "ability": "If you died today or tonight, the Minion & Demon players may choose new Minion & Demon characters to be."
+  },
+  {
+    "id": "zealot",
+    "name": "Zealot",
+    "edition": "",
+    "team": "outsider",
+    "ability": "If there are 5 or more players alive, you must vote for every nomination."
   },
   {
     "id": "widow",
@@ -866,6 +957,62 @@ export const BOTC_ROLES: BotcRoleRecord[] = [
     "ability": "If you are executed, all but 3 players die. 1 minute later, the player with the most players pointing at them dies."
   },
   {
+    "id": "harpy",
+    "name": "Harpy",
+    "edition": "",
+    "team": "minion",
+    "ability": "Each night, choose 2 players: tomorrow, the 1st player is mad that the 2nd is evil, or one or both might die."
+  },
+  {
+    "id": "wizard",
+    "name": "Wizard",
+    "edition": "",
+    "team": "minion",
+    "ability": "Once per game, choose to make a wish. If granted, it might have a price & leave a clue as to its nature."
+  },
+  {
+    "id": "xaan",
+    "name": "Xaan",
+    "edition": "",
+    "team": "minion",
+    "ability": "On night X, all Townsfolk are poisoned until dusk. [X Outsiders]"
+  },
+  {
+    "id": "wraith",
+    "name": "Wraith",
+    "edition": "",
+    "team": "minion",
+    "ability": "You may choose to open your eyes at night. You wake when other evil players do."
+  },
+  {
+    "id": "summoner",
+    "name": "Summoner",
+    "edition": "",
+    "team": "minion",
+    "ability": "You get 3 bluffs. On the 3rd night, choose a player: they become an evil Demon of your choice. [No Demon]"
+  },
+  {
+    "id": "vizier",
+    "name": "Vizier",
+    "edition": "",
+    "team": "minion",
+    "ability": "All players know you are the Vizier. You cannot die during the day. If good voted, you may choose to execute immediately."
+  },
+  {
+    "id": "organgrinder",
+    "name": "Organ Grinder",
+    "edition": "",
+    "team": "minion",
+    "ability": "All players keep their eyes closed when voting and the vote tally is secret. Each night, choose if you are drunk until dusk."
+  },
+  {
+    "id": "boffin",
+    "name": "Boffin",
+    "edition": "",
+    "team": "minion",
+    "ability": "The Demon (even if drunk or poisoned) has a not-in-play good character's ability. You both know which."
+  },
+  {
     "id": "lilmonsta",
     "name": "Lil' Monsta",
     "edition": "",
@@ -908,10 +1055,52 @@ export const BOTC_ROLES: BotcRoleRecord[] = [
     "ability": "Nominees die, but may nominate again immediately (on day 3, they must). After day 3, evil wins. [All Minions are Riot]"
   },
   {
+    "id": "ojo",
+    "name": "Ojo",
+    "edition": "",
+    "team": "demon",
+    "ability": "Each night*, choose a character: they die. If they are not in play, the Storyteller chooses who dies."
+  },
+  {
+    "id": "kazali",
+    "name": "Kazali",
+    "edition": "",
+    "team": "demon",
+    "ability": "Each night*, choose a player: they die. [You choose which players are which Minions. -? to +? Outsiders]"
+  },
+  {
+    "id": "yaggababble",
+    "name": "Yaggababble",
+    "edition": "",
+    "team": "demon",
+    "ability": "You start knowing a secret phrase. For each time you said it publicly today, a player might die."
+  },
+  {
+    "id": "lordoftyphon",
+    "name": "Lord of Typhon",
+    "edition": "",
+    "team": "demon",
+    "ability": "Each night*, choose a player: they die. [Evil characters are in a line. You are in the middle. +1 Minion. -? to +? Outsiders]"
+  },
+  {
     "id": "gangster",
     "name": "Gangster",
     "edition": "",
     "team": "traveler",
     "ability": "Once per day, you may choose to kill an alive neighbour, if your other alive neighbour agrees."
+  },
+  {
+    "id": "cacklejack",
+    "name": "Cacklejack",
+    "edition": "",
+    "team": "traveler",
+    "ability": "Each day, choose a player: a different player changes character tonight."
+  },
+  {
+    "id": "gnome",
+    "name": "Gnome",
+    "edition": "",
+    "team": "traveler",
+    "ability": "All players start knowing a player of your alignment. You may choose to kill anyone who nominates them."
   }
 ];
