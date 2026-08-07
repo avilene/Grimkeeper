@@ -159,6 +159,7 @@ export function formatBuffetCompletionSummary(
     if (drunkLine) {
       parts.push("", drunkLine);
     }
+    parts.push("", "_clocktower.live:_ `/st do buffet-export-clocktower`");
   }
 
   return parts.join("\n");

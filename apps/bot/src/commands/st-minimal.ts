@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   ApplicationCommandOptionType,
+  AttachmentBuilder,
   AutocompleteInteraction,
   CommandInteraction,
   MessageFlags,
@@ -18,6 +19,9 @@ import {
   applySummonerNoDemonSetup,
   formatBuffetDrunkFixLine,
   formatHermitUnchosenOutsidersLine,
+  buildClocktowerLiveGamestate,
+  serializeClocktowerLiveGamestate,
+  type BuffetDraftConfig,
 } from "@grimkeeper/engine";
 
 import { minPlayersForMode } from "../bot-mode.js";
@@ -69,6 +73,7 @@ import {
   removeUserFromPlayerStThreads,
   replyEngineError,
   replyOrEditInteraction,
+  deferInteractionReply,
   requireArchivableGame,
   requireCommandAccess,
   requireKibThread,
@@ -81,6 +86,17 @@ import {
   syncStorytellersToPlayerThreads,
 } from "./command-context.js";
 import { refreshNominationsFromProjection } from "../refresh-noms-from-projection.js";
+
+function resolveBuffetConfigForGame(
+  buffetConfig: unknown,
+  engineConfig: BuffetDraftConfig | undefined,
+): BuffetDraftConfig {
+  if (engineConfig) return engineConfig;
+  if (buffetConfig && typeof buffetConfig === "object") {
+    return buffetConfig as BuffetDraftConfig;
+  }
+  return defaultBuffetConfig();
+}
 
 @Discord()
 @SlashGroup({ name: "st", description: "Storyteller commands for an active game" })
@@ -450,6 +466,9 @@ export class StCommandsMinimal {
         await this.buffetConfigure(recycle, interaction);
         return;
       }
+      case "buffet-export-clocktower":
+        await this.buffetExportClocktower(interaction);
+        return;
       default:
         await replyOrEditInteraction(interaction, {
           content: `Action \`${normalized}\` is not implemented.`,
@@ -2703,6 +2722,54 @@ export class StCommandsMinimal {
       await replyOrEditInteraction(interaction, {
         content: lines.join("\n"),
         flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async buffetExportClocktower(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    try {
+      await setInteractionProgress(interaction, "Building clocktower.live export…");
+      const engine = await loadEngine(game.id);
+      const state = engine.getState();
+      const config = resolveBuffetConfigForGame(game.buffetConfig, state.buffetDraft?.config);
+
+      const gamestate = buildClocktowerLiveGamestate({
+        config,
+        players: state.players.map((player) => ({
+          id: player.id,
+          displayName: player.displayName,
+          seat: player.seat,
+          alive: player.alive,
+        })),
+        draft: state.buffetDraft
+          ? {
+              picks: state.buffetDraft.picks,
+              beliefs: state.buffetDraft.beliefs,
+              secretAssignments: state.buffetDraft.secretAssignments,
+              inPlayDemon: state.buffetDraft.inPlayDemon,
+            }
+          : null,
+      });
+
+      const json = serializeClocktowerLiveGamestate(gamestate);
+      const attachment = new AttachmentBuilder(Buffer.from(json, "utf-8"), {
+        name: "grimkeeper-buffet-gamestate.json",
+      });
+
+      if (!interaction.deferred && !interaction.replied) {
+        await deferInteractionReply(interaction, { ephemeral: true });
+      }
+
+      await interaction.editReply({
+        content:
+          "Import this JSON on [clocktower.live](https://clocktower.live) (**Game → Import**). " +
+          "Token roles show what each player believes; reminders show true roles when they differ.",
+        files: [attachment],
       });
     } catch (error) {
       await replyEngineError(interaction, error);

@@ -471,7 +471,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
       .setDescription(
         [
           "Day play uses top-level slash commands — not `/game …`.",
-          "**`/nominate`** · **`/accusation`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/roster`** · **`/whisper`** · **`/backpack`** · **`/role`** · **`/alias`** · **`/stats`**",
+          "**`/nominate`** · **`/accusation`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/roster`** · **`/whisper`** · **`/backpack`** · **`/role`** · **`/script`** · **`/alias`** · **`/stats`**",
           "Nominations and votes happen in the **Town Voting** thread once Day 1 begins (`/st next-phase` twice after setup-town: Setup → Night 1 → Day 1).",
           "Each living player may nominate **once per day**; each player (alive or dead) may be nominated **once per day**. Ghosts cannot nominate.",
           "Update your accusation with **`/accusation`**. Nominee defense: **`/defend`**.",
@@ -479,6 +479,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
           "Whispers: `/whisper neighbor` opens NW threads with both seats; `/whisper with` takes `@mentions` (optional `name:`; groups default to `Group (names)`).",
           "Backpack: `/backpack add user:` invites a follower into your ST thread + whispers (not ST/kib). ST mass: `everywhere:True`.",
           "Character lookup: **`/role name:`** — fuzzy search over official characters (incl. travelers).",
+          "Sushi Buffet games: **`/script`** — enabled roles and draft house rules.",
           "Set how your name appears with **`/alias`** (defaults to a short form of your Discord name at setup).",
           "Ended-game record: **`/stats`** (optional `user:`) for win rate and most-played characters.",
           "",
@@ -708,6 +709,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "Admin → Games → this game → **Sushi Buffet Draft** — enable the roles players may choose, then save",
             "Keep enough Townsfolk, Outsider, Minion, and Demon roles for the current player count",
             "For a small custom pool, enable **Recycle unchosen roles** so declined offers remain available",
+            "Players can read the script anytime with **`/script`**",
           ]),
         },
         {
@@ -718,6 +720,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "Enable **Lunatic** in admin if you want one, then `/st do buffet-assign-lunatic player:@…` before or during the draft",
             "After outsider-count roles (Baron, etc.), `/st do buffet-assign-drunk player:@…` if you need a Drunk",
             "`/st do buffet-status` — check picks so far; `/st do buffet-cancel` — stop before completion",
+            "`/st do buffet-export-clocktower` — JSON for clocktower.live grimoire import",
             "When complete, the complete player → role roster is posted privately in kib; then `/st next-phase` for Night 1",
           ]),
         },

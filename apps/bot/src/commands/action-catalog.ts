@@ -104,6 +104,10 @@ export const ST_DO_ACTIONS: DoAction[] = [
     description: "Configure buffet draft options: recycle unchosen on/off",
     needs: ["recycle?"],
   },
+  {
+    name: "buffet-export-clocktower",
+    description: "Export clocktower.live gamestate JSON (roles + seated players for grimoire import)",
+  },
 ];
 
 /**

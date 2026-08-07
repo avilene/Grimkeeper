@@ -108,7 +108,7 @@ describe("formatBuffetCompletionSummary", () => {
     } as never;
 
     expect(formatBuffetCompletionSummary(engine)).toBe(
-      "**Sushi Buffet — roles chosen**\n• seat 1 · **Ada** → Washerwoman\n• seat 2 · **Bram** → Imp",
+      "**Sushi Buffet — roles chosen**\n• seat 1 · **Ada** → Washerwoman\n• seat 2 · **Bram** → Imp\n\n_clocktower.live:_ `/st do buffet-export-clocktower`",
     );
   });
 

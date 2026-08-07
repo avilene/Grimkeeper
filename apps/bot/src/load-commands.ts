@@ -10,6 +10,7 @@ export async function loadCommandModules(): Promise<void> {
   await import("./commands/alias.js");
   await import("./commands/stats.js");
   await import("./commands/role.js");
+  await import("./commands/script.js");
   await import("./commands/st-minimal.js");
   await import("./commands/st-reminders.js");
   // Queue slash commands only exist when configured — avoids registering dead `/st queue` cmds.
@@ -38,6 +39,7 @@ export async function loadCommandModules(): Promise<void> {
       "alias",
       "stats",
       "role",
+      "script",
       "st",
       "interest",
       "dev",
