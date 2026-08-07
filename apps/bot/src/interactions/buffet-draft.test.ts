@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   buffetPickCustomId,
   buffetMulliganCustomId,
+  buffetTrackerFooter,
   parseBuffetPickCustomId,
   parseBuffetMulliganCustomId,
+  parseBuffetTrackerFooter,
   isBuffetInteraction,
   buildBuffetOfferMessage,
   formatBuffetCompletionSummary,
@@ -34,6 +36,11 @@ describe("buffet custom IDs", () => {
   it("rejects malformed pick ids", () => {
     expect(parseBuffetPickCustomId("gk:buffet:pick:nopic")).toBeNull();
     expect(parseBuffetPickCustomId("gk:other")).toBeNull();
+  });
+
+  it("round-trips draft tracker footer game ids", () => {
+    expect(parseBuffetTrackerFooter(buffetTrackerFooter(gameId))).toBe(gameId);
+    expect(parseBuffetTrackerFooter("grimkeeper:vote-tracker:x")).toBeNull();
   });
 });
 

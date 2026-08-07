@@ -328,6 +328,7 @@ describe("applyAssignDrunk", () => {
       currentIndex: 0,
       currentOffer: null,
       mulligansUsed: {},
+      declinedRoles: {},
       picks: {},
       secretAssignments: {},
       beliefs: {},
@@ -372,6 +373,7 @@ describe("describeBuffetDrunkFix", () => {
       currentIndex: 1,
       currentOffer: null,
       mulligansUsed: {},
+      declinedRoles: {},
       picks: { "player-1": "washerwoman" },
       secretAssignments: {},
       beliefs: {},
@@ -435,6 +437,7 @@ describe("listUnchosenOutsidersForHermit", () => {
       currentIndex: 2,
       currentOffer: null,
       mulligansUsed: {},
+      declinedRoles: {},
       picks: { "player-1": "hermit", "player-2": "imp" },
       secretAssignments: {},
       beliefs: {},
@@ -481,6 +484,7 @@ describe("applyAssignLunatic", () => {
       currentIndex: 0,
       currentOffer: null,
       mulligansUsed: {},
+      declinedRoles: {},
       picks: {},
       secretAssignments: {},
       beliefs: {},
@@ -566,6 +570,7 @@ describe("applyPick", () => {
         mulliganStep: 0,
       },
       mulligansUsed: {},
+      declinedRoles: {},
       picks: {},
       ...emptySecrets(),
     };
@@ -738,16 +743,23 @@ describe("applyMulligan", () => {
         mulliganStep: 0,
       },
       mulligansUsed: {},
+      declinedRoles: {},
       picks: {},
       ...emptySecrets(),
     };
   }
 
   it("returns new offer with fewer choices on first mulligan", () => {
-    const { state, newOffer } = applyMulligan(makeDraft(), "player-1");
+    const { state, newOffer, declinedRoleIds } = applyMulligan(makeDraft(), "player-1");
     expect(newOffer.length).toBeLessThan(3);
     expect(state.mulligansUsed["player-1"]).toBe(1);
     expect(state.currentOffer?.mulliganStep).toBe(1);
+    expect(declinedRoleIds).toEqual(["washerwoman", "librarian", "investigator"]);
+    expect(state.declinedRoles["player-1"]).toEqual([
+      "washerwoman",
+      "librarian",
+      "investigator",
+    ]);
   });
 
   it("throws when no more mulligan steps remain", () => {

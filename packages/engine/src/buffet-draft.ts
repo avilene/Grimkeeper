@@ -64,6 +64,11 @@ export interface BuffetDraftState {
   currentIndex: number;
   currentOffer: BuffetCurrentOffer | null;
   mulligansUsed: Record<string, number>;
+  /**
+   * Roles a player passed on via mulligan (accumulated offer sets).
+   * Used for the ST kib draft tracker — not removed from the pool unless recycle is off on pick.
+   */
+  declinedRoles: Record<string, string[]>;
   /** Completed picks: playerId → true roleId (secret roles for pretenders). */
   picks: Record<string, string>;
   /**
@@ -415,6 +420,82 @@ export function formatHermitUnchosenOutsidersLine(state: BuffetDraftState): stri
   return `Hermit is in play — unchosen Outsiders (pick abilities from these): ${names.join(", ")}.`;
 }
 
+function uniqueRoleNames(roleIds: string[]): string[] {
+  const catalog = new Map(listBotcRoles().map((r) => [r.id, r.name]));
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const id of roleIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    names.push(catalog.get(id) ?? id);
+  }
+  return names;
+}
+
+/**
+ * ST kib draft tracker: who is picking, picks so far, and mulligan declines.
+ * Ordered by draft order so the ST can follow the sequence.
+ */
+export function formatBuffetDraftTracker(input: {
+  players: Array<{ id: string; displayName: string; seat?: number | null }>;
+  draft: BuffetDraftState;
+}): { title: string; description: string } {
+  const { players, draft } = input;
+  const byId = new Map(players.map((p) => [p.id, p]));
+  const catalog = new Map(listBotcRoles().map((r) => [r.id, r.name]));
+  const currentId = draft.currentOffer?.playerId ?? null;
+
+  const headerBits = [
+    draft.status === "complete"
+      ? "Draft complete"
+      : `${draft.currentIndex}/${draft.draftOrder.length} picked`,
+  ];
+  if (currentId && draft.status === "active") {
+    const current = byId.get(currentId);
+    headerBits.push(`▶ **${current?.displayName ?? currentId}** is picking`);
+  }
+
+  const lines: string[] = [headerBits.join(" · "), ""];
+
+  for (const playerId of draft.draftOrder) {
+    const player = byId.get(playerId);
+    const name = player?.displayName ?? playerId;
+    const seat = player?.seat != null ? `seat ${player.seat} · ` : "";
+    const isCurrent = playerId === currentId && draft.status === "active";
+    const pick = draft.picks[playerId];
+    const belief = draft.beliefs[playerId];
+    const declined = uniqueRoleNames(draft.declinedRoles[playerId] ?? []);
+    const declinedPart =
+      declined.length > 0 ? `declined: ${declined.join(", ")}` : null;
+
+    let status: string;
+    if (pick) {
+      const trueName = catalog.get(pick) ?? pick;
+      const beliefPart = belief ? ` (thinks: ${catalog.get(belief) ?? belief})` : "";
+      status = `→ **${trueName}**${beliefPart}`;
+      if (declinedPart) status += ` · ${declinedPart}`;
+    } else if (isCurrent) {
+      status = declinedPart ? `is picking… · ${declinedPart}` : "is picking…";
+    } else if (declinedPart) {
+      status = `waiting · ${declinedPart}`;
+    } else {
+      status = "waiting";
+    }
+
+    const bullet = isCurrent ? "▶" : "•";
+    lines.push(`${bullet} ${seat}**${name}** ${status}`);
+  }
+
+  if (draft.inPlayDemon === "lilmonsta") {
+    lines.push("• _(no player)_ → **Lil' Monsta** (Demon)");
+  }
+
+  return {
+    title: "Sushi Buffet — Draft tracker",
+    description: lines.join("\n").slice(0, 4000),
+  };
+}
+
 /**
  * ST assigns Drunk to a player (for outsider-count setups).
  * Unpicked players get townsfolk belief offers on their turn.
@@ -678,7 +759,7 @@ export function applyPick(
 export function applyMulligan(
   state: BuffetDraftState,
   playerId: string,
-): { state: BuffetDraftState; newOffer: string[] } {
+): { state: BuffetDraftState; newOffer: string[]; declinedRoleIds: string[] } {
   const offer = state.currentOffer;
   if (!offer || offer.playerId !== playerId) {
     throw new Error("No active offer for this player.");
@@ -689,6 +770,7 @@ export function applyMulligan(
     throw new Error("No more mulligans available.");
   }
 
+  const declinedRoleIds = [...offer.roleIds];
   const newCount = steps[nextStep]!;
   const offerKind = offer.offerKind ?? "standard";
   const newOfferIds = drawOfferForPlayer(state, playerId, newCount, offerKind);
@@ -705,9 +787,21 @@ export function applyMulligan(
     [playerId]: (state.mulligansUsed[playerId] ?? 0) + 1,
   };
 
+  const prevDeclined = state.declinedRoles[playerId] ?? [];
+  const declinedRoles = {
+    ...state.declinedRoles,
+    [playerId]: [...prevDeclined, ...declinedRoleIds],
+  };
+
   return {
-    state: { ...state, currentOffer: newOffer, mulligansUsed: newMulligansUsed },
+    state: {
+      ...state,
+      currentOffer: newOffer,
+      mulligansUsed: newMulligansUsed,
+      declinedRoles,
+    },
     newOffer: newOfferIds,
+    declinedRoleIds,
   };
 }
 

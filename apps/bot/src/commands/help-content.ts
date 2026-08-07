@@ -719,7 +719,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "For fake/dev players, the ST picks from that player’s ST thread",
             "Enable **Lunatic** in admin if you want one, then `/st do buffet-assign-lunatic player:@…` before or during the draft",
             "After outsider-count roles (Baron, etc.), `/st do buffet-assign-drunk player:@…` if you need a Drunk",
-            "`/st do buffet-status` — check picks so far; `/st do buffet-cancel` — stop before completion",
+            "`/st do buffet-status` — check picks + recreate kib draft tracker; `/st do buffet-cancel` — stop before completion",
             "`/st do buffet-export-clocktower` — JSON for clocktower.live grimoire import",
             "When complete, the complete player → role roster is posted privately in kib; then `/st next-phase` for Night 1",
           ]),

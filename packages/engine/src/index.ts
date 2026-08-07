@@ -62,6 +62,7 @@ export {
   formatBuffetDrunkFixLine,
   formatHermitUnchosenOutsidersLine,
   listUnchosenOutsidersForHermit,
+  formatBuffetDraftTracker,
   applyAssignLunatic,
   collectBuffetPreAssignments,
   isBuffetSecretRole,
@@ -346,6 +347,8 @@ export interface BuffetMulliganUsedEvent extends GameEventBase {
   type: typeof GameEventType.BuffetMulliganUsed;
   playerId: string;
   newOffer: BuffetCurrentOffer;
+  /** Roles from the offer that was discarded by this mulligan. */
+  declinedRoleIds?: string[];
 }
 
 export interface BuffetDraftCompletedEvent extends GameEventBase {
@@ -2388,6 +2391,7 @@ export class GameEngine {
           currentIndex: 0,
           currentOffer: null,
           mulligansUsed: {},
+          declinedRoles: {},
           picks: {},
           secretAssignments,
           beliefs: {},
@@ -2508,7 +2512,7 @@ export class GameEngine {
       }
       case GameCommandKind.MulliganBuffet: {
         const draft = this.state.buffetDraft!;
-        const { state: _s, newOffer } = applyMulligan(draft, command.playerId);
+        const { newOffer, declinedRoleIds } = applyMulligan(draft, command.playerId);
         const offer: BuffetCurrentOffer = {
           playerId: command.playerId,
           roleIds: newOffer,
@@ -2521,6 +2525,7 @@ export class GameEngine {
             gameId: command.gameId,
             playerId: command.playerId,
             newOffer: offer,
+            declinedRoleIds,
             timestamp: new Date().toISOString(),
           },
         ];
@@ -2934,6 +2939,7 @@ export class GameEngine {
           currentIndex: 0,
           currentOffer: null,
           mulligansUsed: {},
+          declinedRoles: {},
           picks: {},
           secretAssignments: kept,
           beliefs: {},
@@ -2952,6 +2958,7 @@ export class GameEngine {
           currentIndex: 0,
           currentOffer: null,
           mulligansUsed: {},
+          declinedRoles: {},
           picks: {},
           secretAssignments: event.secretAssignments ?? {},
           beliefs: {},
@@ -2977,6 +2984,14 @@ export class GameEngine {
       case GameEventType.BuffetMulliganUsed: {
         const draft = this.state.buffetDraft;
         if (!draft) break;
+        const declinedRoleIds = event.declinedRoleIds ?? [];
+        if (declinedRoleIds.length > 0) {
+          const prev = draft.declinedRoles[event.playerId] ?? [];
+          draft.declinedRoles = {
+            ...draft.declinedRoles,
+            [event.playerId]: [...prev, ...declinedRoleIds],
+          };
+        }
         draft.currentOffer = event.newOffer;
         draft.mulligansUsed = {
           ...draft.mulligansUsed,

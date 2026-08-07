@@ -2,15 +2,19 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  EmbedBuilder,
   MessageFlags,
   type AnyThreadChannel,
   type ButtonInteraction,
   type Guild,
+  type Message,
+  type TextChannel,
 } from "discord.js";
 import { getGameById, prisma } from "@grimkeeper/database";
 import {
   GameCommandKind,
   formatBuffetDrunkFixLine,
+  formatBuffetDraftTracker,
   formatHermitUnchosenOutsidersLine,
   type GameEngine,
   listBotcRoles,
@@ -27,9 +31,20 @@ import {
 import { buildRoleDmEmbed } from "../role-embed.js";
 import { upsertPinnedGameStatus } from "../game-status.js";
 import { postGameLog } from "../game-log-thread.js";
+import { log } from "../logger.js";
 
 export const BUFFET_PICK_PREFIX = "gk:buffet:pick:";
 export const BUFFET_MULLIGAN_PREFIX = "gk:buffet:mulligan:";
+export const BUFFET_TRACKER_FOOTER_PREFIX = "grimkeeper:buffet-tracker:";
+
+export function buffetTrackerFooter(gameId: string): string {
+  return `${BUFFET_TRACKER_FOOTER_PREFIX}${gameId}`;
+}
+
+export function parseBuffetTrackerFooter(footerText: string | null | undefined): string | null {
+  if (!footerText?.startsWith(BUFFET_TRACKER_FOOTER_PREFIX)) return null;
+  return footerText.slice(BUFFET_TRACKER_FOOTER_PREFIX.length) || null;
+}
 
 export function buffetPickCustomId(gameId: string, roleId: string): string {
   return `${BUFFET_PICK_PREFIX}${gameId}|${roleId}`;
@@ -165,6 +180,114 @@ export function formatBuffetCompletionSummary(
   return parts.join("\n");
 }
 
+function buildBuffetDraftTrackerEmbed(engine: Pick<GameEngine, "getState">): EmbedBuilder | null {
+  const state = engine.getState();
+  const draft = state.buffetDraft;
+  if (!draft || draft.status === "idle") return null;
+
+  const { title, description } = formatBuffetDraftTracker({
+    players: state.players,
+    draft,
+  });
+
+  return new EmbedBuilder()
+    .setColor(0x2b2d31)
+    .setTitle(title)
+    .setDescription(description)
+    .setFooter({ text: buffetTrackerFooter(state.gameId) });
+}
+
+async function findBuffetDraftTrackerMessage(
+  channel: TextChannel,
+  gameId: string,
+): Promise<Message | null> {
+  const pinned = await channel.messages.fetchPinned().catch(() => null);
+  if (pinned) {
+    for (const message of pinned.values()) {
+      if (parseBuffetTrackerFooter(message.embeds[0]?.footer?.text) === gameId) {
+        return message;
+      }
+    }
+  }
+  const recent = await channel.messages.fetch({ limit: 40 }).catch(() => null);
+  if (!recent) return null;
+  for (const message of recent.values()) {
+    if (parseBuffetTrackerFooter(message.embeds[0]?.footer?.text) === gameId) {
+      return message;
+    }
+  }
+  return null;
+}
+
+/** Edit or create the kib draft tracker. */
+export async function upsertBuffetDraftTracker(
+  guild: Guild,
+  game: { id: string; channelId: string; kibThreadId?: string | null },
+  engine: Pick<GameEngine, "getState">,
+): Promise<Message | null> {
+  const embed = buildBuffetDraftTrackerEmbed(engine);
+  if (!embed) return null;
+
+  const kib = await getKibThreadForGame(guild, game);
+  if (!kib?.isTextBased()) return null;
+
+  const existing = await findBuffetDraftTrackerMessage(kib, game.id);
+  if (existing) {
+    try {
+      await existing.edit({ embeds: [embed] });
+      return existing;
+    } catch (error) {
+      log("warn", "buffetTracker.edit.failed", {
+        gameId: game.id,
+        messageId: existing.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  try {
+    const message = await kib.send({ embeds: [embed] });
+    await message.pin().catch(() => undefined);
+    return message;
+  } catch (error) {
+    log("warn", "buffetTracker.send.failed", {
+      gameId: game.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/** Delete any existing kib draft tracker and post a fresh one (used by buffet-status). */
+export async function recreateBuffetDraftTracker(
+  guild: Guild,
+  game: { id: string; channelId: string; kibThreadId?: string | null },
+  engine: Pick<GameEngine, "getState">,
+): Promise<Message | null> {
+  const kib = await getKibThreadForGame(guild, game);
+  if (!kib?.isTextBased()) return null;
+
+  const existing = await findBuffetDraftTrackerMessage(kib, game.id);
+  if (existing) {
+    await existing.delete().catch(() => undefined);
+  }
+
+  const embed = buildBuffetDraftTrackerEmbed(engine);
+  if (!embed) return null;
+
+  try {
+    const message = await kib.send({ embeds: [embed] });
+    await message.pin().catch(() => undefined);
+    return message;
+  } catch (error) {
+    log("warn", "buffetTracker.recreate.failed", {
+      gameId: game.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 async function getPlayerStThread(
   guild: Guild,
   gameId: string,
@@ -236,6 +359,7 @@ async function finishBuffetPick(
   const draft = engine.getState().buffetDraft;
   if (draft?.status === "complete") {
     await upsertPinnedGameStatus(guild, game.channelId, engine);
+    await upsertBuffetDraftTracker(guild, game, engine).catch(() => undefined);
     const kib = await getKibThreadForGame(guild, game);
     await kib?.send({ content: formatBuffetCompletionSummary(engine) }).catch(() => undefined);
     const linkToGame = `<https://grimkeeper.dev/games/${game.id}#sushi-buffet-draft>`;
@@ -252,6 +376,7 @@ async function finishBuffetPick(
     await postBuffetOffer(guild, game, engine, nextOffer);
   }
   await upsertPinnedGameStatus(guild, game.channelId, engine);
+  await upsertBuffetDraftTracker(guild, game, engine).catch(() => undefined);
   return "continued";
 }
 
@@ -441,6 +566,7 @@ export async function handleBuffetMulligan(interaction: ButtonInteraction): Prom
     }
 
     await syncGameProjection(gameId, engine);
+    await upsertBuffetDraftTracker(guild, game, engine).catch(() => undefined);
     await interaction.editReply({
       content: drafter.isFake
         ? `Mulligan for **${drafter.displayName}** — new choices posted in their ST thread.`

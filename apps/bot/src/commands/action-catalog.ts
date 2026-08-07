@@ -87,7 +87,7 @@ export const ST_DO_ACTIONS: DoAction[] = [
   },
   { name: "start", description: "Legacy start (prefer setup-town)" },
   { name: "buffet-start", description: "Start the Sushi Buffet role draft (requires buffet config in admin)" },
-  { name: "buffet-status", description: "Show current Sushi Buffet draft status (who's picking, pool size, picks so far)" },
+  { name: "buffet-status", description: "Show buffet draft status and recreate the kib draft tracker (picks, declines, current picker)" },
   { name: "buffet-cancel", description: "Cancel the active Sushi Buffet draft (clears draft state, roles unchanged)" },
   {
     name: "buffet-assign-drunk",

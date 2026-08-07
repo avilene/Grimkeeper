@@ -2588,24 +2588,27 @@ export class StCommandsMinimal {
       await persistEvents(engine, events);
       await syncGameProjection(game.id, engine);
 
-      const { postBuffetOffer } = await import("../interactions/buffet-draft.js");
+      const { postBuffetOffer, upsertBuffetDraftTracker } =
+        await import("../interactions/buffet-draft.js");
 
       const draft = engine.getState().buffetDraft;
       const firstOffer = draft?.currentOffer;
       if (draft?.status === "complete") {
         await upsertPinnedGameStatus(guild, game.channelId, engine);
+        await upsertBuffetDraftTracker(guild, game, engine).catch(() => undefined);
         await postGameLog(
           guild,
           game,
           `<@${interaction.user.id}> started the Sushi Buffet draft — all picks resolved.`,
         );
         await replyOrEditInteraction(interaction, {
-          content: "Sushi Buffet draft complete — all players have roles.",
+          content: "Sushi Buffet draft complete — all picks resolved.",
         });
       } else if (firstOffer) {
         await postBuffetOffer(guild, game, engine, firstOffer);
         const firstPlayer = engine.getState().players.find((p) => p.id === firstOffer.playerId);
         await upsertPinnedGameStatus(guild, game.channelId, engine);
+        await upsertBuffetDraftTracker(guild, game, engine).catch(() => undefined);
         await postGameLog(
           guild,
           game,
@@ -2628,6 +2631,8 @@ export class StCommandsMinimal {
   async buffetStatus(interaction: CommandInteraction): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
 
     try {
       const engine = await loadEngine(game.id);
@@ -2640,6 +2645,9 @@ export class StCommandsMinimal {
         });
         return;
       }
+
+      const { recreateBuffetDraftTracker } = await import("../interactions/buffet-draft.js");
+      const tracker = await recreateBuffetDraftTracker(guild, game, engine).catch(() => null);
 
       const catalog = new Map(listBotcRoles().map((r) => [r.id, r]));
 
@@ -2661,6 +2669,10 @@ export class StCommandsMinimal {
             ...pickLines,
             ...(hermitLine ? ["", hermitLine] : []),
             ...(drunkLine ? ["", drunkLine] : []),
+            "",
+            tracker
+              ? `Kib draft tracker recreated in <#${tracker.channelId}>.`
+              : "Could not post the kib draft tracker (is kib set up?).",
           ].join("\n"),
           flags: MessageFlags.Ephemeral,
         });
@@ -2717,6 +2729,10 @@ export class StCommandsMinimal {
           ? ["**Secret assignments (ST only):**", ...secretLines, ""]
           : []),
         ...(pickLines.length > 0 ? ["**Picks so far:**", ...pickLines] : ["No picks yet."]),
+        "",
+        tracker
+          ? `Kib draft tracker recreated in <#${tracker.channelId}>.`
+          : "Could not post the kib draft tracker (is kib set up?).",
       ].filter((line): line is string => line != null);
 
       await replyOrEditInteraction(interaction, {
