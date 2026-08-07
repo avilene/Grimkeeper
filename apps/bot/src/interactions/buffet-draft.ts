@@ -7,8 +7,8 @@ import {
   type AnyThreadChannel,
   type ButtonInteraction,
   type Guild,
+  type GuildTextBasedChannel,
   type Message,
-  type TextChannel,
 } from "discord.js";
 import { getGameById, prisma } from "@grimkeeper/database";
 import {
@@ -198,7 +198,7 @@ function buildBuffetDraftTrackerEmbed(engine: Pick<GameEngine, "getState">): Emb
 }
 
 async function findBuffetDraftTrackerMessage(
-  channel: TextChannel,
+  channel: GuildTextBasedChannel,
   gameId: string,
 ): Promise<Message | null> {
   const pinned = await channel.messages.fetchPinned().catch(() => null);
