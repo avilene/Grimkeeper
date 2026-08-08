@@ -2,19 +2,54 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
-import { ChevronDown, Menu } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
+  ChevronRight,
+  Dices,
+  LogOut,
+  Settings2,
+  BarChart3,
+  Users,
+  Bell,
+  Tags,
+  ListOrdered,
+  Building2,
+} from "lucide-react";
+
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 
 export type AppSidebarProps = {
   home: string;
@@ -25,6 +60,7 @@ export type AppSidebarProps = {
   name: string | null;
   userId: string;
   signOutAction: () => Promise<void>;
+  children: React.ReactNode;
 };
 
 const ADMIN_PREFIXES = ["/reminders", "/aliases", "/queues", "/guild-settings", "/stats/players"];
@@ -33,35 +69,10 @@ function isAdminPath(pathname: string): boolean {
   if (ADMIN_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
     return true;
   }
-  // /stats/<discordUserId> but not /stats itself
   return pathname.startsWith("/stats/") && pathname !== "/stats/players";
 }
 
-function NavLink({
-  href,
-  children,
-  active,
-}: {
-  href: string;
-  children: ReactNode;
-  active: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        "rounded-md px-2.5 py-1.5 text-sm transition-colors",
-        active
-          ? "bg-accent font-medium text-accent-foreground"
-          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-      )}
-    >
-      {children}
-    </Link>
-  );
-}
-
-function SidebarPanel({
+export function AppSidebar({
   home,
   canListGames,
   isAdmin,
@@ -70,171 +81,227 @@ function SidebarPanel({
   name,
   userId,
   signOutAction,
-  className,
-}: AppSidebarProps & { className?: string }) {
+  children,
+}: AppSidebarProps) {
   const pathname = usePathname();
   const adminActive = isAdmin && isAdminPath(pathname);
   const [adminOpen, setAdminOpen] = useState(adminActive);
   const displayName = name ?? "User";
   const fallbackInitial = displayName.charAt(0).toUpperCase() || "U";
+  const roleLabel = isAdmin ? "admin" : canListGamesAsStoryteller ? "storyteller" : null;
 
   useEffect(() => {
     if (adminActive) setAdminOpen(true);
   }, [adminActive]);
 
   return (
-    <div className={cn("flex h-full flex-col bg-card/80 backdrop-blur", className)}>
-      <div className="border-b border-border px-4 py-4">
-        <Link href={home} className="text-sm font-semibold tracking-tight hover:text-primary">
-          Grimkeeper
-        </Link>
-        <p className="mt-0.5 text-xs text-muted-foreground">Admin panel</p>
-      </div>
+    <SidebarProvider>
+      <Sidebar collapsible="icon">
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" asChild>
+                <Link href={home}>
+                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                    <Dices className="size-4" />
+                  </div>
+                  <div className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold">Grimkeeper</span>
+                    <span className="truncate text-xs text-muted-foreground">Admin panel</span>
+                  </div>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
 
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
-        {canListGames ? (
-          <NavLink href="/games" active={pathname === "/games" || pathname.startsWith("/games/")}>
-            Games
-          </NavLink>
-        ) : null}
-        <NavLink href="/stats" active={pathname === "/stats"}>
-          My stats
-        </NavLink>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupLabel>Navigate</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {canListGames ? (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={pathname === "/games" || pathname.startsWith("/games/")}
+                      tooltip="Games"
+                    >
+                      <Link href="/games">
+                        <Dices />
+                        <span>Games</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ) : null}
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={pathname === "/stats"} tooltip="My stats">
+                    <Link href="/stats">
+                      <BarChart3 />
+                      <span>My stats</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
 
-        {isAdmin ? (
-          <div className="mt-2">
-            <button
-              type="button"
-              aria-expanded={adminOpen}
-              onClick={() => setAdminOpen((open) => !open)}
-              className={cn(
-                "flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs font-semibold uppercase tracking-wide transition-colors",
-                adminActive
-                  ? "text-primary"
-                  : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-              )}
-            >
-              Admin
-              <ChevronDown
-                className={cn("size-3.5 transition-transform", adminOpen ? "rotate-0" : "-rotate-90")}
-                aria-hidden
-              />
-            </button>
-            {adminOpen ? (
-              <div className="mt-1 ml-1 flex flex-col gap-0.5 border-l border-border pl-2">
-                <NavLink
-                  href="/stats/players"
-                  active={
-                    pathname === "/stats/players" ||
-                    (pathname.startsWith("/stats/") && pathname !== "/stats/players")
-                  }
-                >
-                  Player stats
-                </NavLink>
-                <NavLink
-                  href="/reminders"
-                  active={pathname === "/reminders" || pathname.startsWith("/reminders/")}
-                >
-                  Reminders
-                </NavLink>
-                <NavLink
-                  href="/aliases"
-                  active={pathname === "/aliases" || pathname.startsWith("/aliases/")}
-                >
-                  Aliases
-                </NavLink>
-                <NavLink
-                  href="/queues"
-                  active={pathname === "/queues" || pathname.startsWith("/queues/")}
-                >
-                  Queue
-                </NavLink>
-                <NavLink
-                  href="/guild-settings"
-                  active={
-                    pathname === "/guild-settings" || pathname.startsWith("/guild-settings/")
-                  }
-                >
-                  Guild settings
-                </NavLink>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </nav>
+          {isAdmin ? (
+            <SidebarGroup>
+              <SidebarGroupLabel>Admin</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <Collapsible open={adminOpen} onOpenChange={setAdminOpen} className="group/collapsible">
+                    <SidebarMenuItem>
+                      <CollapsibleTrigger asChild>
+                        <SidebarMenuButton tooltip="Admin" isActive={adminActive}>
+                          <Settings2 />
+                          <span>Admin</span>
+                          <ChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                        </SidebarMenuButton>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <SidebarMenuSub>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={
+                                pathname === "/stats/players" ||
+                                (pathname.startsWith("/stats/") && pathname !== "/stats/players")
+                              }
+                            >
+                              <Link href="/stats/players">
+                                <Users />
+                                <span>Player stats</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={pathname === "/reminders" || pathname.startsWith("/reminders/")}
+                            >
+                              <Link href="/reminders">
+                                <Bell />
+                                <span>Reminders</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={pathname === "/aliases" || pathname.startsWith("/aliases/")}
+                            >
+                              <Link href="/aliases">
+                                <Tags />
+                                <span>Aliases</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={pathname === "/queues" || pathname.startsWith("/queues/")}
+                            >
+                              <Link href="/queues">
+                                <ListOrdered />
+                                <span>Queue</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={
+                                pathname === "/guild-settings" ||
+                                pathname.startsWith("/guild-settings/")
+                              }
+                            >
+                              <Link href="/guild-settings">
+                                <Building2 />
+                                <span>Guild settings</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        </SidebarMenuSub>
+                      </CollapsibleContent>
+                    </SidebarMenuItem>
+                  </Collapsible>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ) : null}
+        </SidebarContent>
 
-      <div className="space-y-3 border-t border-border p-3">
-        <div className="flex items-center gap-3 px-1">
-          {image ? (
-            <img
-              src={image}
-              alt={`${displayName} avatar`}
-              className="size-10 shrink-0 rounded-full border border-border object-cover"
-            />
-          ) : (
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-accent text-sm font-medium text-accent-foreground">
-              {fallbackInitial}
-            </div>
-          )}
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{displayName}</p>
-            <p className="truncate font-mono text-[11px] text-muted-foreground">{userId}</p>
-            {isAdmin ? (
-              <p className="mt-1 text-xs text-primary">admin</p>
-            ) : canListGamesAsStoryteller ? (
-              <p className="mt-1 text-xs text-primary">storyteller</p>
-            ) : null}
-          </div>
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuButton
+                    size="lg"
+                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  >
+                    <Avatar size="default" className="size-8 rounded-lg">
+                      {image ? <AvatarImage src={image} alt={displayName} /> : null}
+                      <AvatarFallback className="rounded-lg">{fallbackInitial}</AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">{displayName}</span>
+                      <span className="truncate font-mono text-xs text-muted-foreground">
+                        {roleLabel ?? userId}
+                      </span>
+                    </div>
+                  </SidebarMenuButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+                  side="bottom"
+                  align="end"
+                  sideOffset={4}
+                >
+                  <DropdownMenuLabel className="p-0 font-normal">
+                    <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                      <Avatar size="default" className="size-8 rounded-lg">
+                        {image ? <AvatarImage src={image} alt={displayName} /> : null}
+                        <AvatarFallback className="rounded-lg">{fallbackInitial}</AvatarFallback>
+                      </Avatar>
+                      <div className="grid flex-1 text-left text-sm leading-tight">
+                        <span className="truncate font-semibold">{displayName}</span>
+                        <span className="truncate font-mono text-xs text-muted-foreground">
+                          {userId}
+                        </span>
+                      </div>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      void signOutAction();
+                    }}
+                  >
+                    <LogOut />
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
+
+      <SidebarInset>
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
+          <span className="truncate text-sm text-muted-foreground">Grimkeeper Admin</span>
+        </header>
+        <div className="flex flex-1 flex-col gap-4 p-4 sm:p-6">
+          <div className="mx-auto w-full max-w-6xl">{children}</div>
         </div>
-        <form action={signOutAction}>
-          <Button type="submit" variant="secondary" size="sm" className="w-full">
-            Logout
-          </Button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-export function AppSidebar(props: AppSidebarProps) {
-  const pathname = usePathname();
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
-
-  return (
-    <>
-      <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/90 px-4 backdrop-blur md:hidden">
-        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="size-9 shrink-0 px-0"
-              aria-label="Open navigation"
-            >
-              <Menu className="size-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" showCloseButton={false} className="w-56 gap-0 p-0">
-            <SheetHeader className="sr-only">
-              <SheetTitle>Navigation</SheetTitle>
-              <SheetDescription>Admin panel navigation</SheetDescription>
-            </SheetHeader>
-            <SidebarPanel {...props} />
-          </SheetContent>
-        </Sheet>
-        <Link href={props.home} className="text-sm font-semibold tracking-tight hover:text-primary">
-          Grimkeeper
-        </Link>
-      </header>
-
-      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 border-r border-border md:flex md:flex-col">
-        <SidebarPanel {...props} />
-      </aside>
-    </>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

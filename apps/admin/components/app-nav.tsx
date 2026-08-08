@@ -2,9 +2,9 @@ import { getAccessProfile, homePathForAccess } from "@/lib/access";
 import { signOut } from "@/lib/auth";
 import { AppSidebar } from "@/components/app-sidebar";
 
-export async function AppNav() {
+export async function AppNav({ children }: { children: React.ReactNode }) {
   const access = await getAccessProfile();
-  if (!access) return null;
+  if (!access) return <>{children}</>;
 
   const home = homePathForAccess(access);
 
@@ -23,6 +23,8 @@ export async function AppNav() {
       name={access.name}
       userId={access.userId}
       signOutAction={signOutAction}
-    />
+    >
+      {children}
+    </AppSidebar>
   );
 }
