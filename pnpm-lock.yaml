@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  thread-stream: file:vendor/thread-stream
-
 importers:
 
   .: {}
@@ -3268,8 +3265,8 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  thread-stream@file:vendor/thread-stream:
-    resolution: {directory: vendor/thread-stream, type: directory}
+  thread-stream@4.2.0:
+    resolution: {integrity: sha512-e2zZ96wSChazBsbENf/Pcm/4swHt2cEKQ92rhUjkL9GCKiTDJIaTBenjE/m9DXi0QBmTMDkFDdOomUy20A1tDQ==}
     engines: {node: '>=20'}
 
   tinybench@2.9.0:
@@ -6115,7 +6112,7 @@ snapshots:
       real-require: 0.2.0
       safe-stable-stringify: 2.5.0
       sonic-boom: 4.2.1
-      thread-stream: file:vendor/thread-stream
+      thread-stream: 4.2.0
 
   pkg-types@2.3.1:
     dependencies:
@@ -6536,7 +6533,7 @@ snapshots:
       commander: 2.20.3
       source-map-support: 0.5.21
 
-  thread-stream@file:vendor/thread-stream:
+  thread-stream@4.2.0:
     dependencies:
       real-require: 1.0.0
 

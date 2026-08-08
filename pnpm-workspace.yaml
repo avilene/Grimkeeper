@@ -2,10 +2,6 @@ packages:
   - apps/*
   - packages/*
 
-overrides:
-  # Official tarball ships a .claude/ path that breaks sandboxed installs.
-  thread-stream: file:vendor/thread-stream
-
 allowBuilds:
   "@prisma/engines": true
   "@sentry/cli": true
