@@ -37,6 +37,7 @@ export async function syncGameProjectionFromEngine(
       dayNumber: state.dayNumber,
       nightNumber: state.nightNumber,
       winner: state.winner,
+      endedAt: state.endedAt ? new Date(state.endedAt) : null,
       ...buffetData,
     },
   });

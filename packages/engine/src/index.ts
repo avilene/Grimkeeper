@@ -484,6 +484,8 @@ export interface GameState {
   seatsOpen: boolean;
   townMode: boolean;
   winner: "good" | "evil" | "cancel" | null;
+  /** ISO timestamp from GameEnded; null while the game is in progress. */
+  endedAt: string | null;
   buffetDraft: BuffetDraftState | null;
 }
 
@@ -881,6 +883,7 @@ function emptyState(gameId: string): GameState {
     seatsOpen: false,
     townMode: false,
     winner: null,
+    endedAt: null,
     buffetDraft: null,
   };
 }
@@ -2804,6 +2807,7 @@ export class GameEngine {
       case GameEventType.GameEnded:
         this.state.phase = "ended";
         this.state.winner = event.winner;
+        this.state.endedAt = event.timestamp;
         break;
       case GameEventType.TownSetup:
         this.state.channelId = event.channelId;
@@ -2833,6 +2837,7 @@ export class GameEngine {
         this.state.seatsOpen = false;
         this.state.day = null;
         this.state.winner = null;
+        this.state.endedAt = null;
         for (const player of this.state.players) {
           player.alive = true;
           player.ghostVoteUsed = false;

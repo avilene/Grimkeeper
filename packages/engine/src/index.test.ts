@@ -123,17 +123,20 @@ describe("GameEngine", () => {
       })),
       timestamp: new Date().toISOString(),
     });
+    const endedAt = "2026-08-07T14:30:00.000Z";
     engine.apply({
       type: GameEventType.GameEnded,
       gameId,
       winner: "good",
       reason: "Demon executed",
-      timestamp: new Date().toISOString(),
+      timestamp: endedAt,
     });
 
     const reveal = engine.getGrimReveal();
     expect(reveal.some((line) => line.includes("Washerwoman"))).toBe(true);
     expect(reveal.some((line) => line.includes("Winner: good"))).toBe(true);
+    expect(engine.getState().phase).toBe("ended");
+    expect(engine.getState().endedAt).toBe(endedAt);
   });
 
   it("clears fake players in the lobby", () => {

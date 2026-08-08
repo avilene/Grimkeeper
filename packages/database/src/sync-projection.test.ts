@@ -19,6 +19,7 @@ function baseState(overrides: Partial<GameState> = {}): GameState {
     seatsOpen: false,
     townMode: false,
     winner: null,
+    endedAt: null,
     buffetDraft: null,
     ...overrides,
   };
