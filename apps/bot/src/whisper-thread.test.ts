@@ -66,6 +66,9 @@ describe("whisper thread helpers", () => {
     expect(formatWhisperDeclaration(["Alice", "Bob"])).toBe(
       "Whisper created between Alice and Bob",
     );
+    expect(formatWhisperDeclaration(["Alice", "Bob"], true)).toBe(
+      "Neighbor whisper created between Alice and Bob",
+    );
     expect(formatWhisperDeclaration(["Alice", "Bob", "Carol"])).toBe(
       "Whisper created between Alice, Bob, Carol",
     );

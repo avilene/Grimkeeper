@@ -121,11 +121,15 @@ export function formatWhisperReusePing(participantDiscordIds: string[]): string 
   return `${participantDiscordIds.map((id) => `<@${id}>`).join(" ")} — whisper resumed.`;
 }
 
-export function formatWhisperDeclaration(displayNames: string[]): string {
+export function formatWhisperDeclaration(
+  displayNames: string[],
+  neighbor = false,
+): string {
+  const kind = neighbor ? "Neighbor whisper" : "Whisper";
   if (displayNames.length <= 2) {
-    return `Whisper created between ${displayNames[0] ?? "?"} and ${displayNames[1] ?? "?"}`;
+    return `${kind} created between ${displayNames[0] ?? "?"} and ${displayNames[1] ?? "?"}`;
   }
-  return `Whisper created between ${displayNames.join(", ")}`;
+  return `${kind} created between ${displayNames.join(", ")}`;
 }
 
 async function ensureWhisperMembers(

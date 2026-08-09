@@ -141,7 +141,9 @@ export class WhisperCommands {
         continue;
       }
 
-      declarations.push(formatWhisperDeclaration([creator.displayName, neighbor.displayName]));
+      declarations.push(
+        formatWhisperDeclaration([creator.displayName, neighbor.displayName], true),
+      );
       await postGameLog(
         guild,
         game,
@@ -244,7 +246,7 @@ export class WhisperCommands {
     ).catch(() => undefined);
 
     await postPublicDeclarations(interaction, guild, game, [
-      formatWhisperDeclaration(displayNames),
+      formatWhisperDeclaration(displayNames, false),
     ]);
   }
 }
