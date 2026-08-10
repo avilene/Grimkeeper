@@ -165,6 +165,14 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
     description: "Replace this channel’s reminder batch (alias for /st reminder batch; `1m 30m 1h 4 8`).",
   },
   {
+    command: "/listreminders",
+    description: "List pending reminders (alias for /st reminder list).",
+  },
+  {
+    command: "/clearreminders",
+    description: "Cancel pending reminders (alias for /st reminder clear).",
+  },
+  {
     command: "/st reminder schedule",
     description: "Schedule a reminder (requires ST role, storyteller, or allowlist; max 24h).",
   },
@@ -589,6 +597,8 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             "/st reminder batch",
             "Replace this channel’s reminder batch (`1m 30m 1h 4 8`; does not stack).",
           ),
+          cmd("/listreminders", "List pending reminders (alias for /st reminder list)."),
+          cmd("/clearreminders", "Cancel pending reminders (alias for /st reminder clear)."),
           cmd("/st reminder list", "List pending reminders."),
           cmd(
             "/st reminder edit / delete / clear",

@@ -22,7 +22,7 @@ src/
     help-pagination.ts     Button pagination for help embeds
     role.ts                /role character lookup
     st-queue.ts            /st queue commands
-    st-reminders.ts        /st reminder* + top-level /reminder (= batch)
+    st-reminders.ts        /st reminder* + /reminder /listreminders /clearreminders
     interest.ts            /interest create (interest-check posts)
     stats.ts               /stats command
     whisper.ts             /whisper command

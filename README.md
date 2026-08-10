@@ -67,7 +67,8 @@ Player day play uses top-level slash commands. Storytellers use `/st …`. Guide
 | `/st panel` | Pin/refresh kib control panel |
 | `/st help` | Storyteller command guide (`search:` filters by name/description) |
 | `/st guide setup` / `day` / `night` | Phase checklists |
-| `/reminder` / `/st reminder batch` / `/st reminder schedule` | Scheduled pings (`/reminder` = batch offsets; max 24h) |
+| `/reminder` / `/listreminders` / `/clearreminders` | Reminder shortcuts (`/reminder` = batch offsets) |
+| `/st reminder schedule` / `/st reminder batch` | Nested reminder commands (same as shortcuts where aliased) |
 
 ### Sushi Buffet draft
 

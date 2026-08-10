@@ -252,7 +252,7 @@ async function batchRemindersFromInteraction(
   });
 }
 
-/** Top-level alias for `/st reminder batch`. */
+/** Top-level aliases for common `/st reminder` commands. */
 @Discord()
 export class ReminderAliasCommands {
   @Slash({
@@ -286,6 +286,134 @@ export class ReminderAliasCommands {
     if (!interaction) return;
     await batchRemindersFromInteraction(interaction, message, hoursInput, pingRolesInput);
   }
+
+  @Slash({
+    name: "listreminders",
+    description: "List pending reminders (alias for /st reminder list)",
+  })
+  async listRemindersAlias(interaction: CommandInteraction): Promise<void> {
+    await listRemindersFromInteraction(interaction);
+  }
+
+  @Slash({
+    name: "clearreminders",
+    description: "Cancel pending reminders (alias for /st reminder clear)",
+  })
+  async clearRemindersAlias(
+    @SlashChoice({ name: "All pending", value: "all" })
+    @SlashChoice({ name: "This channel only", value: "channel" })
+    @SlashChoice({ name: "Matching message", value: "message" })
+    @SlashOption({
+      name: "scope",
+      description: "Which reminders to cancel",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    scope: "all" | "channel" | "message",
+    @SlashOption({
+      name: "message",
+      description: "Exact message text (required when scope is message)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    message: string | undefined,
+    interaction?: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction) return;
+    await clearRemindersFromInteraction(interaction, scope, message);
+  }
+}
+
+async function listRemindersFromInteraction(interaction: CommandInteraction): Promise<void> {
+  const access = await requireReminderAccess(interaction);
+  if (!access) return;
+
+  const { scope } = access;
+  const pending = await listPendingReminders(scope);
+  logReminderAction("listed", {
+    scope: scope.kind,
+    gameId: scope.kind === "game" ? scope.gameId : undefined,
+    count: pending.length,
+    userId: interaction.user.id,
+  });
+  if (pending.length === 0) {
+    await replyOrEditInteraction(interaction, { content: "No pending reminders.", ...EPHEMERAL });
+    return;
+  }
+
+  const lines = pending.map((reminder) => {
+    const when = discordRelativeWithTime(reminder.fireAt);
+    const pingMentions = reminder.pingPlayers ? formatPingRoleMentions(reminder.pingRoleId) : null;
+    const pingNote = reminder.pingPlayers
+      ? pingMentions
+        ? ` (pings ${pingMentions})`
+        : " (pings players)"
+      : "";
+    return `- \`${reminder.id.slice(0, 8)}\` ${when} in <#${reminder.channelId}>${pingNote}: ${formatReminderText(reminder.message, reminder.emoji)}`;
+  });
+
+  await replyOrEditInteraction(interaction, {
+    embeds: [
+      new EmbedBuilder()
+        .setTitle("Pending reminders")
+        .setDescription(
+          `${lines.join("\n")}\n\nEdit with \`/st reminder edit id:<prefix>\`, delete with \`/st reminder delete id:<prefix>\`, or clear with \`/clearreminders\` / \`/st reminder clear\`.`,
+        ),
+    ],
+    ...EPHEMERAL,
+  });
+}
+
+async function clearRemindersFromInteraction(
+  interaction: CommandInteraction,
+  scope: "all" | "channel" | "message",
+  message: string | undefined,
+): Promise<void> {
+  const access = await requireReminderAccess(interaction);
+  if (!access) return;
+
+  const { scope: reminderScope, targetChannelId } = access;
+  if (scope === "message" && !message?.trim()) {
+    await replyOrEditInteraction(interaction, {
+      content: "Provide the `message` option when using scope `message`.",
+      ...EPHEMERAL,
+    });
+    return;
+  }
+
+  if (scope === "channel" && !interaction.channelId) {
+    await replyOrEditInteraction(interaction, {
+      content: "This command must be used in a channel or thread when scope is `channel`.",
+      ...EPHEMERAL,
+    });
+    return;
+  }
+
+  const cancelled = await cancelReminders(
+    reminderScope,
+    scope === "all"
+      ? undefined
+      : scope === "channel"
+        ? { channelId: targetChannelId }
+        : { message: message!.trim() },
+  );
+
+  const remaining = await countPendingReminders(reminderScope);
+  logReminderAction("cancelled", {
+    scope: reminderScope.kind,
+    gameId: reminderScope.kind === "game" ? reminderScope.gameId : undefined,
+    cancelled,
+    remaining,
+    filterScope: scope,
+    userId: interaction.user.id,
+  });
+  await replyOrEditInteraction(interaction, {
+    content:
+      cancelled === 0
+        ? "No matching pending reminders to cancel."
+        : `Cancelled **${cancelled}** reminder${cancelled === 1 ? "" : "s"}. **${remaining}** still pending.`,
+    ...EPHEMERAL,
+  });
 }
 
 @Discord()
@@ -380,43 +508,7 @@ export class StReminderCommands {
 
   @Slash({ name: "list", description: "List pending reminders for this game or channel" })
   async reminders(interaction: CommandInteraction): Promise<void> {
-    const access = await requireReminderAccess(interaction);
-    if (!access) return;
-
-    const { scope } = access;
-    const pending = await listPendingReminders(scope);
-    logReminderAction("listed", {
-      scope: scope.kind,
-      gameId: scope.kind === "game" ? scope.gameId : undefined,
-      count: pending.length,
-      userId: interaction.user.id,
-    });
-    if (pending.length === 0) {
-      await replyOrEditInteraction(interaction, { content: "No pending reminders.", ...EPHEMERAL });
-      return;
-    }
-
-    const lines = pending.map((reminder) => {
-      const when = discordRelativeWithTime(reminder.fireAt);
-      const pingMentions = reminder.pingPlayers ? formatPingRoleMentions(reminder.pingRoleId) : null;
-      const pingNote = reminder.pingPlayers
-        ? pingMentions
-          ? ` (pings ${pingMentions})`
-          : " (pings players)"
-        : "";
-      return `- \`${reminder.id.slice(0, 8)}\` ${when} in <#${reminder.channelId}>${pingNote}: ${formatReminderText(reminder.message, reminder.emoji)}`;
-    });
-
-    await replyOrEditInteraction(interaction, {
-      embeds: [
-        new EmbedBuilder()
-          .setTitle("Pending reminders")
-          .setDescription(
-            `${lines.join("\n")}\n\nEdit with \`/st reminder edit id:<prefix>\`, delete with \`/st reminder delete id:<prefix>\`, or clear with \`/st reminder clear\`.`,
-          ),
-      ],
-      ...EPHEMERAL,
-    });
+    await listRemindersFromInteraction(interaction);
   }
 
   @Slash({ name: "clear", description: "Cancel pending reminders for this game or channel" })
@@ -441,52 +533,7 @@ export class StReminderCommands {
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
-
-    const access = await requireReminderAccess(interaction);
-    if (!access) return;
-
-    const { scope: reminderScope, targetChannelId } = access;
-    if (scope === "message" && !message?.trim()) {
-      await replyOrEditInteraction(interaction, {
-        content: "Provide the `message` option when using scope `message`.",
-        ...EPHEMERAL,
-      });
-      return;
-    }
-
-    if (scope === "channel" && !interaction.channelId) {
-      await replyOrEditInteraction(interaction, {
-        content: "This command must be used in a channel or thread when scope is `channel`.",
-        ...EPHEMERAL,
-      });
-      return;
-    }
-
-    const cancelled = await cancelReminders(
-      reminderScope,
-      scope === "all"
-        ? undefined
-        : scope === "channel"
-          ? { channelId: targetChannelId }
-          : { message: message!.trim() },
-    );
-
-    const remaining = await countPendingReminders(reminderScope);
-    logReminderAction("cancelled", {
-      scope: reminderScope.kind,
-      gameId: reminderScope.kind === "game" ? reminderScope.gameId : undefined,
-      cancelled,
-      remaining,
-      filterScope: scope,
-      userId: interaction.user.id,
-    });
-    await replyOrEditInteraction(interaction, {
-      content:
-        cancelled === 0
-          ? "No matching pending reminders to cancel."
-          : `Cancelled **${cancelled}** reminder${cancelled === 1 ? "" : "s"}. **${remaining}** still pending.`,
-      ...EPHEMERAL,
-    });
+    await clearRemindersFromInteraction(interaction, scope, message);
   }
 
   @Slash({ name: "delete", description: "Cancel one pending reminder by ID prefix" })
