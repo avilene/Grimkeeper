@@ -132,6 +132,7 @@ export async function runDevBotGameSetup(
         seat: player.seat,
         alive: player.alive,
         ghostVoteUsed: player.ghostVoteUsed,
+        hasTwoVotes: player.hasTwoVotes,
         roleId: player.roleId,
       })),
     });

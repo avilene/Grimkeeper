@@ -263,6 +263,7 @@ export async function savePlayers(
             team,
             alive: formData.get(`alive_${playerId}`) === "on",
             ghostVoteUsed: formData.get(`ghostVoteUsed_${playerId}`) === "on",
+            hasTwoVotes: formData.get(`hasTwoVotes_${playerId}`) === "on",
           },
         });
       }),
@@ -301,6 +302,7 @@ export async function addPlayer(
         team,
         alive: formData.get("alive") === "on",
         ghostVoteUsed: formData.get("ghostVoteUsed") === "on",
+        hasTwoVotes: formData.get("hasTwoVotes") === "on",
       },
     });
     revalidatePath("/games");

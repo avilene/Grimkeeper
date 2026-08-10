@@ -16,6 +16,9 @@ export function buildAliveDeadLines(engine: GameEngine): { alive: string; dead: 
     player.isFake ? player.displayName : `<@${player.discordUserId}>`;
 
   const formatDeadPlayer = (player: (typeof state.players)[number]) => {
+    if (player.hasTwoVotes) {
+      return `• ${formatPlayer(player)} — **two votes** (no ghost vote)`;
+    }
     const ghost = player.ghostVoteUsed ? "ghost **used**" : "ghost **available**";
     return `• ${formatPlayer(player)} — ${ghost}`;
   };
@@ -42,7 +45,9 @@ export function buildAliveDeadLines(engine: GameEngine): { alive: string; dead: 
     daySummary = `Night **${state.nightNumber}** · Nominations: **closed**`;
   } else if (state.phase === "day" && state.day) {
     const openNominations = state.day.nominations.filter((nomination) => nomination.status === "open").length;
-    const ghostsAvailable = deadPlayers.filter((player) => !player.ghostVoteUsed).length;
+    const ghostsAvailable = deadPlayers.filter(
+      (player) => !player.hasTwoVotes && !player.ghostVoteUsed,
+    ).length;
     daySummary = [
       `Day **${state.dayNumber}**`,
       `Nominations: **${state.day.nominations.length}** (${openNominations} open)`,

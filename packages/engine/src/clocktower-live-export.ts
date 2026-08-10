@@ -44,6 +44,7 @@ export interface ClocktowerExportInput {
     displayName: string;
     seat: number | null;
     alive: boolean;
+    hasTwoVotes?: boolean;
   }>;
   draft?: Pick<
     BuffetDraftState,
@@ -117,6 +118,7 @@ export function buildClocktowerLiveGamestate(input: ClocktowerExportInput): Cloc
 
     const base = emptyPlayer(player.displayName);
     base.isDead = !player.alive;
+    base.hasTwoVotes = Boolean(player.hasTwoVotes);
 
     if (!displayRoleId) {
       return base;

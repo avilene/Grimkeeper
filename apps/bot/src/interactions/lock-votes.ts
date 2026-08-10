@@ -282,11 +282,13 @@ async function runVoteTrackerAction(
     const choice = action === "count-yes" ? "yes" : "no";
     const voterName = handBefore?.displayName ?? "?";
     const ghostNote =
-      handBefore && !handBefore.alive
+      handBefore && !handBefore.alive && !handBefore.hasTwoVotes
         ? action === "count-yes"
           ? " (took ghost vote)"
           : " (kept ghost vote)"
-        : "";
+        : handBefore && !handBefore.alive && handBefore.hasTwoVotes && action === "count-yes"
+          ? " (×2, no ghost vote)"
+          : "";
     const finished = updated?.votesLocked;
     if (finished) {
       await cancelVoteDeadlineReminder(nominationId);

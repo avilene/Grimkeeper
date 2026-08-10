@@ -32,6 +32,7 @@ export const GameCommandKind = {
   SetupTown: "SetupTown",
   ResetTownToSetup: "ResetTownToSetup",
   SetPlayerAlive: "SetPlayerAlive",
+  SetPlayerHasTwoVotes: "SetPlayerHasTwoVotes",
   SetPlayerDisplayName: "SetPlayerDisplayName",
   SubstitutePlayer: "SubstitutePlayer",
   LockNominationVotes: "LockNominationVotes",

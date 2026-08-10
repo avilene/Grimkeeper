@@ -14,6 +14,7 @@ function player(partial: Partial<PlayerState> & Pick<PlayerState, "id" | "discor
     alive: true,
     isFake: false,
     ghostVoteUsed: false,
+    hasTwoVotes: false,
     ...partial,
   };
 }

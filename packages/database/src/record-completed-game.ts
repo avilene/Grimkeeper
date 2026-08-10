@@ -207,6 +207,7 @@ export async function recordCompletedGame(
       team,
       alive: true,
       ghostVoteUsed: false,
+      hasTwoVotes: false,
     };
   });
 
@@ -237,6 +238,7 @@ export async function recordCompletedGame(
             team: row.team,
             alive: row.alive,
             ghostVoteUsed: row.ghostVoteUsed,
+            hasTwoVotes: row.hasTwoVotes,
           })),
         },
       },

@@ -87,6 +87,8 @@ model Player {
   team          String?
   alive         Boolean @default(true)
   ghostVoteUsed Boolean @default(false)
+  /** Banshee (etc.): yes votes count twice; may nominate twice per day while dead. */
+  hasTwoVotes   Boolean @default(false)
   /** Private player ST Discord thread id. */
   stThreadId    String?
   game          Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)

@@ -53,9 +53,9 @@ describe("whisper thread helpers", () => {
 
   it("lists left/right neighbors from seats", () => {
     const players = [
-      { id: "a", seat: 1, discordUserId: "1", displayName: "A", roleId: null, alive: true, isFake: false, ghostVoteUsed: false },
-      { id: "b", seat: 2, discordUserId: "2", displayName: "B", roleId: null, alive: true, isFake: false, ghostVoteUsed: false },
-      { id: "c", seat: 3, discordUserId: "3", displayName: "C", roleId: null, alive: true, isFake: false, ghostVoteUsed: false },
+      { id: "a", seat: 1, discordUserId: "1", displayName: "A", roleId: null, alive: true, isFake: false, ghostVoteUsed: false, hasTwoVotes: false },
+      { id: "b", seat: 2, discordUserId: "2", displayName: "B", roleId: null, alive: true, isFake: false, ghostVoteUsed: false, hasTwoVotes: false },
+      { id: "c", seat: 3, discordUserId: "3", displayName: "C", roleId: null, alive: true, isFake: false, ghostVoteUsed: false, hasTwoVotes: false },
     ];
     const neighbors = getSeatedNeighborPlayers(players[0]!, players);
     expect(neighbors.map((p) => p.id).sort()).toEqual(["b", "c"]);

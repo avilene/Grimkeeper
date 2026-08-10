@@ -99,6 +99,8 @@ function eventFields(event: GameEvent): Record<string, unknown> {
       return {};
     case GameEventType.PlayerAliveChanged:
       return { playerId: event.playerId, alive: event.alive };
+    case GameEventType.PlayerHasTwoVotesChanged:
+      return { playerId: event.playerId, hasTwoVotes: event.hasTwoVotes };
     case GameEventType.PlayerDisplayNameChanged:
       return { playerId: event.playerId, displayName: event.displayName };
     case GameEventType.PlayerSubstituted:

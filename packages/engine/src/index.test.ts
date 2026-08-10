@@ -1302,6 +1302,101 @@ describe("GameEngine", () => {
     ).toThrow("Ghosts cannot nominate");
   });
 
+  it("activates Banshee double nominate and double yes vote after demon kill", () => {
+    const engine = setupTownEngine(5);
+    const players = engine.getState().players;
+    const banshee = players[0]!;
+    const nomineeA = players[1]!;
+    const nomineeB = players[2]!;
+    const livingVoter = players[3]!;
+
+    engine.apply({
+      type: GameEventType.RoleAssigned,
+      gameId,
+      playerId: banshee.id,
+      roleId: "banshee",
+      timestamp: new Date().toISOString(),
+    });
+
+    const deathEvents = engine.handle({
+      kind: GameCommandKind.SetPlayerAlive,
+      gameId,
+      playerId: banshee.id,
+      alive: false,
+      activateBanshee: true,
+    });
+    for (const event of deathEvents) engine.apply(event);
+    expect(engine.getPlayerById(banshee.id)?.hasTwoVotes).toBe(true);
+    expect(engine.getPlayerById(banshee.id)?.alive).toBe(false);
+
+    const firstNom = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: banshee.id,
+      nomineeId: nomineeA.id,
+      accusation: "First Banshee nom.",
+    });
+    for (const event of firstNom) engine.apply(event);
+
+    const secondNom = engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: banshee.id,
+      nomineeId: nomineeB.id,
+      accusation: "Second Banshee nom.",
+    });
+    for (const event of secondNom) engine.apply(event);
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.MakeNomination,
+        gameId,
+        nominatorId: banshee.id,
+        nomineeId: players[4]!.id,
+        accusation: "Third should fail.",
+      }),
+    ).toThrow("both nominations today");
+
+    const nomination = engine.getState().day!.nominations[0]!;
+    const bansheeYes = engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: banshee.id,
+      choice: "yes",
+    });
+    for (const event of bansheeYes) engine.apply(event);
+    const livingYes = engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: livingVoter.id,
+      choice: "yes",
+    });
+    for (const event of livingYes) engine.apply(event);
+
+    // Banshee yes counts as 2 + one living yes = 3
+    expect(engine.getEffectiveYesVotes(nomination.id)).toBe(3);
+    expect(engine.getPlayerById(banshee.id)?.ghostVoteUsed).toBe(false);
+
+    // Banshee may yes on a second nomination without spending a ghost vote.
+    const secondNomination = engine.getState().day!.nominations[1]!;
+    const secondYes = engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: secondNomination.id,
+      voterId: banshee.id,
+      choice: "yes",
+    });
+    for (const event of secondYes) engine.apply(event);
+    expect(engine.getEffectiveYesVotes(secondNomination.id)).toBe(2);
+    expect(engine.getPlayerById(banshee.id)?.ghostVoteUsed).toBe(false);
+
+    // Dead Banshee is not living — majority uses living count only (5 → 4 alive → need 2).
+    expect(engine.countLivingPlayers()).toBe(4);
+    expect(engine.votesNeededOnTheBlock()).toBe(2);
+  });
+
   it("allows nominating yourself", () => {
     const engine = setupTownEngine(3);
     const players = engine.getState().players;

@@ -143,6 +143,13 @@ export class StCommandsMinimal {
       required: false,
     })
     alive: boolean | undefined,
+    @SlashOption({
+      name: "banshee",
+      description: "For mark-dead: demon killed the Banshee (double nominate/vote + announce)",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    banshee: boolean | undefined,
     @SlashChoice({ name: "Public tallies", value: "public" })
     @SlashChoice({ name: "Secret tallies", value: "secret" })
     @SlashOption({
@@ -399,7 +406,7 @@ export class StCommandsMinimal {
           await missingOption(interaction, "player", "mark-dead");
           return;
         }
-        await this.markDead(player, alive, interaction);
+        await this.markDead(player, alive, interaction, banshee);
         return;
       case "votes":
         await this.votes(interaction);
@@ -881,10 +888,17 @@ export class StCommandsMinimal {
       required: false,
     })
     alive: boolean | undefined,
+    @SlashOption({
+      name: "banshee",
+      description: "Demon killed the Banshee — grant double nominate/vote and announce",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    banshee: boolean | undefined,
     interaction: CommandInteraction,
   ): Promise<void> {
     if (!(await requireCommandAccess(interaction))) return;
-    await this.markDead(player, alive, interaction);
+    await this.markDead(player, alive, interaction, banshee);
   }
 
   async start(interaction: CommandInteraction): Promise<void> {
@@ -1764,6 +1778,7 @@ export class StCommandsMinimal {
             seat: player.seat,
             alive: player.alive,
             ghostVoteUsed: player.ghostVoteUsed,
+            hasTwoVotes: player.hasTwoVotes,
             roleId: player.roleId,
           })),
         });
@@ -2283,6 +2298,7 @@ export class StCommandsMinimal {
     player: User,
     alive: boolean | undefined,
     interaction: CommandInteraction,
+    banshee?: boolean,
   ): Promise<void> {
     const game = await requireStorytellerGame(interaction);
     if (!game) return;
@@ -2299,13 +2315,16 @@ export class StCommandsMinimal {
       }
 
       const markAlive = alive ?? false;
+      const activateBanshee = Boolean(banshee) && !markAlive;
       const events = engine.handle({
         kind: GameCommandKind.SetPlayerAlive,
         gameId: game.id,
         playerId: target.id,
         alive: markAlive,
+        activateBanshee,
       });
       await persistEvents(engine, events);
+      const updated = engine.getPlayerById(target.id)!;
 
       if (interaction.guild) {
         await upsertPinnedGameStatus(interaction.guild, game.channelId, engine);
@@ -2313,12 +2332,39 @@ export class StCommandsMinimal {
         await postGameLog(
           interaction.guild,
           game,
-          `<@${interaction.user.id}> marked <@${target.discordUserId}> as **${markAlive ? "alive" : "dead"}**.`,
+          `<@${interaction.user.id}> marked <@${target.discordUserId}> as **${markAlive ? "alive" : "dead"}**${
+            activateBanshee ? " (Banshee)" : ""
+          }.`,
         );
+
+        if (activateBanshee) {
+          const voting = await resolveVotingChannel(interaction.guild, game, engine);
+          await voting
+            ?.send({
+              content: [
+                `**${updated.displayName}** was killed by the Demon — they were the **Banshee**.`,
+                "They may nominate twice per day and their vote counts twice (no ghost vote).",
+              ].join("\n"),
+              allowedMentions: { parse: [] },
+            })
+            .catch(() => undefined);
+        }
       }
 
+      const bansheeHint =
+        !markAlive &&
+        !activateBanshee &&
+        target.roleId === "banshee" &&
+        !updated.hasTwoVotes
+          ? " Tip: pass `banshee:true` if the Demon killed them."
+          : "";
+
       await replyOrEditInteraction(interaction, {
-        content: `Marked **${target.displayName}** as **${markAlive ? "alive" : "dead"}**.`,
+        content: [
+          `Marked **${updated.displayName}** as **${markAlive ? "alive" : "dead"}**.`,
+          activateBanshee ? " Banshee power activated (double nominate / double vote)." : "",
+          bansheeHint,
+        ].join(""),
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

@@ -59,6 +59,7 @@ export async function syncGameProjectionFromEngine(
         roleId: player.roleId,
         alive: player.alive,
         ghostVoteUsed: player.ghostVoteUsed,
+        hasTwoVotes: player.hasTwoVotes,
         displayName: player.displayName,
         ...(team !== existing.team ? { team } : {}),
       },

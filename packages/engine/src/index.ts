@@ -234,6 +234,13 @@ export interface PlayerAliveChangedEvent extends GameEventBase {
   alive: boolean;
 }
 
+/** Banshee (and similar): vote counts twice; may nominate twice/day while dead. */
+export interface PlayerHasTwoVotesChangedEvent extends GameEventBase {
+  type: typeof GameEventType.PlayerHasTwoVotesChanged;
+  playerId: string;
+  hasTwoVotes: boolean;
+}
+
 export interface PlayerDisplayNameChangedEvent extends GameEventBase {
   type: typeof GameEventType.PlayerDisplayNameChanged;
   playerId: string;
@@ -396,6 +403,7 @@ export type GameEvent =
   | TownSetupEvent
   | TownResetToSetupEvent
   | PlayerAliveChangedEvent
+  | PlayerHasTwoVotesChangedEvent
   | PlayerDisplayNameChangedEvent
   | PlayerSubstitutedEvent
   | NominationVotesLockedEvent
@@ -421,6 +429,8 @@ export interface PlayerState {
   alive: boolean;
   isFake: boolean;
   ghostVoteUsed: boolean;
+  /** Banshee power: yes votes count twice; may nominate twice per day while dead. */
+  hasTwoVotes: boolean;
 }
 
 export interface NominationRecord {
@@ -716,6 +726,18 @@ export interface SetPlayerAliveCommand {
   gameId: string;
   playerId: string;
   alive: boolean;
+  /**
+   * When marking dead (or already dead): grant Banshee-style double nominate/vote.
+   * Ignored when marking alive.
+   */
+  activateBanshee?: boolean;
+}
+
+export interface SetPlayerHasTwoVotesCommand {
+  kind: typeof GameCommandKind.SetPlayerHasTwoVotes;
+  gameId: string;
+  playerId: string;
+  hasTwoVotes: boolean;
 }
 
 export interface SetPlayerDisplayNameCommand {
@@ -841,6 +863,7 @@ export type GameCommand =
   | SetupTownCommand
   | ResetTownToSetupCommand
   | SetPlayerAliveCommand
+  | SetPlayerHasTwoVotesCommand
   | SetPlayerDisplayNameCommand
   | SubstitutePlayerCommand
   | LockNominationVotesCommand
@@ -969,6 +992,14 @@ export function createEmptyDayState(dayNumber: number): DayPhaseState {
   };
 }
 
+export function getPlayerVoteWeight(player: PlayerState): number {
+  return player.hasTwoVotes ? 2 : 1;
+}
+
+export function maxNominationsPerDay(player: PlayerState): number {
+  return player.hasTwoVotes ? 2 : 1;
+}
+
 export function getNominationTally(
   state: GameState,
   nominationId: string,
@@ -977,6 +1008,7 @@ export function getNominationTally(
   const tally: VoteTally = { yes: 0, no: 0, conditional: 0 };
   if (!state.day) return tally;
   const ballot = options?.ballot ?? "effective";
+  const playersById = new Map(state.players.map((player) => [player.id, player]));
 
   if (ballot === "effective") {
     // Per voter: prefer private ballot over public when both exist.
@@ -989,8 +1021,10 @@ export function getNominationTally(
       }
     }
     for (const vote of effectiveByVoter.values()) {
-      if (vote.choice === "yes") tally.yes++;
-      else if (vote.choice === "no") tally.no++;
+      if (vote.choice === "yes") {
+        const voter = playersById.get(vote.voterId);
+        tally.yes += voter ? getPlayerVoteWeight(voter) : 1;
+      } else if (vote.choice === "no") tally.no++;
       else if (vote.choice === "conditional") tally.conditional++;
     }
   } else {
@@ -998,8 +1032,10 @@ export function getNominationTally(
     for (const vote of state.day.votes) {
       if (vote.nominationId !== nominationId) continue;
       if (vote.isPrivate !== targetPrivate) continue;
-      if (vote.choice === "yes") tally.yes++;
-      else if (vote.choice === "no") tally.no++;
+      if (vote.choice === "yes") {
+        const voter = playersById.get(vote.voterId);
+        tally.yes += voter ? getPlayerVoteWeight(voter) : 1;
+      } else if (vote.choice === "no") tally.no++;
       else if (vote.choice === "conditional") tally.conditional++;
     }
   }
@@ -1018,24 +1054,38 @@ function formatStorytellerVoteStatus(
   privateVote: VoteRecord | undefined,
 ): string {
   if (!publicVote && !privateVote) {
+    if (!player.alive && player.hasTwoVotes) {
+      return "_pending_ (×2, no ghost vote)_";
+    }
     if (!player.alive && player.ghostVoteUsed) {
       return "_ghost used (no vote this nomination)_";
     }
-    if (!player.alive) return "_ghost available — pending_";
-    return "_pending_";
+    if (!player.alive) {
+      return "_ghost available — pending_";
+    }
+    return player.hasTwoVotes ? "_pending_ (×2)" : "_pending_";
   }
 
-  const ghostTag = !player.alive ? " (ghost)" : "";
+  const ghostTag = !player.alive
+    ? player.hasTwoVotes
+      ? " (dead)"
+      : " (ghost)"
+    : "";
   const publicLabel = publicVote?.choice ?? "—";
   const reason = privateVote
     ? formatVoteReasonSuffix(privateVote.reason)
     : formatVoteReasonSuffix(publicVote?.reason);
+  const yesWeight = (choice: string) =>
+    choice === "yes" && player.hasTwoVotes ? " ×2" : "";
 
   if (privateVote) {
-    return `**${privateVote.choice}**${ghostTag} (public: ${publicLabel})${reason}`;
+    return `**${privateVote.choice}**${yesWeight(privateVote.choice)}${ghostTag} (public: ${publicLabel})${reason}`;
   }
   if (publicVote) {
-    return `**${publicVote.choice}**${ghostTag}${reason}`;
+    return `**${publicVote.choice}**${yesWeight(publicVote.choice)}${ghostTag}${reason}`;
+  }
+  if (!player.alive && player.hasTwoVotes) {
+    return "_pending_ (×2, no ghost vote)_";
   }
   if (!player.alive && player.ghostVoteUsed) {
     return "_ghost used (no vote this nomination)_";
@@ -1056,9 +1106,12 @@ export function getEffectiveYesVotes(state: GameState, nominationId: string): nu
       effectiveByVoter.set(vote.voterId, vote);
     }
   }
+  const playersById = new Map(state.players.map((player) => [player.id, player]));
   let yes = 0;
   for (const vote of effectiveByVoter.values()) {
-    if (vote.choice === "yes") yes++;
+    if (vote.choice !== "yes") continue;
+    const voter = playersById.get(vote.voterId);
+    yes += voter ? getPlayerVoteWeight(voter) : 1;
   }
   return yes;
 }
@@ -1078,13 +1131,14 @@ export function hasGhostYesOnOtherNomination(
   );
 }
 
-/** Alive players always count; ghosts count while their vote is still available. */
+/** Alive players always count; Banshee (hasTwoVotes) always counts; other ghosts while vote available. */
 export function isCountEligibleVoter(
   state: GameState,
   player: PlayerState,
   nominationId: string,
 ): boolean {
   if (player.alive) return true;
+  if (player.hasTwoVotes) return true;
   if (player.ghostVoteUsed) return false;
   return !hasGhostYesOnOtherNomination(state, player.id, nominationId);
 }
@@ -1293,21 +1347,31 @@ export class GameEngine {
           throw new GameEngineError("That user is not a promoted storyteller.");
         }
         break;
-      case GameCommandKind.MakeNomination:
+      case GameCommandKind.MakeNomination: {
         this.assertPhase("day", "Nominations can only be made during the day.");
         this.assertDayState();
         this.assertNominationsAcceptingNew();
-        this.assertAlivePlayer(command.nominatorId, "Ghosts cannot nominate.");
+        const nominator = this.getPlayerById(command.nominatorId);
+        if (!nominator) {
+          throw new GameEngineError("Player is not in this game.");
+        }
+        if (!nominator.alive && !nominator.hasTwoVotes) {
+          throw new GameEngineError("Ghosts cannot nominate.");
+        }
         if (!command.accusation.trim()) {
           throw new GameEngineError("An accusation is required.");
         }
         if (!command.allowDuplicate) {
-          if (
-            this.state.day!.nominations.some(
-              (nomination) => nomination.nominatorId === command.nominatorId,
-            )
-          ) {
-            throw new GameEngineError("You have already made a nomination today.");
+          const nomsFromNominator = this.state.day!.nominations.filter(
+            (nomination) => nomination.nominatorId === command.nominatorId,
+          ).length;
+          const maxNoms = maxNominationsPerDay(nominator);
+          if (nomsFromNominator >= maxNoms) {
+            throw new GameEngineError(
+              maxNoms > 1
+                ? "You have already made both nominations today."
+                : "You have already made a nomination today.",
+            );
           }
           if (
             this.state.day!.nominations.some(
@@ -1318,6 +1382,7 @@ export class GameEngine {
           }
         }
         break;
+      }
       case GameCommandKind.OpenDay:
         // Retarget Town Voting whenever day state exists (incl. overnight leftovers).
         if (!this.state.day) {
@@ -1384,7 +1449,8 @@ export class GameEngine {
           throw new GameEngineError("A vote count is in progress. Wait for the storyteller.");
         }
         // Ghosts may vote yes / no / conditional; only a yes spends the ghost vote.
-        if (!voter.alive && command.choice === "yes") {
+        // Activated Banshee (hasTwoVotes) votes without spending a ghost vote.
+        if (!voter.alive && command.choice === "yes" && !voter.hasTwoVotes) {
           if (voter.ghostVoteUsed) {
             throw new GameEngineError("You have already used your ghost vote.");
           }
@@ -1530,6 +1596,14 @@ export class GameEngine {
         break;
       }
       case GameCommandKind.SetPlayerAlive:
+        if (this.state.phase === "ended") {
+          throw new GameEngineError("Game has already ended.");
+        }
+        if (!this.getPlayerById(command.playerId)) {
+          throw new GameEngineError("Player is not in this game.");
+        }
+        break;
+      case GameCommandKind.SetPlayerHasTwoVotes:
         if (this.state.phase === "ended") {
           throw new GameEngineError("Game has already ended.");
         }
@@ -2205,15 +2279,38 @@ export class GameEngine {
         ];
       case GameCommandKind.SetPlayerAlive: {
         const player = this.getPlayerById(command.playerId)!;
-        if (player.alive === command.alive) {
-          return [];
-        }
-        return [
-          {
+        const events: GameEvent[] = [];
+        if (player.alive !== command.alive) {
+          events.push({
             type: GameEventType.PlayerAliveChanged,
             gameId: command.gameId,
             playerId: command.playerId,
             alive: command.alive,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        if (command.activateBanshee && !command.alive && !player.hasTwoVotes) {
+          events.push({
+            type: GameEventType.PlayerHasTwoVotesChanged,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            hasTwoVotes: true,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        return events;
+      }
+      case GameCommandKind.SetPlayerHasTwoVotes: {
+        const player = this.getPlayerById(command.playerId)!;
+        if (player.hasTwoVotes === command.hasTwoVotes) {
+          return [];
+        }
+        return [
+          {
+            type: GameEventType.PlayerHasTwoVotesChanged,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            hasTwoVotes: command.hasTwoVotes,
             timestamp: new Date().toISOString(),
           },
         ];
@@ -2630,6 +2727,7 @@ export class GameEngine {
           alive: true,
           isFake: event.discordUserId.startsWith("dev:"),
           ghostVoteUsed: false,
+          hasTwoVotes: false,
         });
         break;
       case GameEventType.PlayerRemoved:
@@ -2820,6 +2918,7 @@ export class GameEngine {
           alive: true,
           isFake: player.discordUserId.startsWith("dev:"),
           ghostVoteUsed: false,
+          hasTwoVotes: false,
         }));
         // Town starts in Setup; ST runs next-phase for Night 1, then Day 1, …
         this.state.phase = "setup";
@@ -2841,6 +2940,7 @@ export class GameEngine {
         for (const player of this.state.players) {
           player.alive = true;
           player.ghostVoteUsed = false;
+          player.hasTwoVotes = false;
           player.roleId = null;
         }
         break;
@@ -2848,6 +2948,13 @@ export class GameEngine {
         const player = this.state.players.find((candidate) => candidate.id === event.playerId);
         if (player) {
           player.alive = event.alive;
+        }
+        break;
+      }
+      case GameEventType.PlayerHasTwoVotesChanged: {
+        const player = this.state.players.find((candidate) => candidate.id === event.playerId);
+        if (player) {
+          player.hasTwoVotes = event.hasTwoVotes;
         }
         break;
       }
@@ -2912,7 +3019,7 @@ export class GameEngine {
           this.state.day.votes.push(voteRecord);
         }
         const voter = this.getPlayerById(event.voterId);
-        if (voter && !voter.alive && event.choice === "yes") {
+        if (voter && !voter.alive && event.choice === "yes" && !voter.hasTwoVotes) {
           voter.ghostVoteUsed = true;
         }
         const nomination = this.getNominationById(event.nominationId);
@@ -3146,14 +3253,22 @@ export class GameEngine {
       if (audience === "storyteller") {
         status = formatStorytellerVoteStatus(player, publicVote, privateVote);
       } else if (publicVote) {
-        const ghostTag = !player.alive ? " (ghost)" : "";
-        status = `**${publicVote.choice}**${ghostTag}${publicVote.choice === "conditional" ? formatVoteReasonSuffix(publicVote.reason) : ''}`;
+        const ghostTag = !player.alive
+          ? player.hasTwoVotes
+            ? " (dead)"
+            : " (ghost)"
+          : "";
+        const yesWeight =
+          publicVote.choice === "yes" && player.hasTwoVotes ? " ×2" : "";
+        status = `**${publicVote.choice}**${yesWeight}${ghostTag}${publicVote.choice === "conditional" ? formatVoteReasonSuffix(publicVote.reason) : ''}`;
+      } else if (!player.alive && player.hasTwoVotes) {
+        status = "_pending_ (×2, no ghost vote)_";
       } else if (!player.alive && player.ghostVoteUsed) {
         status = "_ghost used (no vote this nomination)_";
       } else if (!player.alive) {
         status = "_ghost available — pending_";
       } else {
-        status = "_pending_";
+        status = player.hasTwoVotes ? "_pending_ (×2)" : "_pending_";
       }
       const line = `${index + 1}. ${player.displayName}${deadTag} (${seat}):\n${status}`;
       // Do not wrap the whole line in ** — status already uses bold and Discord breaks nested markers.
@@ -3172,6 +3287,9 @@ export class GameEngine {
     return dead
       .map((player) => {
         const seat = player.seat != null ? `seat ${player.seat}` : "unseated";
+        if (player.hasTwoVotes) {
+          return `• ${player.displayName} (${seat}): **two votes** (no ghost vote)`;
+        }
         const ghost = player.ghostVoteUsed ? "**used**" : "**available**";
         return `• ${player.displayName} (${seat}): ghost ${ghost}`;
       })
@@ -3241,7 +3359,13 @@ export class GameEngine {
       }
       let status = occupant.alive ? "alive" : "dead";
       if (!occupant.alive) {
-        status += occupant.ghostVoteUsed ? ", ghost used" : ", ghost available";
+        if (occupant.hasTwoVotes) {
+          status += ", two votes (no ghost vote)";
+        } else {
+          status += occupant.ghostVoteUsed ? ", ghost used" : ", ghost available";
+        }
+      } else if (occupant.hasTwoVotes) {
+        status += ", two votes";
       }
       lines.push(`Seat ${seat}: ${occupant.displayName} (${status})`);
     }

@@ -46,6 +46,7 @@ export type EditablePlayer = {
   team: string | null;
   alive: boolean;
   ghostVoteUsed: boolean;
+  hasTwoVotes: boolean;
 };
 
 type RowState = {
@@ -56,6 +57,7 @@ type RowState = {
   team: string;
   alive: boolean;
   ghostVoteUsed: boolean;
+  hasTwoVotes: boolean;
 };
 
 function rowsFromPlayers(players: EditablePlayer[]): Record<string, RowState> {
@@ -70,6 +72,7 @@ function rowsFromPlayers(players: EditablePlayer[]): Record<string, RowState> {
         team: player.team ?? "",
         alive: player.alive,
         ghostVoteUsed: player.ghostVoteUsed,
+        hasTwoVotes: player.hasTwoVotes,
       },
     ]),
   );
@@ -153,6 +156,7 @@ export function PlayersTableForm({
                 <TableHead>Team</TableHead>
                 <TableHead className="text-center">Alive</TableHead>
                 <TableHead className="text-center">Ghost used</TableHead>
+                <TableHead className="text-center">Two votes</TableHead>
                 <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
@@ -274,6 +278,22 @@ export function PlayersTableForm({
                         aria-label={`Ghost vote used for ${player.displayName}`}
                       />
                     </TableCell>
+                    <TableCell className="text-center">
+                      <input
+                        type="checkbox"
+                        name={`hasTwoVotes_${player.id}`}
+                        checked={row.hasTwoVotes}
+                        onChange={(event) =>
+                          setRows((prev) =>
+                            patchRow(prev, player.id, {
+                              hasTwoVotes: event.target.checked,
+                            }),
+                          )
+                        }
+                        className="size-4 rounded border-input"
+                        aria-label={`Two votes for ${player.displayName}`}
+                      />
+                    </TableCell>
                     <TableCell>
                       <DeletePlayerButton
                         gameId={gameId}
@@ -330,6 +350,10 @@ export function PlayersTableForm({
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="ghostVoteUsed" className="size-4 rounded border-input" />
           Ghost vote used
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="hasTwoVotes" className="size-4 rounded border-input" />
+          Two votes (Banshee)
         </label>
         <div className="col-span-full flex flex-wrap items-center gap-3">
           <SubmitButton>Add player</SubmitButton>
