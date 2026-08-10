@@ -41,6 +41,7 @@ export async function loadCommandModules(): Promise<void> {
       "role",
       "script",
       "st",
+      "reminder",
       "interest",
       "dev",
     ],

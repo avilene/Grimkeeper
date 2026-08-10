@@ -21,6 +21,7 @@ const PLAYER_DAY_COMMANDS = new Set([
   "roster",
   "whisper",
   "stats",
+  "reminder",
 ]);
 
 const INTERACTION_DEFER_BUDGET_MS = 2_800;

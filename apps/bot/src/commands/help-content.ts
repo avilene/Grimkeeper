@@ -161,8 +161,12 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
     description: "Refresh the live queue panel in the board thread.",
   },
   {
+    command: "/reminder",
+    description: "Replace this channel’s reminder batch (alias for /st reminder batch; `1m 30m 1h 4 8`).",
+  },
+  {
     command: "/st reminder schedule",
-    description: "Schedule a reminder (requires ST role, storyteller, or allowlist).",
+    description: "Schedule a reminder (requires ST role, storyteller, or allowlist; max 24h).",
   },
   {
     command: "/st reminder batch",
@@ -531,7 +535,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
       "1. `/game setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles (optional `kib_thread:` channel/thread + `log_thread:`). If you pass a kib **channel**, add the Grimkeeper bot to that channel first.",
       "2. `/st setup-town` with `players:` @mentions in **seat order** (any player count)",
       "3. `/st broadcast` from kib to send the same message to all player threads",
-      "4. `/st reminder schedule` / `/st reminder batch` for scheduled pings (ST role or allowlist)",
+      "4. `/reminder` / `/st reminder batch` / `/st reminder schedule` for scheduled pings (ST role or allowlist)",
       "5. `/st end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
       "6. `/st do archive` — opens town/kib for everyone to read, locks all channels/threads read-only, and moves town (and kib channel) to the Archives category (Admin → Guild settings)",
       "",
@@ -579,7 +583,8 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
       {
         name: "Reminders",
         value: [
-          cmd("/st reminder schedule", "Schedule a reminder (requires ST role, storyteller, or allowlist)."),
+          cmd("/reminder", "Set offset reminders (alias for /st reminder batch; `1m 30m 1h 4 8`)."),
+          cmd("/st reminder schedule", "Schedule a single reminder (requires ST role, storyteller, or allowlist)."),
           cmd(
             "/st reminder batch",
             "Replace this channel’s reminder batch (`1m 30m 1h 4 8`; does not stack).",
@@ -669,7 +674,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "`/st panel` — pin control panel in kib (or `/st do panel`)",
             "Optional: `/st do vote-visibility` `mode: public|secret`",
             "Optional: `/st broadcast` — send the same message to all player ST threads",
-            "Optional: `/st reminder schedule` / `/st reminder batch`",
+            "Optional: `/reminder` / `/st reminder batch` / `/st reminder schedule`",
             "Optional: `/st do add-st` / `/st do sync-st-threads` / `/st add-kib`",
             "Optional: `/st log` if the audit log is missing",
             "**Sushi Buffet?** Admin panel → game → Sushi Buffet config (toggle roles, save), then `/st do buffet-start`",
@@ -784,7 +789,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           "`/st broadcast` — send the same night info to every player ST thread",
           "Use each player’s private ST thread for personal night results",
           "Deaths overnight: `/st mark-dead` `player:` (`banshee:true` for Demon-kill Banshee)",
-          "Optional: `/st reminder schedule` / `/st reminder batch` for morning pings",
+          "Optional: `/reminder` / `/st reminder batch` for morning pings",
         ]),
       },
       {

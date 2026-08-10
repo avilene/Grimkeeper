@@ -101,6 +101,7 @@ describe("shouldDeferSlashCommand", () => {
     expect(shouldDeferSlashCommand(chatCommand("roster", null) as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("whisper", null) as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("stats", null) as never)).toBe(true);
+    expect(shouldDeferSlashCommand(chatCommand("reminder", null) as never)).toBe(true);
   });
 
   it("does not defer /role (public character lookup)", () => {
