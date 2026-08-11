@@ -5,6 +5,7 @@ import {
   formatHoursFromNow,
   formatReminderFireIn,
   formatHourOffsetCompact,
+  MAX_REMINDER_HOURS,
   parseReminderDuration,
   parseReminderHours,
   parseReminderHourOffset,
@@ -19,12 +20,20 @@ describe("parseReminderDuration", () => {
   it("parses hours", () => {
     expect(parseReminderDuration("1h")).toBe(60);
     expect(parseReminderDuration("2 hours")).toBe(120);
+    expect(parseReminderDuration("48h")).toBe(48 * 60);
+  });
+
+  it("parses days", () => {
+    expect(parseReminderDuration("1d")).toBe(24 * 60);
+    expect(parseReminderDuration("3 days")).toBe(3 * 24 * 60);
+    expect(parseReminderDuration("7d")).toBe(MAX_REMINDER_HOURS * 60);
   });
 
   it("rejects invalid durations", () => {
     expect(parseReminderDuration("0m")).toBeNull();
     expect(parseReminderDuration("abc")).toBeNull();
-    expect(parseReminderDuration("25h")).toBeNull();
+    expect(parseReminderDuration("8d")).toBeNull();
+    expect(parseReminderDuration(`${MAX_REMINDER_HOURS + 1}h`)).toBeNull();
   });
 });
 
@@ -35,6 +44,11 @@ describe("formatReminderDuration", () => {
     expect(formatReminderDuration(60)).toBe("1 hour");
     expect(formatReminderDuration(120)).toBe("2 hours");
   });
+
+  it("formats whole days", () => {
+    expect(formatReminderDuration(24 * 60)).toBe("1 day");
+    expect(formatReminderDuration(3 * 24 * 60)).toBe("3 days");
+  });
 });
 
 describe("formatHoursFromNow", () => {
@@ -42,6 +56,7 @@ describe("formatHoursFromNow", () => {
     expect(formatHoursFromNow(16)).toBe("in 16 hours");
     expect(formatHoursFromNow(0.5)).toBe("in 30 minutes");
     expect(formatHoursFromNow(1)).toBe("in 1 hour");
+    expect(formatHoursFromNow(48)).toBe("in 2 days");
   });
 });
 
@@ -51,6 +66,7 @@ describe("formatHourOffsetCompact", () => {
     expect(formatHourOffsetCompact(0.5)).toBe("30m");
     expect(formatHourOffsetCompact(1)).toBe("1h");
     expect(formatHourOffsetCompact(1.5)).toBe("1h30m");
+    expect(formatHourOffsetCompact(48)).toBe("2d");
   });
 });
 
@@ -74,11 +90,14 @@ describe("parseReminderHourOffset", () => {
     expect(parseReminderHourOffset("30m")).toBe(0.5);
     expect(parseReminderHourOffset("1h")).toBe(1);
     expect(parseReminderHourOffset("1.5h")).toBe(1.5);
+    expect(parseReminderHourOffset("2d")).toBe(48);
   });
 
   it("keeps bare numbers as hours", () => {
     expect(parseReminderHourOffset("4")).toBe(4);
     expect(parseReminderHourOffset("0.5")).toBe(0.5);
+    expect(parseReminderHourOffset("48")).toBe(48);
+    expect(parseReminderHourOffset(String(MAX_REMINDER_HOURS))).toBe(MAX_REMINDER_HOURS);
   });
 });
 
@@ -93,10 +112,11 @@ describe("parseReminderHours", () => {
     expect(parseReminderHours("1.5 4")).toEqual([1.5, 4]);
   });
 
-  it("parses human offsets like 1h 30m 10m", () => {
+  it("parses human offsets like 1h 30m 10m and days", () => {
     expect(parseReminderHours("1m 10m 30m 1h")).toEqual([1 / 60, 10 / 60, 0.5, 1]);
     expect(parseReminderHours("30m 1h 4 8")).toEqual([0.5, 1, 4, 8]);
     expect(parseReminderHours("0.5 30m")).toEqual([0.5]);
+    expect(parseReminderHours("1d 2d 48")).toEqual([24, 48]);
   });
 
   it("dedupes and sorts", () => {
@@ -107,8 +127,8 @@ describe("parseReminderHours", () => {
   it("rejects invalid input", () => {
     expect(parseReminderHours("")).toBeNull();
     expect(parseReminderHours("0 4")).toBeNull();
-    expect(parseReminderHours("25")).toBeNull();
-    expect(parseReminderHours("25h")).toBeNull();
+    expect(parseReminderHours("169")).toBeNull();
+    expect(parseReminderHours("8d")).toBeNull();
     expect(parseReminderHours("0m")).toBeNull();
     expect(parseReminderHours("abc")).toBeNull();
   });

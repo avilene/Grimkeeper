@@ -1,4 +1,16 @@
-const REMINDER_DURATION = /^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hour|hours)?$/i;
+const REMINDER_DURATION =
+  /^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hour|hours|d|day|days)?$/i;
+
+/** Max offset for schedule + batch reminders (7 days). */
+export const MAX_REMINDER_HOURS = 7 * 24;
+const MAX_REMINDER_MINUTES = MAX_REMINDER_HOURS * 60;
+const MAX_REMINDER_HOURS_BATCH = 25;
+/** Minimum offset: 1 minute (also allows legacy `0.5` hour). */
+const MIN_REMINDER_HOURS = 1 / 60;
+const BARE_HOUR_OFFSET = /^\d+(\.\d+)?$/;
+/** Human offsets for set-reminders tokens: `30m`, `1h`, `1.5h`, `2d` (unit required). */
+const HUMAN_HOUR_OFFSET =
+  /^(\d+(?:\.\d+)?)\s*(m|min|mins|minute|minutes|h|hr|hour|hours|d|day|days)$/i;
 
 export function parseReminderDuration(input: string): number | null {
   const trimmed = input.trim().toLowerCase();
@@ -9,23 +21,18 @@ export function parseReminderDuration(input: string): number | null {
   if (!Number.isInteger(amount) || amount < 1) return null;
 
   const unit = match[2]?.toLowerCase() ?? "m";
-  if (unit.startsWith("h")) {
-    if (amount > 24) return null;
-    return amount * 60;
+  let minutes: number;
+  if (unit.startsWith("d")) {
+    minutes = amount * 24 * 60;
+  } else if (unit.startsWith("h")) {
+    minutes = amount * 60;
+  } else {
+    minutes = amount;
   }
 
-  if (amount > 24 * 60) return null;
-  return amount;
+  if (minutes > MAX_REMINDER_MINUTES) return null;
+  return minutes;
 }
-
-const MAX_REMINDER_HOURS_BATCH = 25;
-/** Minimum offset: 1 minute (also allows legacy `0.5` hour). */
-const MIN_REMINDER_HOURS = 1 / 60;
-const MAX_REMINDER_HOURS = 24;
-const BARE_HOUR_OFFSET = /^\d+(\.\d+)?$/;
-/** Human offsets for set-reminders tokens: `30m`, `1h`, `1.5h` (unit required). */
-const HUMAN_HOUR_OFFSET =
-  /^(\d+(?:\.\d+)?)\s*(m|min|mins|minute|minutes|h|hr|hour|hours)$/i;
 
 /** Parse one set-reminders token into hours from now. Bare numbers stay hours (`4` = 4h). */
 export function parseReminderHourOffset(part: string): number | null {
@@ -37,7 +44,11 @@ export function parseReminderHourOffset(part: string): number | null {
     const amount = Number(human[1]);
     if (!Number.isFinite(amount) || amount <= 0) return null;
     const unit = human[2].toLowerCase();
-    const hours = unit.startsWith("h") ? amount : amount / 60;
+    const hours = unit.startsWith("d")
+      ? amount * 24
+      : unit.startsWith("h")
+        ? amount
+        : amount / 60;
     if (hours < MIN_REMINDER_HOURS || hours > MAX_REMINDER_HOURS) return null;
     return hours;
   }
@@ -72,6 +83,10 @@ export function parseReminderHours(input: string): number[] | null {
 }
 
 export function formatReminderDuration(minutes: number): string {
+  if (minutes % (24 * 60) === 0 && minutes >= 24 * 60) {
+    const days = minutes / (24 * 60);
+    return `${days} day${days === 1 ? "" : "s"}`;
+  }
   if (minutes % 60 === 0 && minutes >= 60) {
     const hours = minutes / 60;
     return `${hours} hour${hours === 1 ? "" : "s"}`;
@@ -79,10 +94,11 @@ export function formatReminderDuration(minutes: number): string {
   return `${minutes} minute${minutes === 1 ? "" : "s"}`;
 }
 
-/** Compact offset label for logs/UI (`30m`, `1h`, `1h30m`). */
+/** Compact offset label for logs/UI (`30m`, `1h`, `1h30m`, `2d`). */
 export function formatHourOffsetCompact(hours: number): string {
   const minutes = Math.round(hours * 60);
   if (minutes < 60) return `${minutes}m`;
+  if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)}d`;
   if (minutes % 60 === 0) return `${minutes / 60}h`;
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;

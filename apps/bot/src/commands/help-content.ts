@@ -174,7 +174,7 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
   },
   {
     command: "/st reminder schedule",
-    description: "Schedule a reminder (requires ST role, storyteller, or allowlist; max 24h).",
+    description: "Schedule a reminder (requires ST role, storyteller, or allowlist; max 7d).",
   },
   {
     command: "/st reminder batch",

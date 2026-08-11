@@ -20,7 +20,7 @@ import {
 
 import { getReminderPingRoleId } from "../access.js";
 import { logReminderAction } from "../action-log.js";
-import { formatReminderDuration, formatHourOffsetCompact, parseReminderDuration, parseReminderHours } from "../reminder-duration.js";
+import { formatReminderDuration, formatHourOffsetCompact, parseReminderDuration, parseReminderHours, MAX_REMINDER_HOURS } from "../reminder-duration.js";
 import {
   encodePingRoleIds,
   formatPingRoleMentions,
@@ -38,7 +38,7 @@ import {
 const EPHEMERAL = { flags: MessageFlags.Ephemeral };
 
 const SCHEDULE_DURATION_HELP =
-  "Use a relative duration like `5m`, `10`, or `1h` — at most **24 hours** from now.";
+  `Use a relative duration like \`5m\`, \`10\`, \`1h\`, or \`2d\` — at most **${MAX_REMINDER_HOURS} hours** (7 days) from now.`;
 
 async function scheduleReminderFromInteraction(
   interaction: CommandInteraction,
@@ -134,7 +134,7 @@ async function scheduleReminderFromInteraction(
 }
 
 const BATCH_OFFSETS_HELP =
-  "Offsets must be space-separated like `1m 10m 30m 1h 4 8` (1 minute–24 hours), max 25.";
+  `Offsets must be space-separated like \`1m 10m 30m 1h 2d 4 8\` (1 minute–${MAX_REMINDER_HOURS} hours / 7 days), max 25.`;
 
 async function batchRemindersFromInteraction(
   interaction: CommandInteraction,
@@ -269,7 +269,7 @@ export class ReminderAliasCommands {
     message: string,
     @SlashOption({
       name: "hours",
-      description: "Offsets from now: 1m 10m 30m 1h or 0.5 4 8 (max 24h)",
+      description: "Offsets from now: 1m 10m 1h 2d or 0.5 4 48 (max 7d)",
       type: ApplicationCommandOptionType.String,
       required: true,
     })
@@ -428,7 +428,7 @@ export class StReminderCommands {
   async remind(
     @SlashOption({
       name: "in",
-      description: "When to send the reminder (e.g. 5m, 10, 1h; max 24h)",
+      description: "When to send the reminder (e.g. 5m, 10, 1h, 2d; max 7d)",
       type: ApplicationCommandOptionType.String,
       required: true,
     })
@@ -488,7 +488,7 @@ export class StReminderCommands {
     message: string,
     @SlashOption({
       name: "hours",
-      description: "Offsets from now: 1m 10m 30m 1h or 0.5 4 8 (max 24h)",
+      description: "Offsets from now: 1m 10m 1h 2d or 0.5 4 48 (max 7d)",
       type: ApplicationCommandOptionType.String,
       required: true,
     })
@@ -604,7 +604,7 @@ export class StReminderCommands {
     message: string | undefined,
     @SlashOption({
       name: "in",
-      description: "Reschedule from now (e.g. 5m, 10, 1h)",
+      description: "Reschedule from now (e.g. 5m, 10, 1h, 2d; max 7d)",
       type: ApplicationCommandOptionType.String,
       required: false,
     })
