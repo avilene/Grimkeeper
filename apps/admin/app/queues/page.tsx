@@ -64,8 +64,8 @@ export default async function QueuesPage({
 
       {boards.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No queue boards yet. Set <code>ST_QUEUE_THREAD_ID</code> and use{" "}
-          <code>/st queue join</code>.
+          No queue boards yet. An admin should run <code>/st queue set</code> in a Discord
+          thread (optional legacy fallback: <code>ST_QUEUE_THREAD_ID</code>).
         </p>
       ) : (
         boards.map((board) => (

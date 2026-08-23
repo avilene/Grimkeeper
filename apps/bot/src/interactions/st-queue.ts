@@ -25,14 +25,13 @@ import {
   updateQueueEntry,
 } from "@grimkeeper/database";
 
-import { canUseBot } from "../access.js";
 import { reportError } from "../error-reporter.js";
 import {
-  getConfiguredQueueThreadId,
   parseStQueueButtonCustomId,
   parseStQueueModalCustomId,
   parseStQueueSelectCustomId,
   refreshQueuePanel,
+  resolveQueueThreadIdForGuild,
   stQueueModalCustomId,
   stQueueSelectCustomId,
 } from "../st-queue-board.js";
@@ -91,16 +90,12 @@ async function safeEdit(
   }
 }
 
-async function requireQueueAccess(
+/** Queue board is public — only require a guild context. */
+async function requireQueueGuild(
   interaction: ButtonInteraction | UserSelectMenuInteraction | ModalSubmitInteraction,
 ): Promise<boolean> {
-  // canUseBot expects CommandInteraction-shaped access; reuse allowlist via cast of user/guild.
-  const allowed = await canUseBot(interaction as never);
-  if (!allowed) {
-    await safeEdit(
-      interaction,
-      "You are not allowed to use this bot. Ask an admin to add you to the allowlist.",
-    );
+  if (!interaction.guildId || !interaction.guild) {
+    await safeEdit(interaction, "Use this in a server.");
     return false;
   }
   return true;
@@ -243,21 +238,14 @@ export async function handleStQueueButton(interaction: ButtonInteraction): Promi
   const parsed = parseStQueueButtonCustomId(interaction.customId);
   if (!parsed) return false;
 
-  if (!(await requireQueueAccess(interaction))) return true;
+  if (!(await requireQueueGuild(interaction))) return true;
 
-  const guild = interaction.guild;
-  if (!guild || !interaction.guildId) {
-    await interaction.reply({
-      content: "Use this in a server.",
-      flags: MessageFlags.Ephemeral,
-    });
-    return true;
-  }
-
-  const threadId = getConfiguredQueueThreadId();
+  const guild = interaction.guild!;
+  const threadId = await resolveQueueThreadIdForGuild(guild.id);
   if (!threadId) {
     await interaction.reply({
-      content: "ST queue is not configured (`ST_QUEUE_THREAD_ID`).",
+      content:
+        "ST queue is not configured. An admin should run `/st queue set` in the board thread.",
       flags: MessageFlags.Ephemeral,
     });
     return true;
@@ -424,21 +412,14 @@ export async function handleStQueueModalSubmit(
   const parsed = parseStQueueModalCustomId(interaction.customId);
   if (!parsed) return false;
 
-  if (!(await requireQueueAccess(interaction))) return true;
+  if (!(await requireQueueGuild(interaction))) return true;
 
-  const guild = interaction.guild;
-  if (!guild || !interaction.guildId) {
-    await interaction.reply({
-      content: "Use this in a server.",
-      flags: MessageFlags.Ephemeral,
-    });
-    return true;
-  }
-
-  const threadId = getConfiguredQueueThreadId();
+  const guild = interaction.guild!;
+  const threadId = await resolveQueueThreadIdForGuild(guild.id);
   if (!threadId) {
     await interaction.reply({
-      content: "ST queue is not configured (`ST_QUEUE_THREAD_ID`).",
+      content:
+        "ST queue is not configured. An admin should run `/st queue set` in the board thread.",
       flags: MessageFlags.Ephemeral,
     });
     return true;
@@ -515,13 +496,9 @@ export async function handleStQueueUserSelect(
   if (!parsed) return false;
 
   await ensureDeferred(interaction);
-  if (!(await requireQueueAccess(interaction))) return true;
+  if (!(await requireQueueGuild(interaction))) return true;
 
-  const guild = interaction.guild;
-  if (!guild) {
-    await safeEdit(interaction, "Use this in a server.");
-    return true;
-  }
+  const guild = interaction.guild!;
 
   const entry = await getQueueEntryById(parsed.entryId);
   if (!entry || entry.ownerDiscordId !== interaction.user.id || entry.status !== "open") {
@@ -558,8 +535,10 @@ export async function beginAttachForOwner(
 }
 
 export async function listQueueStatusText(guildId: string): Promise<string> {
-  const threadId = getConfiguredQueueThreadId();
-  if (!threadId) return "ST queue is not configured (`ST_QUEUE_THREAD_ID`).";
+  const threadId = await resolveQueueThreadIdForGuild(guildId);
+  if (!threadId) {
+    return "ST queue is not configured. An admin should run `/st queue set` in the board thread.";
+  }
   const entries = await listOpenQueueEntries(guildId);
   const { buildQueueStatusContent } = await import("../st-queue-board.js");
   return buildQueueStatusContent(entries, threadId);

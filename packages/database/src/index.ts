@@ -96,6 +96,8 @@ export {
   serializeScriptImageUrls,
   getQueueBoardByGuild,
   getQueueBoardByThread,
+  listQueueBoards,
+  resolveQueueThreadId,
   ensureQueueBoard,
   setQueuePanelMessageId,
   listOpenQueueEntries,

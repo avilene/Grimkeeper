@@ -10,6 +10,7 @@ import {
   ensureQueueBoard,
   listOpenQueueEntries,
   parseScriptImageUrls,
+  resolveQueueThreadId,
   setQueuePanelMessageId,
   type StQueueEntryWithMembers,
 } from "@grimkeeper/database";
@@ -29,9 +30,15 @@ export type StQueueButtonAction =
   | "unsignup"
   | "refresh";
 
+/** Legacy env-only thread id (optional bootstrap). Prefer resolveQueueThreadIdForGuild. */
 export function getConfiguredQueueThreadId(): string | null {
   const raw = process.env.ST_QUEUE_THREAD_ID?.trim();
   return raw || null;
+}
+
+/** Per-guild board thread: DB first, then ST_QUEUE_THREAD_ID env fallback. */
+export async function resolveQueueThreadIdForGuild(guildId: string): Promise<string | null> {
+  return resolveQueueThreadId(guildId);
 }
 
 export function stQueueButtonCustomId(action: StQueueButtonAction, entryId?: string): string {
@@ -143,8 +150,9 @@ export function buildQueueBoardEmbeds(
     .setTitle("Storyteller queue")
     .setDescription(
       [
-        `Live board in <#${threadId}>. Anyone can check status with \`/st queue\`.`,
+        `Live board in <#${threadId}>. Anyone can check status with \`/st queue show\`.`,
         "Join with **Join queue**, then edit / attach images / add co-STs & players.",
+        "Admins: run `/st queue set` in a thread to mark it as this board.",
         entries.length === 0 ? "\n_Queue is empty — be the first!_" : `\n**${entries.length} open**`,
       ].join("\n"),
     );
@@ -224,6 +232,7 @@ export function buildQueueBoardComponents(entries: StQueueEntryWithMembers[]) {
 
 /**
  * Decide whether the live panel should be deleted + resent at the channel bottom.
+ * Kept for tests / callers that still want conditional bump logic.
  * `recentMessages` must be newest-first. Bot messages after the panel are ignored;
  * any human message after it (or the panel missing from the window) means bump.
  */
@@ -243,15 +252,30 @@ async function ensurePanelPinned(message: Message): Promise<void> {
   await message.pin().catch(() => undefined);
 }
 
+async function ensureQueueThreadOpen(channel: {
+  isThread?: () => boolean;
+  archived?: boolean | null;
+  setArchived?: (archived: boolean, reason?: string) => Promise<unknown>;
+}): Promise<void> {
+  if (typeof channel.isThread !== "function" || !channel.isThread()) return;
+  if (channel.archived && typeof channel.setArchived === "function") {
+    await channel.setArchived(false, "ST queue panel update").catch(() => undefined);
+  }
+}
+
+/**
+ * Refresh the live queue panel. Always deletes + resends so Discord bumps the
+ * thread (edits do not bump). Call after any queue mutation.
+ */
 export async function refreshQueuePanel(guild: Guild): Promise<{
   boardThreadId: string;
   entryCount: number;
   message: Message | null;
   reposted: boolean;
 }> {
-  const threadId = getConfiguredQueueThreadId();
+  const threadId = await resolveQueueThreadIdForGuild(guild.id);
   if (!threadId) {
-    throw new Error("ST_QUEUE_THREAD_ID is not configured.");
+    throw new Error("ST queue is not configured. Run `/st queue set` in the board thread.");
   }
 
   const board = await ensureQueueBoard(guild.id, threadId);
@@ -264,6 +288,8 @@ export async function refreshQueuePanel(guild: Guild): Promise<{
     throw new Error(`Queue thread ${board.threadId} is missing or not text-based.`);
   }
 
+  await ensureQueueThreadOpen(channel);
+
   let message: Message | null = null;
   let reposted = false;
 
@@ -271,31 +297,12 @@ export async function refreshQueuePanel(guild: Guild): Promise<{
     message = await channel.messages.fetch(board.panelMessageId).catch(() => null);
   }
 
+  // Always bump: delete the old panel and post a fresh message so the thread
+  // moves to the top of active threads. Editing alone does not bump Discord threads.
   if (message) {
-    const recent = await channel.messages.fetch({ limit: 50 }).catch(() => null);
-    const needsRepost = recent
-      ? shouldRepostQueuePanel(
-          // Discord returns newest-first; sort defensively by snowflake.
-          [...recent.values()].sort((a, b) => (a.id < b.id ? 1 : -1)),
-          message.id,
-        )
-      : false;
-
-    if (needsRepost) {
-      await message.delete().catch(() => undefined);
-      message = null;
-      reposted = true;
-    } else {
-      const edited = await message.edit({ embeds, components }).catch(() => null);
-      if (edited) {
-        message = edited;
-        await ensurePanelPinned(message);
-      } else {
-        await message.delete().catch(() => undefined);
-        message = null;
-        reposted = true;
-      }
-    }
+    await message.delete().catch(() => undefined);
+    message = null;
+    reposted = true;
   }
 
   if (!message) {

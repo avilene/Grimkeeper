@@ -34,6 +34,23 @@ export async function getQueueBoardByThread(threadId: string) {
   return prisma.stQueueBoard.findFirst({ where: { threadId } });
 }
 
+export async function listQueueBoards() {
+  return prisma.stQueueBoard.findMany({ orderBy: { updatedAt: "desc" } });
+}
+
+/**
+ * Resolve the ST queue board thread for a guild: DB board first, then
+ * `ST_QUEUE_THREAD_ID` env fallback (legacy single-guild bootstrap).
+ */
+export async function resolveQueueThreadId(guildId: string): Promise<string | null> {
+  const board = await getQueueBoardByGuild(guildId);
+  const fromDb = board?.threadId?.trim();
+  if (fromDb) return fromDb;
+
+  const fromEnv = process.env.ST_QUEUE_THREAD_ID?.trim();
+  return fromEnv || null;
+}
+
 export async function ensureQueueBoard(guildId: string, threadId: string) {
   const existing = await getQueueBoardByGuild(guildId);
   if (existing) {

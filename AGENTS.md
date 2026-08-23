@@ -78,8 +78,9 @@ See `apps/admin/AGENTS.md`.
 
 All variables live in a single `.env` at the repo root (both bot and admin read from it).  
 See `.env.example` for the full list with comments.  
-Required for the bot: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DATABASE_URL`.  
+Required for the bot: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DATABASE_URL`. 
 Required additionally for admin: `DISCORD_CLIENT_SECRET`, `ADMIN_SESSION_SECRET`, `ADMIN_OAUTH_CALLBACK_URL`.
+Optional: `ST_QUEUE_THREAD_ID` is a legacy bootstrap for the ST queue board — prefer `/st queue set` in a thread (stored per guild in the DB).
 
 ## Testing
 

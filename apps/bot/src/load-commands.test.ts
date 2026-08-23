@@ -24,9 +24,11 @@ describe("loadCommandModules", () => {
     expect(source).toContain('./commands/alias.js');
     expect(source).toContain('./commands/role.js');
     expect(source).toContain('./commands/command-help.js');
+    expect(source).toContain('./commands/st-queue.js');
     expect(source).not.toContain('./commands/game.js');
     expect(source).not.toContain('./commands/st.js');
     expect(source).not.toContain('./commands/dev.js');
+    expect(source).not.toContain("ST_QUEUE_THREAD_ID");
   });
 
   it("keeps /role as a public lookup (no allowlist gate)", () => {

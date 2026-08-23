@@ -138,7 +138,11 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
   {
     command: "/st queue show",
     description:
-      "Show the current ST queue from any channel (DMs you if used in the queue board channel).",
+      "Show the current ST queue from any channel (open to everyone; DMs you if used in the board thread).",
+  },
+  {
+    command: "/st queue set",
+    description: "Mark the current thread as this server's ST queue board (admin / allowlist).",
   },
   {
     command: "/st queue join",
@@ -158,7 +162,7 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
   },
   {
     command: "/st queue refresh",
-    description: "Refresh the live queue panel in the board thread.",
+    description: "Refresh and bump the live queue panel in the board thread.",
   },
   {
     command: "/reminder",
@@ -580,8 +584,8 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
             "Assign or remove kib role (same as `/st do add-spectator` / `remove-spectator`).",
           ),
           cmd(
-            "/st queue show|join|edit|attach|leave|refresh",
-            "ST queue board: who's ready to run (script, notes, co-STs, player signups).",
+            "/st queue set|show|join|edit|attach|leave|refresh|signup",
+            "ST queue board: mark a thread with `set`, then show/join/signup. Panel bumps on every update.",
           ),
           cmd("/st help", "This guide (optional `search:`)."),
         ].join("\n\n"),
