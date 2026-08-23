@@ -61,6 +61,16 @@ describe("shouldRepostQueuePanel", () => {
   });
 });
 
+describe("queue panel bump policy", () => {
+  it("documents that refresh always reposts (Discord edits do not bump threads)", async () => {
+    const source = await import("node:fs").then((fs) =>
+      fs.readFileSync(new URL("./st-queue-board.ts", import.meta.url), "utf8"),
+    );
+    expect(source).toContain("Always bump");
+    expect(source).toContain("await message.delete()");
+  });
+});
+
 describe("st queue formatting", () => {
   it("formats status summary", () => {
     const text = buildQueueStatusContent(

@@ -43,14 +43,10 @@ if (!token) {
   throw new Error("DISCORD_TOKEN is required. Copy .env.example to .env and fill it in.");
 }
 
-const stQueueEnabled = Boolean(process.env.ST_QUEUE_THREAD_ID?.trim());
-
 const client = new Client({
   botId: process.env.DISCORD_CLIENT_ID,
-  // GuildMessages is only needed for ST queue image-attach collection.
-  intents: stQueueEnabled
-    ? [IntentsBitField.Flags.Guilds, IntentsBitField.Flags.GuildMessages]
-    : [IntentsBitField.Flags.Guilds],
+  // GuildMessages needed for ST queue image-attach collectors.
+  intents: [IntentsBitField.Flags.Guilds, IntentsBitField.Flags.GuildMessages],
   silent: false,
   simpleCommand: {
     prefix: "!",
@@ -71,16 +67,24 @@ client.once(Events.ClientReady, async () => {
     await reportError("commands.register.failed", error, { botMode: "minimal" });
   }
 
-  if (stQueueEnabled) {
-    try {
-      const { refreshQueuePanel } = await import("./st-queue-board.js");
+  try {
+    const { listQueueBoards } = await import("@grimkeeper/database");
+    const { refreshQueuePanel } = await import("./st-queue-board.js");
+    const boards = await listQueueBoards();
+    const guildIds = new Set(boards.map((b) => b.guildId));
+    // Also refresh guilds that only have the legacy env thread configured.
+    if (process.env.ST_QUEUE_THREAD_ID?.trim()) {
       for (const [, guild] of client.guilds.cache) {
-        await refreshQueuePanel(guild).catch(() => undefined);
+        guildIds.add(guild.id);
       }
-      log("info", "stQueue.panel.refresh.ok");
-    } catch (error) {
-      void reportError("stQueue.panel.refresh.failed", error);
     }
+    for (const guildId of guildIds) {
+      const guild = client.guilds.cache.get(guildId) ?? (await client.guilds.fetch(guildId).catch(() => null));
+      if (guild) await refreshQueuePanel(guild).catch(() => undefined);
+    }
+    log("info", "stQueue.panel.refresh.ok", { guildCount: guildIds.size });
+  } catch (error) {
+    void reportError("stQueue.panel.refresh.failed", error);
   }
 
   await notifyLifecycle(
@@ -127,18 +131,13 @@ client.on("interactionCreate", (interaction) => {
       const { handleStPanelButton, handleStPanelUserSelect } = await import(
         "./interactions/st-panel.js"
       );
-      // Only load/process ST queue interactions when ST_QUEUE_THREAD_ID is set.
-      const queueHandlers = stQueueEnabled
-        ? await import("./interactions/st-queue.js")
-        : null;
+      const queueHandlers = await import("./interactions/st-queue.js");
       const { handleInterestButton, handleInterestModalSubmit } = await import(
         "./interactions/interest.js"
       );
       if (interaction.isButton()) {
-        if (queueHandlers) {
-          const handledQueue = await queueHandlers.handleStQueueButton(interaction);
-          if (handledQueue) return;
-        }
+        const handledQueue = await queueHandlers.handleStQueueButton(interaction);
+        if (handledQueue) return;
         const handledInterest = await handleInterestButton(interaction);
         if (handledInterest) return;
         const { handleHelpPageButton } = await import("./commands/help-pagination.js");
@@ -161,18 +160,14 @@ client.on("interactionCreate", (interaction) => {
         if (handled) return;
       }
       if (interaction.isUserSelectMenu()) {
-        if (queueHandlers) {
-          const handledQueue = await queueHandlers.handleStQueueUserSelect(interaction);
-          if (handledQueue) return;
-        }
+        const handledQueue = await queueHandlers.handleStQueueUserSelect(interaction);
+        if (handledQueue) return;
         const handled = await handleStPanelUserSelect(interaction);
         if (handled) return;
       }
       if (interaction.isModalSubmit()) {
-        if (queueHandlers) {
-          const handledQueue = await queueHandlers.handleStQueueModalSubmit(interaction);
-          if (handledQueue) return;
-        }
+        const handledQueue = await queueHandlers.handleStQueueModalSubmit(interaction);
+        if (handledQueue) return;
         const handledInterestModal = await handleInterestModalSubmit(interaction);
         if (handledInterestModal) return;
         const handled = await handleVoteModalSubmit(interaction);

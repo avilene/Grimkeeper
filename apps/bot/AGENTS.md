@@ -123,7 +123,7 @@ await syncGameProjectionFromEngine(game.id, engine);
 | `ADMIN_ROLE_IDS` | optional | Role IDs that can view private ST threads |
 | `REMINDER_ROLE_IDS` | optional | Role IDs that can manage channel reminders |
 | `REMINDER_PING_ROLE_ID` | optional | Role pinged when channel reminders fire |
-| `ST_QUEUE_THREAD_ID` | optional | Thread ID for the live ST queue panel |
+| `ST_QUEUE_THREAD_ID` | optional | Legacy default thread ID for the live ST queue panel (prefer `/st queue set`) |
 | `ARCHIVE_CATEGORY_ID` | optional | Category for archived town channels |
 | `ERROR_CHANNEL_ID` | optional | Discord channel for error notifications |
 | `DEV_MODE` | optional | `true` enables `/dev` commands |

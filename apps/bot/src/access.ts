@@ -54,6 +54,25 @@ export async function fetchGuildMemberWithTimeout(
   ]);
 }
 
+function memberRoleIdsFromInteraction(interaction: AccessInteraction): string[] | null {
+  const roles = interaction.member?.roles;
+  if (!roles) return null;
+  // APIInteractionGuildMember: roles is string[] from the interaction payload — complete.
+  if (Array.isArray(roles)) return roles;
+  // GuildMember: roles.cache may be incomplete without Guild Members intent.
+  if ("cache" in roles && roles.cache) {
+    return [...roles.cache.keys()];
+  }
+  return null;
+}
+
+function hasAnyAllowedRole(roleIds: Iterable<string>, allowedRoleIds: Set<string>): boolean {
+  for (const roleId of roleIds) {
+    if (allowedRoleIds.has(roleId)) return true;
+  }
+  return false;
+}
+
 export async function canUseBot(interaction: AccessInteraction): Promise<boolean> {
   const allowedUserIds = parseList(process.env.ADMIN_IDS);
   const allowedRoleIds = parseList(process.env.ALLOWED_ROLE_IDS);
@@ -76,9 +95,17 @@ export async function canUseBot(interaction: AccessInteraction): Promise<boolean
     return false;
   }
 
+  // Prefer roles from the interaction payload — no GuildMembers intent needed.
+  const payloadRoles = memberRoleIdsFromInteraction(interaction);
+  if (payloadRoles !== null) {
+    return hasAnyAllowedRole(payloadRoles, allowedRoleIds);
+  }
+
   const guild = interaction.guild;
   if (!guild) return false;
-  const member = await fetchGuildMemberWithTimeout(guild, userId);
+  const member = await fetchGuildMemberWithTimeout(guild, userId, MEMBER_FETCH_TIMEOUT_MS, {
+    force: true,
+  });
   if (!member) return false;
 
   return member.roles.cache.some((role) => allowedRoleIds.has(role.id));
@@ -102,9 +129,16 @@ export async function isInExplicitAllowlist(interaction: AccessInteraction): Pro
     return false;
   }
 
+  const payloadRoles = memberRoleIdsFromInteraction(interaction);
+  if (payloadRoles !== null) {
+    return hasAnyAllowedRole(payloadRoles, allowedRoleIds);
+  }
+
   const guild = interaction.guild;
   if (!guild) return false;
-  const member = await fetchGuildMemberWithTimeout(guild, userId);
+  const member = await fetchGuildMemberWithTimeout(guild, userId, MEMBER_FETCH_TIMEOUT_MS, {
+    force: true,
+  });
   if (!member) return false;
 
   return member.roles.cache.some((role) => allowedRoleIds.has(role.id));

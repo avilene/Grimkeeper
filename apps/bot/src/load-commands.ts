@@ -13,18 +13,14 @@ export async function loadCommandModules(): Promise<void> {
   await import("./commands/script.js");
   await import("./commands/st-minimal.js");
   await import("./commands/st-reminders.js");
-  // Queue slash commands only exist when configured — avoids registering dead `/st queue` cmds.
-  const stQueueEnabled = Boolean(process.env.ST_QUEUE_THREAD_ID?.trim());
-  if (stQueueEnabled) {
-    await import("./commands/st-queue.js");
-  }
+  // Always register `/st queue` — board thread is per-guild via `/st queue set` (env is optional fallback).
+  await import("./commands/st-queue.js");
   await import("./commands/interest.js");
   await import("./commands/command-help.js");
   await import("./commands/dev-minimal.js");
 
   log("info", "commands.load.done", {
     botMode: "minimal",
-    stQueueEnabled,
     groups: [
       "game",
       "player",
@@ -41,6 +37,7 @@ export async function loadCommandModules(): Promise<void> {
       "role",
       "script",
       "st",
+      "st.queue",
       "reminder",
       "listreminders",
       "clearreminders",
