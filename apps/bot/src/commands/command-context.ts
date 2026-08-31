@@ -16,6 +16,7 @@ import {
   getActiveGameForVenue,
   getGameForChannelIncludingEnded,
   listActiveGamesForGuild,
+  listEngineStorytellerGameIds,
   listGameWhispers,
   getGameEvents,
   prisma,
@@ -40,6 +41,8 @@ import {
   getAdminRoleIds,
   getReminderPingRoleId,
   isInExplicitAllowlist,
+  memberHasAnyRole,
+  type AccessInteraction,
 } from "../access.js";
 import { isDevMode } from "../dev.js";
 import {
@@ -719,9 +722,51 @@ export async function isActiveGamePlayer(interaction: CommandInteraction): Promi
   );
 }
 
-export async function requireCommandAccess(interaction: CommandInteraction): Promise<boolean> {
-  const allowed = await canUseBot(interaction);
-  if (allowed) return true;
+/** True when the user holds an active game’s ST Discord role or is an engine ST in this guild. */
+export async function isActiveGameStoryteller(interaction: AccessInteraction): Promise<boolean> {
+  if (!interaction.guildId || !interaction.user?.id) return false;
+
+  const games = await listActiveGamesForGuild(interaction.guildId);
+  if (games.length === 0) return false;
+
+  const stRoleIds = [
+    ...new Set(games.map((game) => game.stRoleId).filter((id): id is string => Boolean(id))),
+  ];
+  if (stRoleIds.length > 0 && (await memberHasAnyRole(interaction, stRoleIds))) {
+    return true;
+  }
+
+  const engineIds = await listEngineStorytellerGameIds(interaction.user.id);
+  if (engineIds.length === 0) return false;
+  const activeIds = new Set(games.map((game) => game.id));
+  return engineIds.some((id) => activeIds.has(id));
+}
+
+export type CommandAccessOptions = {
+  /** Extra Discord role IDs that grant access (e.g. the ST role passed to `/game setup`). */
+  extraRoleIds?: readonly string[];
+};
+
+/**
+ * Global allowlist, optional extra roles (setup ST), or ST of an active game in this guild.
+ * Day-play uses `requireDayPlayAccess` so seated players are not locked out.
+ */
+export async function userHasCommandAccess(
+  interaction: AccessInteraction,
+  options?: CommandAccessOptions,
+): Promise<boolean> {
+  if (await canUseBot(interaction)) return true;
+  if (options?.extraRoleIds?.length && (await memberHasAnyRole(interaction, options.extraRoleIds))) {
+    return true;
+  }
+  return isActiveGameStoryteller(interaction);
+}
+
+export async function requireCommandAccess(
+  interaction: CommandInteraction,
+  options?: CommandAccessOptions,
+): Promise<boolean> {
+  if (await userHasCommandAccess(interaction, options)) return true;
   await replyAccessDenied(interaction);
   return false;
 }
@@ -737,36 +782,7 @@ export async function requireDayPlayAccess(interaction: CommandInteraction): Pro
   return false;
 }
 
-/**
- * Role IDs from the slash/button interaction payload (no REST fetch).
- * Prefer this over guild.members.fetch — we do not request GuildMembers intent, so
- * fetches often time out and falsely deny ST-role users.
- *
- * Returns:
- * - `true` / `false` when the interaction payload lists roles as a string[] (authoritative)
- * - `true` when a GuildMember role cache hits
- * - `null` when there is no member, or a GuildMember cache miss (cache is often incomplete
- *   without Guild Members intent — callers should REST-fetch rather than deny)
- */
-export function interactionMemberHasRole(
-  interaction: Pick<CommandInteraction, "member"> | { member?: CommandInteraction["member"] },
-  roleId: string,
-): boolean | null {
-  const member = interaction.member;
-  if (!member) return null;
-
-  const roles = member.roles;
-  // APIInteractionGuildMember: roles is string[] from the interaction payload — complete.
-  if (Array.isArray(roles)) {
-    return roles.includes(roleId);
-  }
-  // GuildMember: RoleManager cache. A hit is trustworthy; a miss is not (incomplete cache).
-  if (roles && typeof roles === "object" && "cache" in roles) {
-    if (roles.cache.has(roleId)) return true;
-    return null;
-  }
-  return null;
-}
+export { interactionMemberHasRole } from "../access.js";
 
 export async function memberHasGameStRole(
   interaction: {
@@ -786,18 +802,7 @@ export async function memberHasGameStRole(
   }
   if (!stRoleId) return false;
 
-  // Interaction payload already includes role IDs for guild commands — authoritative and fast.
-  const fromPayload = interactionMemberHasRole(interaction, stRoleId);
-  if (fromPayload !== null) return fromPayload;
-
-  // Force REST — cached GuildMember roles are often incomplete without Guild Members intent.
-  const member = await fetchGuildMemberWithTimeout(
-    interaction.guild,
-    interaction.user.id,
-    undefined,
-    { force: true },
-  );
-  return member?.roles.cache.has(stRoleId) ?? false;
+  return memberHasAnyRole(interaction, [stRoleId]);
 }
 
 /**

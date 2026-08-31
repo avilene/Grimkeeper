@@ -98,7 +98,7 @@ export class GameCommandsMinimal {
     logThread: GuildBasedChannel | undefined,
     interaction: CommandInteraction,
   ): Promise<void> {
-    if (!(await requireCommandAccess(interaction))) return;
+    if (!(await requireCommandAccess(interaction, { extraRoleIds: [stRole.id] }))) return;
 
     if (!interaction.guildId || !interaction.channelId || !interaction.guild) {
       await replyOrEditInteraction(interaction, {

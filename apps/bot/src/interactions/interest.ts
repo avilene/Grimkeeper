@@ -20,9 +20,9 @@ import {
   fetchGuildMemberWithTimeout,
   getAdminRoleIds,
   isAllowedUserId,
-  canUseBot,
   type AccessInteraction,
 } from "../access.js";
+import { userHasCommandAccess } from "../commands/command-context.js";
 import { reportError } from "../error-reporter.js";
 import {
   buildDeleteConfirmComponents,
@@ -105,7 +105,7 @@ async function safeEdit(
 async function requireInterestAccess(
   interaction: ButtonInteraction | ModalSubmitInteraction,
 ): Promise<boolean> {
-  const allowed = await canUseBot(interaction as AccessInteraction);
+  const allowed = await userHasCommandAccess(interaction);
   if (!allowed) {
     await safeEdit(
       interaction,

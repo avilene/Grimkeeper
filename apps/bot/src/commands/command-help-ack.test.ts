@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../access.js", () => ({
-  canUseBot: vi.fn().mockResolvedValue(true),
-}));
+vi.mock("../access.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../access.js")>();
+  return {
+    ...actual,
+    canUseBot: vi.fn().mockResolvedValue(true),
+  };
+});
 
 vi.mock("../error-reporter.js", () => ({
   reportError: vi.fn(),

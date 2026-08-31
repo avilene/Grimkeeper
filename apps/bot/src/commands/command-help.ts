@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import { Discord, Slash, SlashChoice, SlashGroup, SlashOption } from "discordx";
 
-import { canUseBot } from "../access.js";
+import { userHasCommandAccess } from "./command-context.js";
 import { reportError } from "../error-reporter.js";
 import {
   isRecoverableInteractionResponseError,
@@ -81,7 +81,7 @@ async function replyHelpEmbeds(
     await ensureHelpDeferred(interaction);
 
     if (requireAccess) {
-      const allowed = await canUseBot(interaction);
+      const allowed = await userHasCommandAccess(interaction);
       if (!allowed) {
         await interaction.editReply({ content: ACCESS_DENIED, embeds: [], components: [] });
         return;
