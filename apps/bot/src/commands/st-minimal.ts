@@ -1009,21 +1009,25 @@ export class StCommandsMinimal {
       }
 
       const { game } = resolved;
-      const result = await archiveGameSurfaces(guild, game);
+      const result = await archiveGameSurfaces(guild, game, resolved.engine);
       const movedHint =
         result.movedChannels > 0
           ? ` ${result.movedChannels} channel(s) moved to Archives.`
           : "";
+      const rolesHint =
+        result.rolesStripped > 0
+          ? ` Removed ST/player/kib roles from **${result.rolesStripped}** member${result.rolesStripped === 1 ? "" : "s"}.`
+          : "";
       await postGameLog(
         guild,
         game,
-        `Game archived — town/kib opened for reading; ${result.channels} channel(s) and ${result.threads} thread(s) set read-only.${movedHint}` +
+        `Game archived — town/kib opened for reading; ${result.channels} channel(s) and ${result.threads} thread(s) set read-only.${movedHint}${rolesHint}` +
           (interaction.user.id ? ` By <@${interaction.user.id}>.` : ""),
       );
 
       await replyOrEditInteraction(interaction, {
         content:
-          `Archived — town and kib (if a channel) are open to read; ${result.channels} channel(s) and ${result.threads} thread(s) locked read-only.${movedHint} Private ST/whisper threads stay private but locked.`,
+          `Archived — town and kib (if a channel) are open to read; ${result.channels} channel(s) and ${result.threads} thread(s) locked read-only.${movedHint}${rolesHint} Private ST/whisper threads stay private but locked.`,
       });
     } catch (error) {
       await replyEngineError(interaction, error);

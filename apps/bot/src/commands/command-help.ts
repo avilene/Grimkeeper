@@ -23,10 +23,7 @@ import {
   type HelpSearchScope,
   type StGuideTopic,
 } from "./help-content.js";
-import {
-  buildHelpPageMessage,
-  shouldPaginateHelp,
-} from "./help-pagination.js";
+import { buildHelpPageMessage } from "./help-pagination.js";
 
 const ACCESS_DENIED =
   "You are not allowed to use this bot. Ask an admin to add your user ID " +
@@ -69,7 +66,8 @@ async function ensureHelpDeferred(interaction: CommandInteraction): Promise<void
 /**
  * Prefers early public defer (see startEarlyDefer for help/guide), then editReply with embeds.
  * Avoids the ephemeral "Working…" path that can leave guides stuck.
- * Oversized multi-embed guides are paginated (Discord's combined embed limit is 6000).
+ * Multi-page guides are always sent one embed at a time with prev/next buttons
+ * so Discord's 6000-character combined-embed cap cannot reject `/st help`.
  */
 async function replyHelpEmbeds(
   interaction: CommandInteraction,
@@ -88,7 +86,7 @@ async function replyHelpEmbeds(
       }
     }
 
-    if (options?.pageScope && shouldPaginateHelp(embeds)) {
+    if (options?.pageScope) {
       const page = buildHelpPageMessage(options.pageScope, 0);
       await interaction.editReply({
         content: null,

@@ -889,31 +889,51 @@ export async function broadcastToPlayerThreads(
   return { sent, failed: results.length - sent };
 }
 
+export function uniqueGameRoleIds(game: GameRoleIds): string[] {
+  return [
+    ...new Set(
+      [game.stRoleId, game.playerRoleId, game.kibRoleId].filter((id): id is string => Boolean(id)),
+    ),
+  ];
+}
+
 export async function stripGameRolesFromMembers(
   guild: Guild,
   game: GameRoleIds,
-  engine: GameEngine,
-): Promise<void> {
-  const roleIds = [game.stRoleId, game.playerRoleId, game.kibRoleId].filter(
-    (roleId): roleId is string => Boolean(roleId),
-  );
-  if (roleIds.length === 0) return;
+  engine?: Pick<GameEngine, "getState" | "getStorytellerDiscordIds"> | null,
+  extraUserIds?: Iterable<string>,
+): Promise<{ users: number; removed: number }> {
+  const roleIds = uniqueGameRoleIds(game);
+  if (roleIds.length === 0) return { users: 0, removed: 0 };
 
   const userIds = new Set<string>();
-  for (const player of engine.getState().players) {
-    if (!isFakePlayer(player.discordUserId)) {
-      userIds.add(player.discordUserId);
+  if (engine) {
+    for (const player of engine.getState().players) {
+      if (!isFakePlayer(player.discordUserId)) {
+        userIds.add(player.discordUserId);
+      }
+    }
+    for (const stId of engine.getStorytellerDiscordIds()) {
+      userIds.add(stId);
     }
   }
-  for (const stId of engine.getStorytellerDiscordIds()) {
-    userIds.add(stId);
+  // Cached members only — do not guild.members.fetch() (no GuildMembers intent).
+  for (const member of guild.members.cache.values()) {
+    if (roleIds.some((roleId) => member.roles.cache.has(roleId))) {
+      userIds.add(member.id);
+    }
+  }
+  if (extraUserIds) {
+    for (const userId of extraUserIds) userIds.add(userId);
   }
 
+  let removed = 0;
   for (const userId of userIds) {
     for (const roleId of roleIds) {
-      await removeRoleFromUser(guild, userId, roleId);
+      if (await removeRoleFromUser(guild, userId, roleId)) removed++;
     }
   }
+  return { users: userIds.size, removed };
 }
 
 export async function clearGameChannelPermissions(
@@ -990,6 +1010,7 @@ export type ArchiveGameSurfacesResult = {
   channels: number;
   threads: number;
   movedChannels: number;
+  rolesStripped: number;
 };
 
 export type ArchivableGame = NonNullable<Awaited<ReturnType<typeof getGameForChannelIncludingEnded>>>;
@@ -1171,6 +1192,7 @@ export async function archiveGameSurfaces(
     channelId: string;
     kibThreadId?: string | null;
   },
+  engine?: Pick<GameEngine, "getState" | "getStorytellerDiscordIds"> | null,
 ): Promise<ArchiveGameSurfacesResult> {
   let channels = 0;
   let threads = 0;
@@ -1221,7 +1243,16 @@ export async function archiveGameSurfaces(
     threads += kibScan.threads;
   }
 
-  return { channels, threads, movedChannels };
+  const kibUserIds: string[] = [];
+  if (kib?.isThread()) {
+    const members = await kib.members.fetch().catch(() => null);
+    if (members) {
+      for (const member of members.values()) kibUserIds.push(member.id);
+    }
+  }
+
+  const stripped = await stripGameRolesFromMembers(guild, game, engine, kibUserIds);
+  return { channels, threads, movedChannels, rolesStripped: stripped.users };
 }
 
 export type ArchivePreviewLine = {
@@ -1236,10 +1267,12 @@ export type ArchivePreviewLine = {
 export type ArchivePreviewResult = {
   channelLines: ArchivePreviewLine[];
   threadLines: ArchivePreviewLine[];
+  roleLines?: ArchivePreviewLine[];
 };
 
 /** Dry-run list of surfaces `/st do archive` would lock (may exceed Discord's 2000-char cap). */
 export function formatArchiveDryRunContent(preview: ArchivePreviewResult): string {
+  const roleLines = preview.roleLines ?? [];
   const lines: string[] = [];
   if (preview.channelLines.length > 0) {
     lines.push(`**Channels (${preview.channelLines.length})**`);
@@ -1254,11 +1287,20 @@ export function formatArchiveDryRunContent(preview: ArchivePreviewResult): strin
       lines.push(`• ${thread.mention}`);
     }
   }
+  if (roleLines.length > 0) {
+    if (lines.length > 0) lines.push("");
+    lines.push(`**Roles (${roleLines.length})**`);
+    for (const role of roleLines) {
+      lines.push(`• ${role.mention}`);
+    }
+  }
   if (lines.length === 0) {
     lines.push("Nothing found to archive in this channel.");
   }
+  const roleNote =
+    roleLines.length > 0 ? " ST/player/kib roles would be removed from everyone who has them." : "";
   return (
-    `**Archive dry run** — no changes made. These would be locked read-only:\n\n` +
+    `**Archive dry run** — no changes made. These would be locked read-only.${roleNote}\n\n` +
     `${lines.join("\n")}\n\n` +
     "Run `/st do archive` (without `dry_run`) to apply."
   );
@@ -1275,6 +1317,7 @@ export async function previewArchiveSurfaces(
 ): Promise<ArchivePreviewResult> {
   const channelLines: ArchivePreviewLine[] = [];
   const threadLines: ArchivePreviewLine[] = [];
+  const roleLines: ArchivePreviewLine[] = [];
 
   const kib = game ? await getKibThreadForGame(guild, game) : null;
   const archiveCategoryId = await resolveArchiveCategoryId(guild.id);
@@ -1373,7 +1416,19 @@ export async function previewArchiveSurfaces(
     }
   }
 
-  return { channelLines, threadLines };
+  if (game) {
+    for (const roleId of uniqueGameRoleIds(game)) {
+      const role = await guild.roles.fetch(roleId).catch(() => null);
+      if (!role) continue;
+      roleLines.push({
+        name: role.name,
+        mention: `<@&${role.id}>`,
+        action: "remove from members",
+      });
+    }
+  }
+
+  return { channelLines, threadLines, roleLines };
 }
 
 type GameRoles = {

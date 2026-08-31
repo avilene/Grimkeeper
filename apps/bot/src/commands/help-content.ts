@@ -14,6 +14,8 @@ const GUIDE_COLOR = 0x5865f2;
 const FIELD_VALUE_LIMIT = 1024;
 /** Discord API: sum of title + description + field names/values (+ footer/author) ≤ 6000. */
 const EMBED_TOTAL_LIMIT = 6000;
+/** Leave room for `Page N/M` added by help pagination. */
+const EMBED_PAGE_FOOTER_RESERVE = 24;
 const EMBED_FIELD_COUNT_LIMIT = 25;
 
 function cmd(name: string, description: string): string {
@@ -387,7 +389,8 @@ function packGuideEmbeds(options: {
     const candidate = [...currentFields, field];
     const wouldExceed =
       candidate.length > EMBED_FIELD_COUNT_LIMIT ||
-      measureEmbedText({ title, description, fields: candidate }) > EMBED_TOTAL_LIMIT;
+      measureEmbedText({ title, description, fields: candidate }) >
+        EMBED_TOTAL_LIMIT - EMBED_PAGE_FOOTER_RESERVE;
     // Always allow the first field onto an empty page (field values are already ≤ 1024).
     if (currentFields.length > 0 && wouldExceed) {
       flush();
@@ -549,7 +552,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
       "3. `/st broadcast` from kib to send the same message to all player threads",
       "4. `/reminder` / `/st reminder batch` / `/st reminder schedule` for scheduled pings (ST role or allowlist)",
       "5. `/st end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
-      "6. `/st do archive` — opens town/kib for everyone to read, locks all channels/threads read-only, and moves town (and kib channel) to the Archives category (Admin → Guild settings)",
+      "6. `/st do archive` — locks town/kib read-only, strips ST/player/kib roles from members, and moves town (and kib channel) to Archives",
       "",
       "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/st log` to recreate it mid-game.",
       "On mobile, prefer **`/st broadcast`**, **`/st next-phase`**, **`/st resolve-next`**, **`/st execute`**, etc. from the slash menu — no autocomplete. Full catalog still on **`/st do`**. Mid-game buttons: **`/st panel`**.",

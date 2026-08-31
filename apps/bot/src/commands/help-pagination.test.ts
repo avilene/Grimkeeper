@@ -31,10 +31,11 @@ function embedTextSize(embed: {
 }
 
 describe("help pagination", () => {
-  it("paginates ST help because combined embeds exceed Discord's message limit", () => {
+  it("always paginates ST help one embed at a time", () => {
     const pages = buildStHelpEmbeds();
     expect(pages.length).toBeGreaterThan(1);
     expect(shouldPaginateHelp(pages)).toBe(true);
+    expect(shouldPaginateHelp(pages.slice(0, 1))).toBe(false);
 
     const combined = pages.reduce((sum, embed) => sum + embedTextSize(embed), 0);
     expect(combined).toBeGreaterThan(MESSAGE_EMBEDS_TOTAL_LIMIT);

@@ -107,20 +107,9 @@ export function buildHelpPageMessage(
   };
 }
 
-/** True when sending every page at once would exceed Discord's combined embed limit. */
+/** True when the guide has more than one embed — always paginate so Discord cannot 400. */
 export function shouldPaginateHelp(embeds: EmbedBuilder[]): boolean {
-  if (embeds.length <= 1) return false;
-  let total = 0;
-  for (const embed of embeds) {
-    const d = embed.data;
-    total += (d.title?.length ?? 0) + (d.description?.length ?? 0);
-    for (const field of d.fields ?? []) {
-      total += (field.name?.length ?? 0) + field.value.length;
-    }
-    total += d.footer?.text?.length ?? 0;
-    total += d.author?.name?.length ?? 0;
-  }
-  return total > MESSAGE_EMBEDS_TOTAL_LIMIT;
+  return embeds.length > 1;
 }
 
 export async function handleHelpPageButton(interaction: ButtonInteraction): Promise<boolean> {

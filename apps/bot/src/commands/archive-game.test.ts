@@ -24,6 +24,7 @@ import {
   lockThreadReadOnly,
   moveChannelToArchiveCategory,
   replyOrEditInteraction,
+  stripGameRolesFromMembers,
 } from "./command-context.js";
 import { DISCORD_CONTENT_LIMIT, splitDiscordContent } from "../interactions/interaction-response.js";
 
@@ -308,6 +309,7 @@ describe("archiveGameSurfaces", () => {
       },
     };
 
+    const removeRole = vi.fn(async () => undefined);
     const guild = {
       id: "guild-1",
       channels: {
@@ -317,6 +319,10 @@ describe("archiveGameSurfaces", () => {
           return null;
         }),
         fetchActiveThreads: vi.fn(async () => ({ threads: { values: () => [] } })),
+      },
+      members: {
+        cache: { values: () => [] },
+        removeRole,
       },
     };
 
@@ -332,10 +338,55 @@ describe("archiveGameSurfaces", () => {
     const result = await archiveGameSurfaces(guild as never, game);
 
     expect(result.channels).toBe(2);
+    expect(result.rolesStripped).toBe(0);
     expect(townEdit).toHaveBeenCalledWith("guild-1", ARCHIVE_CHANNEL_READONLY);
     expect(kibEdit).toHaveBeenCalledWith("guild-1", ARCHIVE_CHANNEL_READONLY);
     expect(town.send).toHaveBeenCalled();
     expect(kib.send).toHaveBeenCalled();
+    expect(removeRole).not.toHaveBeenCalled();
+  });
+});
+
+describe("stripGameRolesFromMembers", () => {
+  it("removes ST/player/kib roles from roster, storytellers, and cached kib holders", async () => {
+    const removeRole = vi.fn(async () => undefined);
+    const guild = {
+      id: "guild-1",
+      members: {
+        cache: {
+          values: () => [
+            {
+              id: "kib-user",
+              roles: { cache: { has: (id: string) => id === "role-k" } },
+            },
+          ],
+        },
+        removeRole,
+      },
+    };
+    const engine = {
+      getState: () => ({
+        players: [{ discordUserId: "player-1" }, { discordUserId: "dev:bot" }],
+      }),
+      getStorytellerDiscordIds: () => ["st-1"],
+    };
+
+    const result = await stripGameRolesFromMembers(
+      guild as never,
+      {
+        channelId: "town-1",
+        stRoleId: "role-st",
+        playerRoleId: "role-p",
+        kibRoleId: "role-k",
+      },
+      engine as never,
+    );
+
+    expect(result.users).toBe(3);
+    expect(removeRole).toHaveBeenCalledTimes(9);
+    expect(removeRole).toHaveBeenCalledWith({ user: "player-1", role: "role-st" });
+    expect(removeRole).toHaveBeenCalledWith({ user: "kib-user", role: "role-k" });
+    expect(removeRole).not.toHaveBeenCalledWith(expect.objectContaining({ user: "dev:bot" }));
   });
 });
 
@@ -372,6 +423,23 @@ describe("formatArchiveDryRunContent", () => {
     expect(text).not.toContain("lock (public)");
     expect(text).not.toContain("`town`");
     expect(text.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
+  });
+
+  it("lists ST/player/kib roles that would be stripped from members", () => {
+    const text = formatArchiveDryRunContent({
+      channelLines: [{ name: "town", mention: "<#town-1>", action: "lock posting" }],
+      threadLines: [],
+      roleLines: [
+        { name: "st-town", mention: "<@&role-st>", action: "remove from members" },
+        { name: "p-town", mention: "<@&role-p>", action: "remove from members" },
+        { name: "spec-town", mention: "<@&role-k>", action: "remove from members" },
+      ],
+    });
+    expect(text).toContain("ST/player/kib roles would be removed from everyone who has them");
+    expect(text).toContain("**Roles (3)**");
+    expect(text).toContain("• <@&role-st>");
+    expect(text).toContain("• <@&role-p>");
+    expect(text).toContain("• <@&role-k>");
   });
 
   it("fits a typical game's thread list in one Discord message", () => {
