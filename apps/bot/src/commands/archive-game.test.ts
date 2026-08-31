@@ -402,8 +402,8 @@ describe("formatArchiveDryRunContent", () => {
       channelLines: [{ name: "town", mention: "<#town-1>", action: "lock posting" }],
       threadLines: threadLines(90),
     });
-    const editReply = vi.fn(async () => undefined);
-    const followUp = vi.fn(async () => undefined);
+    const editReply = vi.fn(async (_payload: { content: string }) => undefined);
+    const followUp = vi.fn(async (_payload: { content: string; flags?: number }) => undefined);
     const interaction = {
       deferred: true,
       replied: true,
@@ -418,13 +418,12 @@ describe("formatArchiveDryRunContent", () => {
     });
 
     expect(editReply).toHaveBeenCalledOnce();
-    const first = editReply.mock.calls[0]?.[0] as { content: string };
-    expect(first.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
+    const first = editReply.mock.calls[0]?.[0];
+    expect(first?.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
     expect(followUp.mock.calls.length).toBeGreaterThan(0);
     for (const [payload] of followUp.mock.calls) {
-      const extra = payload as { content: string; flags: number };
-      expect(extra.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
-      expect(extra.flags).toBe(MessageFlags.Ephemeral);
+      expect(payload.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
+      expect(payload.flags).toBe(MessageFlags.Ephemeral);
     }
   });
 });
