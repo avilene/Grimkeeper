@@ -61,6 +61,9 @@ import { reportError } from "../error-reporter.js";
 import {
   INTERACTION_PENDING_CONTENT,
   isInteractionAlreadyAcknowledged,
+  isRecoverableInteractionResponseError,
+  isUnknownInteractionError,
+  splitDiscordContent,
   toEditReplyPayload,
   withAcknowledgedFallback,
 } from "../interactions/interaction-response.js";
@@ -1234,6 +1237,32 @@ export type ArchivePreviewResult = {
   channelLines: ArchivePreviewLine[];
   threadLines: ArchivePreviewLine[];
 };
+
+/** Dry-run list of surfaces `/st do archive` would lock (may exceed Discord's 2000-char cap). */
+export function formatArchiveDryRunContent(preview: ArchivePreviewResult): string {
+  const lines: string[] = [];
+  if (preview.channelLines.length > 0) {
+    lines.push(`**Channels (${preview.channelLines.length})**`);
+    for (const channel of preview.channelLines) {
+      lines.push(`• ${channel.mention}`);
+    }
+  }
+  if (preview.threadLines.length > 0) {
+    if (lines.length > 0) lines.push("");
+    lines.push(`**Threads (${preview.threadLines.length})**`);
+    for (const thread of preview.threadLines) {
+      lines.push(`• ${thread.mention}`);
+    }
+  }
+  if (lines.length === 0) {
+    lines.push("Nothing found to archive in this channel.");
+  }
+  return (
+    `**Archive dry run** — no changes made. These would be locked read-only:\n\n` +
+    `${lines.join("\n")}\n\n` +
+    "Run `/st do archive` (without `dry_run`) to apply."
+  );
+}
 
 /**
  * Dry-run version of archiveGameSurfaces / archiveChannelThreadsDirectly.
@@ -2986,9 +3015,26 @@ export async function replyOrEditInteraction(
     });
   }
 
+  const chunks =
+    typeof payload.content === "string" ? splitDiscordContent(payload.content) : [];
+  const first =
+    chunks.length > 0 ? { ...payload, content: chunks[0] } : payload;
+
   await withAcknowledgedFallback(
-    buildInteractionResponseAttempts(interaction, payload, { allowReply: false }),
+    buildInteractionResponseAttempts(interaction, first, { allowReply: false }),
   );
+
+  for (const extra of chunks.slice(1)) {
+    try {
+      await interaction.followUp({
+        content: extra,
+        ...(payload.flags != null ? { flags: payload.flags } : {}),
+      });
+    } catch (error) {
+      if (isUnknownInteractionError(error)) return;
+      if (!isRecoverableInteractionResponseError(error)) throw error;
+    }
+  }
 }
 
 export async function replyEngineError(

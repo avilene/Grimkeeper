@@ -2,12 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   INTERACTION_PENDING_CONTENT,
+  DISCORD_CONTENT_LIMIT,
   interactionCreatedAgeMs,
   isBenignInteractionAckError,
   isInteractionAlreadyAcknowledged,
   isRecoverableInteractionResponseError,
   isUnknownInteractionError,
   shouldReportUnknownInteractionAck,
+  splitDiscordContent,
   toEditReplyPayload,
   UNKNOWN_INTERACTION_REPORT_MIN_AGE_MS,
   withAcknowledgedFallback,
@@ -72,6 +74,33 @@ describe("toEditReplyPayload", () => {
 describe("INTERACTION_PENDING_CONTENT", () => {
   it("is a non-empty pending message", () => {
     expect(INTERACTION_PENDING_CONTENT.length).toBeGreaterThan(0);
+  });
+});
+
+describe("splitDiscordContent", () => {
+  it("returns a single chunk when under the limit", () => {
+    expect(splitDiscordContent("short")).toEqual(["short"]);
+  });
+
+  it("splits on newlines so each chunk stays within the Discord limit", () => {
+    const lines = Array.from({ length: 80 }, (_, i) => `• thread-${String(i).padStart(2, "0")} — lock (private)`);
+    const content = lines.join("\n");
+    expect(content.length).toBeGreaterThan(DISCORD_CONTENT_LIMIT);
+
+    const chunks = splitDiscordContent(content);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
+    }
+    expect(chunks.join("\n")).toBe(content);
+  });
+
+  it("hard-splits a single oversized line", () => {
+    const content = "x".repeat(DISCORD_CONTENT_LIMIT + 50);
+    const chunks = splitDiscordContent(content);
+    expect(chunks.length).toBe(2);
+    expect(chunks[0]?.length).toBe(DISCORD_CONTENT_LIMIT);
+    expect(chunks.join("")).toBe(content);
   });
 });
 

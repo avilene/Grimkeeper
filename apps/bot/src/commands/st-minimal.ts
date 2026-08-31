@@ -56,6 +56,7 @@ import {
   addUserToPlayerStThreads,
   archiveChannelThreadsDirectly,
   archiveGameSurfaces,
+  formatArchiveDryRunContent,
   moveChannelToArchiveCategory,
   previewArchiveSurfaces,
   broadcastToPlayerThreads,
@@ -977,28 +978,8 @@ export class StCommandsMinimal {
       if (dryRun) {
         const game = resolved.noDbRow ? null : resolved.game;
         const preview = await previewArchiveSurfaces(guild, resolved.channelId, game);
-        const lines: string[] = [];
-
-        if (preview.channelLines.length > 0) {
-          lines.push("**Channels — permission overwrites:**");
-          for (const c of preview.channelLines) {
-            lines.push(`• ${c.mention} \`${c.name}\` — ${c.action}`);
-          }
-        }
-        if (preview.threadLines.length > 0) {
-          lines.push("");
-          lines.push(`**Threads — ${preview.threadLines.length} would be locked:**`);
-          for (const t of preview.threadLines) {
-            lines.push(`• ${t.mention} \`${t.name}\` — ${t.action}`);
-          }
-        }
-        if (lines.length === 0) {
-          lines.push("Nothing found to archive in this channel.");
-        }
-
         await replyOrEditInteraction(interaction, {
-          content:
-            `**Archive dry run** — no changes made.\n\n${lines.join("\n")}\n\nRun \`/st do archive\` (without \`dry_run\`) to apply.`,
+          content: formatArchiveDryRunContent(preview),
           flags: MessageFlags.Ephemeral,
         });
         return;

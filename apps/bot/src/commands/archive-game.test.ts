@@ -1,4 +1,4 @@
-import { ChannelType } from "discord.js";
+import { ChannelType, MessageFlags } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@grimkeeper/database", () => ({
@@ -20,9 +20,12 @@ import {
   applyArchiveChannelPermissions,
   archiveChannelThreadsDirectly,
   archiveGameSurfaces,
+  formatArchiveDryRunContent,
   lockThreadReadOnly,
   moveChannelToArchiveCategory,
+  replyOrEditInteraction,
 } from "./command-context.js";
+import { DISCORD_CONTENT_LIMIT, splitDiscordContent } from "../interactions/interaction-response.js";
 
 describe("archive channel permissions", () => {
   it("exports readonly overwrite shapes for @everyone and game roles", () => {
@@ -333,5 +336,95 @@ describe("archiveGameSurfaces", () => {
     expect(kibEdit).toHaveBeenCalledWith("guild-1", ARCHIVE_CHANNEL_READONLY);
     expect(town.send).toHaveBeenCalled();
     expect(kib.send).toHaveBeenCalled();
+  });
+});
+
+describe("formatArchiveDryRunContent", () => {
+  function threadLines(count: number) {
+    return Array.from({ length: count }, (_, i) => ({
+      name: `whisper-${i}`,
+      mention: `<#${100000000000000000n + BigInt(i)}>`,
+      action: "unarchive → lock (private)",
+    }));
+  }
+
+  it("lists only channel and thread mentions, not per-item actions", () => {
+    const text = formatArchiveDryRunContent({
+      channelLines: [
+        {
+          name: "town",
+          mention: "<#town-1>",
+          action:
+            "@everyone: ViewChannel ✓, SendMessages ✗ — move to Archives category \"Archives\"",
+        },
+      ],
+      threadLines: [
+        { name: "Voting", mention: "<#t-vote>", action: "lock (public)" },
+      ],
+    });
+    expect(text).toContain("**Archive dry run**");
+    expect(text).toContain("These would be locked read-only");
+    expect(text).toContain("**Channels (1)**");
+    expect(text).toContain("• <#town-1>");
+    expect(text).toContain("**Threads (1)**");
+    expect(text).toContain("• <#t-vote>");
+    expect(text).not.toContain("ViewChannel");
+    expect(text).not.toContain("lock (public)");
+    expect(text).not.toContain("`town`");
+    expect(text.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
+  });
+
+  it("fits a typical game's thread list in one Discord message", () => {
+    const text = formatArchiveDryRunContent({
+      channelLines: [{ name: "town", mention: "<#town-1>", action: "lock posting" }],
+      threadLines: threadLines(40),
+    });
+    expect(text).toContain("**Threads (40)**");
+    expect(text.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
+  });
+
+  it("splits a very large thread list into Discord-legal chunks", () => {
+    const text = formatArchiveDryRunContent({
+      channelLines: [{ name: "town", mention: "<#town-1>", action: "lock posting" }],
+      threadLines: threadLines(90),
+    });
+    expect(text.length).toBeGreaterThan(DISCORD_CONTENT_LIMIT);
+    const chunks = splitDiscordContent(text);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join("\n")).toBe(text);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
+    }
+  });
+
+  it("edits the first chunk and follow-ups the rest (ephemeral)", async () => {
+    const content = formatArchiveDryRunContent({
+      channelLines: [{ name: "town", mention: "<#town-1>", action: "lock posting" }],
+      threadLines: threadLines(90),
+    });
+    const editReply = vi.fn(async () => undefined);
+    const followUp = vi.fn(async () => undefined);
+    const interaction = {
+      deferred: true,
+      replied: true,
+      editReply,
+      followUp,
+      reply: vi.fn(),
+    };
+
+    await replyOrEditInteraction(interaction as never, {
+      content,
+      flags: MessageFlags.Ephemeral,
+    });
+
+    expect(editReply).toHaveBeenCalledOnce();
+    const first = editReply.mock.calls[0]?.[0] as { content: string };
+    expect(first.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
+    expect(followUp.mock.calls.length).toBeGreaterThan(0);
+    for (const [payload] of followUp.mock.calls) {
+      const extra = payload as { content: string; flags: number };
+      expect(extra.content.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
+      expect(extra.flags).toBe(MessageFlags.Ephemeral);
+    }
   });
 });
