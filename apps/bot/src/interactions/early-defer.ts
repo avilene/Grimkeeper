@@ -1,5 +1,6 @@
 import { type ChatInputCommandInteraction, type Interaction, MessageFlags } from "discord.js";
 
+import { ST_ROOT_SLASH_NAMES } from "../commands/action-catalog.js";
 import { reportError } from "../error-reporter.js";
 import {
   INTERACTION_PENDING_CONTENT,
@@ -64,6 +65,10 @@ export function shouldDeferSlashCommand(interaction: Interaction): boolean {
   if (isModalOpeningCommand(interaction)) return false;
 
   if (PLAYER_DAY_COMMANDS.has(interaction.commandName)) {
+    return true;
+  }
+
+  if (ST_ROOT_SLASH_NAMES.has(interaction.commandName)) {
     return true;
   }
 

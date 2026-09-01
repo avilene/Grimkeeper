@@ -4,9 +4,10 @@ import {
   GAME_LOBBY_ACTIONS,
   PLAYER_DAY_ACTIONS,
   PLAYER_VOTE_ACTIONS,
-  ST_DO_ACTIONS,
+  ST_ROOT_ACTIONS,
+  ST_ROOT_SKIP_ACTIONS,
   ST_SETUP_ACTIONS,
-  ST_SLASH_SHORTCUTS,
+  stRootSlashName,
   type DoAction,
 } from "./action-catalog.js";
 
@@ -22,14 +23,14 @@ function cmd(name: string, description: string): string {
   return `**${name}**\n${description}`;
 }
 
-const ST_SHORTCUT_NAMES = new Set(ST_SLASH_SHORTCUTS.map((action) => action.name));
-
-/** Hide legacy aliases (e.g. `say`) from help embeds / search; they still work via `/st do`. */
-const ST_DO_ACTIONS_FOR_HELP = ST_DO_ACTIONS.filter((action) => action.name !== "say");
-
-/** Prefer `/st <name>` when a first-class shortcut exists; otherwise `/st do <name>`. */
+/** Prefer flattened `/name`; `/st do` only for skipped aliases (`say`, `start`). */
 function stCommandPrefix(actionName: string): string {
-  return ST_SHORTCUT_NAMES.has(actionName) ? "/st" : "/st do";
+  if (ST_ROOT_SKIP_ACTIONS.has(actionName)) return "/st do";
+  return "";
+}
+
+function stSlash(actionName: string): string {
+  return `/${stRootSlashName(actionName)}`;
 }
 
 function formatDoAction(action: DoAction, prefix: string): string {
@@ -67,7 +68,7 @@ export const GAME_HELP_ENTRIES: HelpEntry[] = [
   },
   ...entriesFromActions(GAME_LOBBY_ACTIONS, "/game"),
   ...ST_SETUP_ACTIONS.map((action) => ({
-    command: `${stCommandPrefix(action.name)} ${action.name}`,
+    command: stSlash(action.name),
     description:
       action.description +
       (action.needs?.length
@@ -102,20 +103,7 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
     command: "/st do",
     description: "Pick any action via autocomplete, then fill only the options that action needs.",
   },
-  ...entriesFromActions(ST_SLASH_SHORTCUTS, "/st"),
-  {
-    command: "/st panel",
-    description: "Pin/refresh kib buttons: resolve, execute, votes, close nominations, next phase, …",
-  },
-  {
-    command: "/st add-kib",
-    description: "Assign kib role (+ thread access when kib is a thread). Same as `/st do add-spectator`.",
-  },
-  {
-    command: "/st remove-kib",
-    description: "Remove kib role. Same as `/st do remove-spectator`.",
-  },
-  ...entriesFromActions(ST_DO_ACTIONS_FOR_HELP, "/st do"),
+  ...entriesFromActions(ST_ROOT_ACTIONS, ""),
   {
     command: "/st guide topic: setup",
     description: "Checklist: lobby → town setup.",
@@ -131,11 +119,6 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
   {
     command: "/st guide topic: buffet",
     description: "Checklist: configuring and running a Sushi Buffet role draft.",
-  },
-  {
-    command: "/st mark",
-    description:
-      "In a town thread: assign it as Town Voting, Rules, Public Claims, or Whisper Declaration.",
   },
   {
     command: "/st queue show",
@@ -491,7 +474,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
         [
           "Day play uses top-level slash commands — not `/game …`.",
           "**`/nominate`** · **`/accusation`** · **`/defend`** · **`/vote`** · **`/privatevote`** · **`/roster`** · **`/whisper`** · **`/backpack`** · **`/role`** · **`/script`** · **`/alias`** · **`/stats`**",
-          "Nominations and votes happen in the **Town Voting** thread once Day 1 begins (`/st next-phase` twice after setup-town: Setup → Night 1 → Day 1).",
+          "Nominations and votes happen in the **Town Voting** thread once Day 1 begins (`/next-phase` twice after setup-town: Setup → Night 1 → Day 1).",
           "Each living player may nominate **once per day**; each player (alive or dead) may be nominated **once per day**. Ghosts cannot nominate (activated Banshee: twice/day).",
           "Update your accusation with **`/accusation`**. Nominee defense: **`/defend`**.",
           "Public ballot: `/vote` (or the Vote button). Private ballot: `/privatevote` (ST sees it on the kib tracker).",
@@ -502,7 +485,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
           "Set how your name appears with **`/alias`** (defaults to a short form of your Discord name at setup).",
           "Ended-game record: **`/stats`** (optional `user:`) for win rate and most-played characters.",
           "",
-          "Day-play only: **`/player help`**. Lobby: `/game setup` then **`/st setup-town`**. Full ST guide: **`/st help`**.",
+          "Day-play only: **`/player help`**. Lobby: `/game setup` then **`/setup-town`**. Full ST guide: **`/st help`**.",
           "Also available as **`/game help`**. Search: `/game help search: vote`.",
         ].join("\n"),
       )
@@ -526,7 +509,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
         ...doActionFields(
           ST_SETUP_ACTIONS,
           (action) => stCommandPrefix(action.name),
-          "Setup (`/st …` / `/st do …`)",
+          "Setup (`/setup-town` …)",
         ),
         {
           name: "Voting venues",
@@ -535,7 +518,7 @@ export function buildGameHelpEmbeds(): EmbedBuilder[] {
             "**`/vote`** — public ballot. **`/privatevote`** — private ballot (ST sees it on the kib **vote tracker**).",
             "**Whisper threads** — `/whisper neighbor` or `/whisper with` (ST is added). Declarations post to Whisper Declaration when available.",
             "You can vote on **any** open nomination.",
-            "ST sets public vs secret tallies with `/st do vote-visibility` or the kib control panel (applies to new nominations only).",
+            "ST sets public vs secret tallies with `/vote-visibility` or the kib control panel (applies to new nominations only).",
           ].join("\n"),
         },
       ),
@@ -548,14 +531,14 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
     description: [
       "**Quick start**",
       "1. `/game setup` in the town channel — pick existing `st:`, `player_role:`, and `kib:` roles (optional `kib_thread:` channel/thread + `log_thread:`). If you pass a kib **channel**, add the Grimkeeper bot to that channel first.",
-      "2. `/st setup-town` with `players:` @mentions in **seat order** (any player count)",
-      "3. `/st broadcast` from kib to send the same message to all player threads",
+      "2. `/setup-town` with `players:` @mentions in **seat order** (any player count)",
+      "3. `/broadcast` from kib to send the same message to all player threads",
       "4. `/reminder` / `/st reminder batch` / `/st reminder schedule` for scheduled pings (ST role or allowlist)",
-      "5. `/st end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
-      "6. `/st do archive` — locks town/kib read-only, strips ST/player/kib roles from members, and moves town (and kib channel) to Archives",
+      "5. `/end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
+      "6. `/archive` — locks town/kib read-only, strips ST/player/kib roles from members, and moves town (and kib channel) to Archives",
       "",
-      "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/st log` to recreate it mid-game.",
-      "On mobile, prefer **`/st broadcast`**, **`/st next-phase`**, **`/st resolve-next`**, **`/st execute`**, etc. from the slash menu — no autocomplete. Full catalog still on **`/st do`**. Mid-game buttons: **`/st panel`**.",
+      "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/log` to recreate it mid-game.",
+      "ST commands are top-level (`/broadcast`, `/next-phase`, `/resolve-next`, `/execute`, `/add-kib`, …). `/st do` remains an autocomplete fallback. Nested `/st …` shortcuts still work. Mid-game buttons: **`/panel`**.",
       "Phase checklists: **`/st guide topic: setup`**, **`/st guide topic: buffet`**, **`/st guide topic: day`**, **`/st guide topic: night`**.",
     ].join("\n"),
     fields: [
@@ -563,27 +546,27 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
         name: "How to run commands",
         value: [
           cmd(
-            "/st … shortcuts",
-            "Frequent mobile subcommands (setup-town, broadcast, next-phase, sub, resolve-next, …). Full catalog: `/st do`. Fail-all / kib repost / reset-to-setup: panel or `/st do`.",
+            "/setup-town, /add-kib, /archive, …",
+            "Storyteller actions are true top-level slash commands. Nested `/st …` shortcuts and `/st do` autocomplete still work.",
           ),
           cmd(
             "/st do",
-            "Full action catalog via autocomplete (everything else, plus the shortcuts above).",
+            "Full action catalog via autocomplete (fallback if you prefer one nested command).",
           ),
           cmd(
             "/st guide topic: setup|buffet|day|night",
             "Phase checklist (commands only where the bot is involved).",
           ),
           cmd(
-            "/st mark",
+            "/mark",
             "In a town thread: assign it as Town Voting, Rules, Public Claims, or Whisper Declaration.",
           ),
           cmd(
-            "/st panel",
+            "/panel",
             "Pin/refresh kib buttons: resolve, execute, votes, close nominations, fail all open, repost kib noms, next phase, …",
           ),
           cmd(
-            "/st add-kib / remove-kib",
+            "/add-kib · /remove-kib",
             "Assign or remove kib role (same as `/st do add-spectator` / `remove-spectator`).",
           ),
           cmd(
@@ -593,8 +576,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
           cmd("/st help", "This guide (optional `search:`)."),
         ].join("\n\n"),
       },
-      ...doActionFields(ST_SLASH_SHORTCUTS, "/st", "Mobile shortcuts (`/st …`)"),
-      ...doActionFields(ST_DO_ACTIONS_FOR_HELP, "/st do", "All actions (`/st do …`)"),
+      ...doActionFields(ST_ROOT_ACTIONS, "", "ST commands"),
       {
         name: "Reminders",
         value: [
@@ -616,13 +598,13 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
       {
         name: "Notes",
         value: [
-          "`setup-town` → **Setup** (Voting, Whisper Decl, Claims, Rules). `/st next-phase` → Night 1 → Day 1.",
+          "`setup-town` → **Setup** (Voting, Whisper Decl, Claims, Rules). `/next-phase` → Night 1 → Day 1.",
           "Public `/vote` or Vote button; private `/privatevote` (kib tracker).",
-          "`/st mark` assigns Voting / Rules / Claims / Whisper Decl. `/st do recreate-threads` · `/st recreate-player-thread`.",
+          "`/mark` assigns Voting / Rules / Claims / Whisper Decl. `/recreate-threads` · `/recreate-player-thread`.",
           "Lock/count in Town Voting; **Announce & resolve** → Voting + audit log.",
-          "One nom per living player/day (Banshee after `/st mark-dead banshee:true`: twice/day + yes×2, no ghost vote). Ghosts otherwise cannot nominate.",
+          "One nom per living player/day (Banshee after `/mark-dead banshee:true`: twice/day + yes×2, no ghost vote). Ghosts otherwise cannot nominate.",
           "`next-phase` renames town `…-setup` / `…-nightN` / `…-dayN`. Co-STs: `add-st` / `remove-st` / `sync-st-threads`.",
-          "`/st sub` swaps a seat. `/st do reset-to-setup` (ADMIN_IDS). Day stamps skip Rules.",
+          "`/sub` swaps a seat. `/reset-to-setup` (ADMIN_IDS). Day stamps skip Rules.",
         ].join("\n"),
       },
     ],
@@ -678,24 +660,24 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
         {
           name: "2. Open town",
           value: checklist([
-            "`/st setup-town` with `players:` @mentions in **seat order** (enters **Setup**; nominations closed)",
+            "`/setup-town` with `players:` @mentions in **seat order** (enters **Setup**; nominations closed)",
             "Confirm **Town Voting**, **Whisper Declaration**, **Public Claims**, **Rules** opened",
             "Post house rules in **Rules** (ST write-only)",
-            "Optional: `/st mark` in a custom thread to assign Town Voting / Rules / Claims / Whisper Declaration",
-            "Missing surfaces? `/st do recreate-threads` (includes Town Voting)",
+            "Optional: `/mark` in a custom thread to assign Town Voting / Rules / Claims / Whisper Declaration",
+            "Missing surfaces? `/recreate-threads` (includes Town Voting)",
           ]),
         },
         {
           name: "3. Before Day 1",
           value: checklist([
-            "`/st panel` — pin control panel in kib (or `/st do panel`)",
-            "Optional: `/st do vote-visibility` `mode: public|secret`",
-            "Optional: `/st broadcast` — send the same message to all player ST threads",
+            "`/panel` — pin control panel in kib",
+            "Optional: `/vote-visibility` `mode: public|secret`",
+            "Optional: `/broadcast` — send the same message to all player ST threads",
             "Optional: `/reminder` / `/st reminder batch` / `/st reminder schedule`",
-            "Optional: `/st do add-st` / `/st do sync-st-threads` / `/st add-kib`",
-            "Optional: `/st log` if the audit log is missing",
-            "**Sushi Buffet?** Admin panel → game → Sushi Buffet config (toggle roles, save), then `/st do buffet-start`",
-            "`/st next-phase` — start **Day 1** (opens nominations)",
+            "Optional: `/add-st` / `/sync-st-threads` / `/add-kib`",
+            "Optional: `/log` if the audit log is missing",
+            "**Sushi Buffet?** Admin panel → game → Sushi Buffet config (toggle roles, save), then `/buffet-start`",
+            "`/next-phase` — start **Day 1** (opens nominations)",
           ]),
         },
         {
@@ -718,7 +700,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           name: "1. Prepare the game",
           value: checklist([
             "`/game setup` — configure the game roles and a kib thread or channel (if kib is a channel, add the Grimkeeper bot to it first)",
-            "`/st setup-town` with players in seat order — creates every player’s private ST thread",
+            "`/setup-town` with players in seat order — creates every player’s private ST thread",
             "Do not advance to Night 1 yet; the draft can start only during **Setup**",
           ]),
         },
@@ -734,13 +716,13 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
         {
           name: "3. Run and finish",
           value: checklist([
-            "`/st do buffet-start` — sends the first private offer; players pick in their own ST threads",
+            "`/buffet-start` — sends the first private offer; players pick in their own ST threads",
             "For fake/dev players, the ST picks from that player’s ST thread",
-            "Enable **Lunatic** in admin if you want one, then `/st do buffet-assign-lunatic player:@…` before or during the draft",
-            "After outsider-count roles (Baron, etc.), `/st do buffet-assign-drunk player:@…` if you need a Drunk",
-            "`/st do buffet-status` — check picks + recreate kib draft tracker; `/st do buffet-cancel` — stop before completion",
-            "`/st do buffet-export-clocktower` — JSON for clocktower.live grimoire import",
-            "When complete, the complete player → role roster is posted privately in kib; then `/st next-phase` for Night 1",
+            "Enable **Lunatic** in admin if you want one, then `/buffet-assign-lunatic player:@…` before or during the draft",
+            "After outsider-count roles (Baron, etc.), `/buffet-assign-drunk player:@…` if you need a Drunk",
+            "`/buffet-status` — check picks + recreate kib draft tracker; `/buffet-cancel` — stop before completion",
+            "`/buffet-export-clocktower` — JSON for clocktower.live grimoire import",
+            "When complete, the complete player → role roster is posted privately in kib; then `/next-phase` for Night 1",
           ]),
         },
         {
@@ -762,31 +744,31 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
           name: "During the day",
           value: checklist([
             "Players: `/nominate`, `/accusation`, `/defend`, `/vote` (public), `/privatevote` (private)",
-            "Watch kib vote tracker — refresh with `/st do votes` if needed (also refreshes Town Voting nomination embeds)",
+            "Watch kib vote tracker — refresh with `/votes` if needed (also refreshes Town Voting nomination embeds)",
             "Lock / count / announce from Town Voting or the panel",
-            "`/st resolve-next` (or panel) — resolve oldest open nomination",
-            "`/st do fail-open-noms` (or panel) — force-fail every open nomination",
-            "`/st ping-missing` `nominee:` — ping everyone still missing a vote on that nom",
-            "`/st extend-noms` `hours:` — add hours to each nom’s existing deadline (even if past)",
-            "`/st do repost-kib-noms` (or panel) — delete+repost open nom embeds at the bottom of kib",
-            "If it passed: `/st execute` `player:` (or panel)",
-            "Other deaths: `/st mark-dead` `player:` (`alive:` revive; `banshee:true` Demon-kill Banshee)",
-            "Fix a ballot: `/st do set-vote` — or nominate for someone: `/st nominate`",
-            "After admin DB edits: `/st refresh-noms` (recreates missing open embeds + updates votes)",
+            "`/resolve-next` (or panel) — resolve oldest open nomination",
+            "`/fail-open-noms` (or panel) — force-fail every open nomination",
+            "`/ping-missing` `nominee:` — ping everyone still missing a vote on that nom",
+            "`/extend-noms` `hours:` — add hours to each nom’s existing deadline (even if past)",
+            "`/repost-kib-noms` (or panel) — delete+repost open nom embeds at the bottom of kib",
+            "If it passed: `/execute` `player:` (or panel)",
+            "Other deaths: `/mark-dead` `player:` (`alive:` revive; `banshee:true` Demon-kill Banshee)",
+            "Fix a ballot: `/set-vote` — or nominate for someone: `/st-nominate`",
+            "After admin DB edits: `/refresh-noms` (recreates missing open embeds + updates votes)",
           ]),
         },
         {
           name: "End of day",
           value: checklist([
-            "`/st close-nominations` — no new noms until next day",
-            "`/st next-phase` — advance to night (renames town to `…-nightN`)",
+            "`/close-nominations` — no new noms until next day",
+            "`/next-phase` — advance to night (renames town to `…-nightN`)",
           ]),
         },
         {
           name: "Also",
           value: [
             "Whispers are player-side (`/whisper …`); declarations go to Whisper Declaration.",
-            "Game over: `/st end` with `winner: good` or `evil`. Then `/st do archive` to freeze town/kib read-only.",
+            "Game over: `/end` with `winner: good` or `evil`. Then `/archive` to freeze town/kib read-only.",
             "Setup: `/st guide topic: setup` · Night: `/st guide topic: night` · All commands: `/st help`",
           ].join("\n"),
         },
@@ -803,23 +785,23 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
       {
         name: "During the night",
         value: checklist([
-          "`/st broadcast` — send the same night info to every player ST thread",
+          "`/broadcast` — send the same night info to every player ST thread",
           "Use each player’s private ST thread for personal night results",
-          "Deaths overnight: `/st mark-dead` `player:` (`banshee:true` for Demon-kill Banshee)",
+          "Deaths overnight: `/mark-dead` `player:` (`banshee:true` for Demon-kill Banshee)",
           "Optional: `/reminder` / `/st reminder batch` for morning pings",
         ]),
       },
       {
         name: "End of night",
         value: checklist([
-          "`/st next-phase` — open the next day (Town Voting + day stamps; renames to `…-dayN`)",
+          "`/next-phase` — open the next day (Town Voting + day stamps; renames to `…-dayN`)",
           "Confirm kib panel / vote tracker are ready for nominations",
         ]),
       },
       {
         name: "Also",
         value: [
-          "Game over: `/st end` with `winner: good` or `evil`. Then `/st do archive` to freeze town/kib read-only.",
+          "Game over: `/end` with `winner: good` or `evil`. Then `/archive` to freeze town/kib read-only.",
           "Setup: `/st guide topic: setup` · Day: `/st guide topic: day` · All commands: `/st help`",
         ].join("\n"),
       },

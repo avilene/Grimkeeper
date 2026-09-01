@@ -48,7 +48,7 @@ If both `ADMIN_IDS` and `ALLOWED_ROLE_IDS` are empty, everyone in the guild can 
 
 ## Commands
 
-Player day play uses top-level slash commands. Storytellers use `/st …`. Guides: **`/game help`**, **`/st help`** (optional `search:`).
+Player day play uses top-level slash commands. Storytellers also use top-level commands (`/setup-town`, `/add-kib`, `/archive`, …); `/st do` remains an autocomplete fallback. Nested `/st …` shortcuts still work. Guides: **`/game help`**, **`/st help`** (optional `search:`).
 
 | Command | Description |
 |---------|-------------|
@@ -59,12 +59,13 @@ Player day play uses top-level slash commands. Storytellers use `/st …`. Guide
 | `/vote` | Vote on an open nomination |
 | `/roster` | Show seat order and alive/dead |
 | `/role` | Look up a BotC character (`name:` fuzzy search) |
-| `/st setup-town` | Set roster + seats from ordered @mentions |
-| `/st broadcast` | Send the same message to every player ST thread (from kib) |
-| `/st end` | End the game (strip roles, open kib for post-game chat) |
-| `/st do archive` | Open town/kib for reading and lock all channels/threads read-only |
-| `/st do` | Autocomplete ST actions (resolve, execute, next-phase, …) |
-| `/st panel` | Pin/refresh kib control panel |
+| `/setup-town` | Set roster + seats from ordered @mentions |
+| `/broadcast` | Send the same message to every player ST thread (from kib) |
+| `/end` | End the game (strip roles, open kib for post-game chat) |
+| `/archive` | Open town/kib for reading and lock all channels/threads read-only |
+| `/st do` | Autocomplete ST actions (fallback for the full catalog) |
+| `/panel` | Pin/refresh kib control panel |
+| `/add-kib` | Assign kib role (+ thread access when kib is a thread) |
 | `/st help` | Storyteller command guide (`search:` filters by name/description) |
 | `/st guide setup` / `day` / `night` | Phase checklists |
 | `/reminder` / `/listreminders` / `/clearreminders` | Reminder shortcuts (`/reminder` = batch offsets) |
@@ -74,20 +75,20 @@ Player day play uses top-level slash commands. Storytellers use `/st …`. Guide
 
 Optional role-draft mode (like [Grim Bits Draft Buffet](https://grimbits.com/draft-buffet/)):
 
-1. `/game setup` → `/st setup-town` as usual
+1. `/game setup` → `/setup-town` as usual
 2. Open the admin game page → **Sushi Buffet Draft** — toggle roles off (all on by default), set recycle option, save
-3. `/st do buffet-start` — offers go to player ST threads in random order; players pick (or mulligan 3→2→1)
-4. When complete, roles are assigned; continue with `/st next-phase` as usual
+3. `/buffet-start` — offers go to player ST threads in random order; players pick (or mulligan 3→2→1)
+4. When complete, roles are assigned; continue with `/next-phase` as usual
 
-Also: `/st do buffet-status`, `/st do buffet-cancel`, `/st do buffet-configure` (`recycle:` true/false).
+Also: `/buffet-status`, `/buffet-cancel`, `/buffet-configure` (`recycle:` true/false).
 
 **Setup rules applied automatically during the draft:**
 
 - Outsider-count roles (Baron, Fang Gu, Vigormortis, Balloonist, Godfather) adjust remaining outsider/townsfolk slots when picked
 - **Drunk** / **Lunatic** / **Marionette** are never offered as pick buttons. Lunatic and Marionette are **off by default** in the admin pool.
 - **Hermit** is a normal pickable outsider (with −0/−1 outsider setup when drafted).
-- **Lunatic**: enable in admin, then ST pre-assign with `/st do buffet-assign-lunatic player:@…` (before or during the draft; they get demon choices). You can also set Lunatic on a player in the admin roles table before buffet-start — the draft will respect it.
-- **Drunk** is ST-assigned when outsider mods need it: `/st do buffet-assign-drunk player:@…` (unpicked players get townsfolk choices; already-picked Townsfolk can be converted).
+- **Lunatic**: enable in admin, then ST pre-assign with `/buffet-assign-lunatic player:@…` (before or during the draft; they get demon choices). You can also set Lunatic on a player in the admin roles table before buffet-start — the draft will respect it.
+- **Drunk** is ST-assigned when outsider mods need it: `/buffet-assign-drunk player:@…` (unpicked players get townsfolk choices; already-picked Townsfolk can be converted).
 - **Lil' Monsta** can be picked, then the same player immediately chooses which Minion they are (Lil' Monsta isn't a player)
 - **Summoner** enabled in the pool → no Demon in the bag from the start (demon slots become townsfolk)
 

@@ -10,7 +10,7 @@ export type DoAction = {
 export const ST_DO_ACTIONS: DoAction[] = [
   { name: "setup-town", description: "Set roster + seats from ordered @mentions", needs: ["players"] },
   { name: "broadcast", description: "Broadcast to all player threads from kib", needs: ["message"] },
-  { name: "say", description: "Alias for broadcast (prefer /st broadcast)", needs: ["message"] },
+  { name: "say", description: "Alias for broadcast (prefer /broadcast)", needs: ["message"] },
   { name: "log", description: "Create or reopen the ST-only audit log thread" },
   {
     name: "recreate-threads",
@@ -69,8 +69,8 @@ export const ST_DO_ACTIONS: DoAction[] = [
     name: "refresh-noms",
     description: "Push nomination/vote DB state to Discord (recreate missing open embeds, update votes)",
   },
-  { name: "add-spectator", description: "Assign kib role + thread access (or use /st add-kib)", needs: ["user"] },
-  { name: "remove-spectator", description: "Remove kib role (or use /st remove-kib)", needs: ["user"] },
+  { name: "add-spectator", description: "Assign kib role + thread access (or use /add-kib)", needs: ["user"] },
+  { name: "remove-spectator", description: "Remove kib role (or use /remove-kib)", needs: ["user"] },
   { name: "add-st", description: "Promote a co-storyteller (ST role only; no new player thread)", needs: ["user"] },
   {
     name: "remove-st",
@@ -109,6 +109,48 @@ export const ST_DO_ACTIONS: DoAction[] = [
     description: "Export clocktower.live gamestate JSON (roles + seated players for grimoire import)",
   },
 ];
+
+/**
+ * `/st do` actions that do not get a true top-level slash command.
+ * `say` aliases broadcast; `start` is legacy (prefer setup-town).
+ */
+export const ST_ROOT_SKIP_ACTIONS = new Set(["say", "start"]);
+
+/**
+ * Discord forbids two global commands with the same name. Player `/nominate`
+ * stays; the ST-on-behalf action is `/st-nominate`. Kib helpers use `/add-kib`
+ * / `/remove-kib` (same as the `/st` shortcuts) instead of add/remove-spectator.
+ */
+export const ST_ROOT_NAME_ALIASES: Record<string, string> = {
+  "add-spectator": "add-kib",
+  "remove-spectator": "remove-kib",
+  nominate: "st-nominate",
+};
+
+export function stRootSlashName(actionName: string): string {
+  return ST_ROOT_NAME_ALIASES[actionName] ?? actionName;
+}
+
+/** Thread-surface marker — first-class `/st mark`, not a `/st do` action. */
+const MARK_ROOT_ACTION: DoAction = {
+  name: "mark",
+  description: "Mark this thread as Town Voting, Rules, Public Claims, or Whisper Declaration",
+  needs: ["surface"],
+};
+
+/**
+ * True top-level ST slash commands (`/add-kib`, `/archive`, …).
+ * Same handlers as `/st do` / `/st …` shortcuts. `/st do` stays as autocomplete fallback.
+ */
+export const ST_ROOT_ACTIONS: DoAction[] = [
+  ...ST_DO_ACTIONS.filter((action) => !ST_ROOT_SKIP_ACTIONS.has(action.name)).map((action) => ({
+    ...action,
+    name: stRootSlashName(action.name),
+  })),
+  MARK_ROOT_ACTION,
+];
+
+export const ST_ROOT_SLASH_NAMES = new Set(ST_ROOT_ACTIONS.map((action) => action.name));
 
 /**
  * First-class `/st <name>` shortcuts for mobile (same handlers as `/st do <name>`).

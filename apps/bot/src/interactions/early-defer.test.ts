@@ -104,6 +104,9 @@ describe("shouldDeferSlashCommand", () => {
     expect(shouldDeferSlashCommand(chatCommand("reminder", null) as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("listreminders", null) as never)).toBe(true);
     expect(shouldDeferSlashCommand(chatCommand("clearreminders", null) as never)).toBe(true);
+    expect(shouldDeferSlashCommand(chatCommand("add-kib", null) as never)).toBe(true);
+    expect(shouldDeferSlashCommand(chatCommand("archive", null) as never)).toBe(true);
+    expect(shouldDeferSlashCommand(chatCommand("st-nominate", null) as never)).toBe(true);
   });
 
   it("does not defer /role (public character lookup)", () => {

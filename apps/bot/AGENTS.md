@@ -16,13 +16,14 @@ src/
 
   commands/                Slash command handlers (discordx @Discord / @Slash decorators)
     command-context.ts     ← central file: game lookup, engine event dispatch, Discord channel ops
-    action-catalog.ts      Map of /st do autocomplete actions → handler functions
+    action-catalog.ts      Map of /st do autocomplete + flattened top-level ST commands
     alias.ts               /alias command
     help-content.ts        /game help + /st help content
     help-pagination.ts     Button pagination for help embeds
     role.ts                /role character lookup
     st-queue.ts            /st queue commands
     st-reminders.ts        /st reminder* + /reminder /listreminders /clearreminders
+    st-root.ts             Flattened ST slash commands (/add-kib, /archive, …)
     interest.ts            /interest create (interest-check posts)
     stats.ts               /stats command
     whisper.ts             /whisper command

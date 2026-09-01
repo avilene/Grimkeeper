@@ -12,6 +12,7 @@ export async function loadCommandModules(): Promise<void> {
   await import("./commands/role.js");
   await import("./commands/script.js");
   await import("./commands/st-minimal.js");
+  await import("./commands/st-root.js");
   await import("./commands/st-reminders.js");
   // Always register `/st queue` — board thread is per-guild via `/st queue set` (env is optional fallback).
   await import("./commands/st-queue.js");
@@ -38,6 +39,7 @@ export async function loadCommandModules(): Promise<void> {
       "script",
       "st",
       "st.queue",
+      "st-root",
       "reminder",
       "listreminders",
       "clearreminders",

@@ -4,8 +4,12 @@ import {
   normalizeDoActionInput,
   resolveDoActionName,
   PLAYER_DAY_ACTIONS,
+  PLAYER_VOTE_ACTIONS,
   ST_DO_ACTIONS,
+  ST_ROOT_ACTIONS,
+  ST_ROOT_SKIP_ACTIONS,
   ST_SLASH_SHORTCUTS,
+  stRootSlashName,
 } from "./action-catalog.js";
 
 function filterDoActions(query: string) {
@@ -128,5 +132,62 @@ describe("sync-player-roles discoverability", () => {
   it("is in /st do but not a first-class shortcut", () => {
     expect(ST_DO_ACTIONS.some((a) => a.name === "sync-player-roles")).toBe(true);
     expect(ST_SLASH_SHORTCUTS.some((a) => a.name === "sync-player-roles")).toBe(false);
+  });
+});
+
+describe("ST_ROOT_ACTIONS", () => {
+  it("flattens every /st do action except say and start", () => {
+    const rootNames = new Set(ST_ROOT_ACTIONS.map((action) => action.name));
+    for (const action of ST_DO_ACTIONS) {
+      if (ST_ROOT_SKIP_ACTIONS.has(action.name)) {
+        expect(rootNames.has(action.name)).toBe(false);
+        continue;
+      }
+      expect(rootNames.has(stRootSlashName(action.name))).toBe(true);
+    }
+    expect(rootNames.has("mark")).toBe(true);
+    expect(rootNames.has("add-kib")).toBe(true);
+    expect(rootNames.has("remove-kib")).toBe(true);
+    expect(rootNames.has("st-nominate")).toBe(true);
+    expect(rootNames.has("nominate")).toBe(false);
+    expect(rootNames.has("add-spectator")).toBe(false);
+    expect(rootNames.has("say")).toBe(false);
+    expect(rootNames.has("start")).toBe(false);
+  });
+
+  it("uses unique Discord command names under 32 chars", () => {
+    const names = ST_ROOT_ACTIONS.map((action) => action.name);
+    expect(new Set(names).size).toBe(names.length);
+    for (const name of names) {
+      expect(name.length).toBeGreaterThanOrEqual(1);
+      expect(name.length).toBeLessThanOrEqual(32);
+      expect(name).toMatch(/^[\w-]{1,32}$/);
+    }
+  });
+
+  it("does not collide with player slash commands", () => {
+    const reserved = new Set([
+      ...PLAYER_VOTE_ACTIONS.map((action) => action.name),
+      "nominate",
+      "accusation",
+      "defend",
+      "roster",
+      "whisper",
+      "backpack",
+      "alias",
+      "stats",
+      "role",
+      "script",
+      "reminder",
+      "listreminders",
+      "clearreminders",
+      "game",
+      "st",
+      "interest",
+      "dev",
+    ]);
+    for (const action of ST_ROOT_ACTIONS) {
+      expect(reserved.has(action.name)).toBe(false);
+    }
   });
 });

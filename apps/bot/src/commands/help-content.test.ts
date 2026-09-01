@@ -4,9 +4,9 @@ import {
   GAME_LOBBY_ACTIONS,
   PLAYER_DAY_ACTIONS,
   PLAYER_VOTE_ACTIONS,
-  ST_DO_ACTIONS,
+  ST_ROOT_ACTIONS,
   ST_SETUP_ACTIONS,
-  ST_SLASH_SHORTCUTS,
+  stRootSlashName,
 } from "./action-catalog.js";
 import {
   buildDevHelpEmbeds,
@@ -78,30 +78,25 @@ describe("help content", () => {
       expect(gameText).toContain(action.description);
     }
     for (const action of ST_SETUP_ACTIONS) {
-      const prefix = ST_SLASH_SHORTCUTS.some((s) => s.name === action.name) ? "/st" : "/st do";
-      expect(gameText).toContain(`${prefix} ${action.name}`);
+      expect(gameText).toContain(`/${stRootSlashName(action.name)}`);
       expect(gameText).toContain(action.description);
     }
-    expect(gameText).toContain("/st setup-town");
-    expect(gameText).toContain("/st log");
-    expect(gameText).toContain("/st do recreate-threads");
+    expect(gameText).toContain("/setup-town");
+    expect(gameText).toContain("/log");
+    expect(gameText).toContain("/recreate-threads");
 
     expect(st.data.title).toBe("Storyteller guide");
     expect(stEmbeds.length).toBeGreaterThan(1);
     expect(st.data.description).toContain("/game setup");
     expect(st.data.description).toContain("add the Grimkeeper bot");
     expect(st.data.description).toContain("log thread");
-    expect(st.data.description).toContain("/st next-phase");
-    expect(st.data.description).toContain("/st broadcast");
-    for (const action of ST_SLASH_SHORTCUTS) {
-      expect(stText).toContain(`/st ${action.name}`);
+    expect(st.data.description).toContain("/next-phase");
+    expect(st.data.description).toContain("/broadcast");
+    for (const action of ST_ROOT_ACTIONS) {
+      expect(stText).toContain(`/${action.name}`);
       expect(stText).toContain(action.description);
     }
-    for (const action of ST_DO_ACTIONS.filter((a) => a.name !== "say")) {
-      expect(stText).toContain(`/st do ${action.name}`);
-      expect(stText).toContain(action.description);
-    }
-    expect(stText).toContain("/st broadcast");
+    expect(stText).toContain("/broadcast");
     expect(stText).not.toContain("/st do say");
     expect(stText).not.toContain("/st say");
     expect(stText.toLowerCase()).toContain("close-nominations");
@@ -109,7 +104,7 @@ describe("help content", () => {
     expect(stText.toLowerCase()).toContain("add-st");
     expect(st.data.description).toContain("/st guide topic: setup");
     expect(stText).toContain("/st guide topic: setup|buffet|day|night");
-    expect(stText).toContain("/st add-kib / remove-kib");
+    expect(stText).toContain("/add-kib · /remove-kib");
     for (const embed of stEmbeds) {
       for (const field of embed.data.fields ?? []) {
         expect(field.value.length).toBeLessThanOrEqual(1024);
@@ -128,19 +123,19 @@ describe("help content", () => {
     const day = buildStGuideEmbed("day");
     const night = buildStGuideEmbed("night");
     expect(setup.data.title).toContain("Setup");
-    expect(fieldValues(setup)).toContain("/st setup-town");
-    expect(fieldValues(setup)).toContain("/st broadcast");
+    expect(fieldValues(setup)).toContain("/setup-town");
+    expect(fieldValues(setup)).toContain("/broadcast");
     expect(fieldValues(setup)).toContain("add the Grimkeeper bot");
     expect(buffet.data.title).toContain("Sushi Buffet");
-    expect(fieldValues(buffet)).toContain("/st do buffet-start");
+    expect(fieldValues(buffet)).toContain("/buffet-start");
     expect(fieldValues(buffet)).toContain("Recycle unchosen roles");
     expect(fieldValues(buffet)).toContain("add the Grimkeeper bot");
     expect(day.data.title).toContain("Day");
-    expect(fieldValues(day)).toContain("/st close-nominations");
-    expect(fieldValues(day)).toContain("/st next-phase");
+    expect(fieldValues(day)).toContain("/close-nominations");
+    expect(fieldValues(day)).toContain("/next-phase");
     expect(night.data.title).toContain("Night");
-    expect(fieldValues(night)).toContain("/st broadcast");
-    expect(fieldValues(night)).toContain("/st mark-dead");
+    expect(fieldValues(night)).toContain("/broadcast");
+    expect(fieldValues(night)).toContain("/mark-dead");
     expect(fieldValues(setup)).not.toContain("/st say");
     expect(fieldValues(night)).not.toContain("/st say");
     for (const embed of [setup, buffet, day, night]) {
@@ -188,13 +183,14 @@ describe("help content", () => {
     expect(whisperHits.some((entry) => entry.command.includes("whisper"))).toBe(true);
 
     const phaseHits = searchHelpEntries(ST_HELP_ENTRIES, "next-phase");
-    expect(phaseHits.some((entry) => entry.command === "/st next-phase")).toBe(true);
-    expect(phaseHits.some((entry) => entry.command === "/st do next-phase")).toBe(true);
+    expect(phaseHits.some((entry) => entry.command === "/next-phase")).toBe(true);
 
     const broadcastHits = searchHelpEntries(ST_HELP_ENTRIES, "broadcast");
-    expect(broadcastHits.some((entry) => entry.command === "/st broadcast")).toBe(true);
-    expect(broadcastHits.some((entry) => entry.command === "/st do broadcast")).toBe(true);
+    expect(broadcastHits.some((entry) => entry.command === "/broadcast")).toBe(true);
     expect(broadcastHits.some((entry) => entry.command === "/st do say")).toBe(false);
+
+    const kibHits = searchHelpEntries(ST_HELP_ENTRIES, "add-kib");
+    expect(kibHits.some((entry) => entry.command === "/add-kib")).toBe(true);
 
     const remindHits = searchHelpEntries(ST_HELP_ENTRIES, "reminder");
     expect(remindHits.length).toBeGreaterThan(1);
