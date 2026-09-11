@@ -56,6 +56,7 @@ export const ST_DO_ACTIONS: DoAction[] = [
   },
   { name: "execute", description: "Execute a player after their nomination passed", needs: ["player"] },
   { name: "mark-dead", description: "Mark a player dead or alive (`banshee:` for Demon-kill Banshee)", needs: ["player", "alive?", "banshee?"] },
+  { name: "toggle-ghost-vote", description: "Toggle whether a player has used their ghost vote", needs: ["player"] },
   { name: "votes", description: "Refresh the ST vote tracker and Town Voting nomination embeds" },
   { name: "panel", description: "Post/refresh the ST control panel in kib" },
   { name: "vote-visibility", description: "Public or secret tallies", needs: ["mode"] },

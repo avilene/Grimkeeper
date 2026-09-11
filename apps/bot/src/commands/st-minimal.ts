@@ -118,7 +118,7 @@ export class StCommandsMinimal {
     action: string,
     @SlashOption({
       name: "player",
-      description: "Target player (execute, mark-dead)",
+      description: "Target player (execute, mark-dead, toggle-ghost-vote)",
       type: ApplicationCommandOptionType.User,
       required: false,
     })
@@ -408,6 +408,13 @@ export class StCommandsMinimal {
           return;
         }
         await this.markDead(player, alive, interaction, banshee);
+        return;
+      case "toggle-ghost-vote":
+        if (!player) {
+          await missingOption(interaction, "player", "toggle-ghost-vote");
+          return;
+        }
+        await this.toggleGhostVote(player, interaction);
         return;
       case "votes":
         await this.votes(interaction);
@@ -2350,6 +2357,60 @@ export class StCommandsMinimal {
           activateBanshee ? " Banshee power activated (double nominate / double vote)." : "",
           bansheeHint,
         ].join(""),
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  async toggleGhostVote(player: User, interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+
+    try {
+      const engine = await loadEngine(game.id);
+      const target = engine.getPlayerByDiscordId(player.id);
+      if (!target) {
+        await replyOrEditInteraction(interaction, {
+          content: "That user is not in this game.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const ghostVoteUsed = !target.ghostVoteUsed;
+      const events = engine.handle({
+        kind: GameCommandKind.SetPlayerGhostVoteUsed,
+        gameId: game.id,
+        playerId: target.id,
+        ghostVoteUsed,
+      });
+      await persistEvents(engine, events);
+      const updated = engine.getPlayerById(target.id)!;
+
+      if (interaction.guild) {
+        await upsertPinnedGameStatus(interaction.guild, game.channelId, engine);
+        await upsertStControlPanel(interaction.guild, game.channelId, engine, game.kibThreadId);
+        await upsertStVoteTracker(interaction.guild, game.channelId, engine, game.kibThreadId);
+        await postGameLog(
+          interaction.guild,
+          game,
+          `<@${interaction.user.id}> marked <@${target.discordUserId}>'s ghost vote as **${
+            updated.ghostVoteUsed ? "used" : "available"
+          }**.`,
+        );
+      }
+
+      const status = updated.ghostVoteUsed ? "**used**" : "**available**";
+      const aliveHint = updated.alive
+        ? " They are still alive — this takes effect if they die."
+        : "";
+      const bansheeHint = updated.hasTwoVotes
+        ? " They have two votes, so this does not change how they vote."
+        : "";
+      await replyOrEditInteraction(interaction, {
+        content: `Ghost vote for **${updated.displayName}** is now ${status}.${aliveHint}${bansheeHint}`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

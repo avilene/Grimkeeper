@@ -29,6 +29,7 @@ export const GameEventType = {
   TownResetToSetup: "TownResetToSetup",
   PlayerAliveChanged: "PlayerAliveChanged",
   PlayerHasTwoVotesChanged: "PlayerHasTwoVotesChanged",
+  PlayerGhostVoteUsedChanged: "PlayerGhostVoteUsedChanged",
   PlayerDisplayNameChanged: "PlayerDisplayNameChanged",
   PlayerSubstituted: "PlayerSubstituted",
   NominationVotesLocked: "NominationVotesLocked",

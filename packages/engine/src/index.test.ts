@@ -566,6 +566,71 @@ describe("GameEngine", () => {
     ).toThrow("ghost vote");
   });
 
+  it("lets storytellers spend or restore a ghost vote without a prior yes", () => {
+    const engine = GameEngine.fromEvents(gameId, withPlayers(3));
+    engine.apply({
+      type: GameEventType.DayStarted,
+      gameId,
+      dayNumber: 1,
+      timestamp: new Date().toISOString(),
+    });
+
+    const players = engine.getState().players;
+    engine.apply({
+      type: GameEventType.PlayerDied,
+      gameId,
+      playerId: players[2]!.id,
+      cause: "night",
+      timestamp: new Date().toISOString(),
+    });
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "On the block.",
+    })) {
+      engine.apply(event);
+    }
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.SetPlayerGhostVoteUsed,
+      gameId,
+      playerId: players[2]!.id,
+      ghostVoteUsed: true,
+    })) {
+      engine.apply(event);
+    }
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.CastVote,
+        gameId,
+        voterId: players[2]!.id,
+        nominationId: nomination.id,
+        choice: "yes",
+      }),
+    ).toThrow("ghost vote");
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.SetPlayerGhostVoteUsed,
+      gameId,
+      playerId: players[2]!.id,
+      ghostVoteUsed: false,
+    })) {
+      engine.apply(event);
+    }
+    const restoredVote = engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      voterId: players[2]!.id,
+      nominationId: nomination.id,
+      choice: "yes",
+    });
+    expect(restoredVote).toHaveLength(1);
+  });
+
   it("allows ghosts to vote no or conditional without spending the ghost vote", () => {
     const engine = GameEngine.fromEvents(gameId, withPlayers(3));
     engine.apply({
@@ -1682,6 +1747,41 @@ describe("GameEngine", () => {
         gameId,
         playerId: player.id,
         alive: true,
+      }),
+    ).toHaveLength(0);
+  });
+
+  it("toggles ghost vote used with SetPlayerGhostVoteUsed", () => {
+    const engine = setupTownEngine(3);
+    const player = engine.getState().players[0]!;
+
+    const usedEvents = engine.handle({
+      kind: GameCommandKind.SetPlayerGhostVoteUsed,
+      gameId,
+      playerId: player.id,
+      ghostVoteUsed: true,
+    });
+    expect(usedEvents).toHaveLength(1);
+    expect(usedEvents[0]?.type).toBe(GameEventType.PlayerGhostVoteUsedChanged);
+    for (const event of usedEvents) engine.apply(event);
+    expect(engine.getPlayerById(player.id)?.ghostVoteUsed).toBe(true);
+
+    const restoredEvents = engine.handle({
+      kind: GameCommandKind.SetPlayerGhostVoteUsed,
+      gameId,
+      playerId: player.id,
+      ghostVoteUsed: false,
+    });
+    expect(restoredEvents).toHaveLength(1);
+    for (const event of restoredEvents) engine.apply(event);
+    expect(engine.getPlayerById(player.id)?.ghostVoteUsed).toBe(false);
+
+    expect(
+      engine.handle({
+        kind: GameCommandKind.SetPlayerGhostVoteUsed,
+        gameId,
+        playerId: player.id,
+        ghostVoteUsed: false,
       }),
     ).toHaveLength(0);
   });

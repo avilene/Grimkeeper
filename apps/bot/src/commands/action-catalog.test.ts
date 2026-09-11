@@ -118,6 +118,14 @@ describe("sub discoverability", () => {
   });
 });
 
+describe("toggle-ghost-vote discoverability", () => {
+  it("is in /st do and top-level ST commands, not a nested /st shortcut", () => {
+    expect(ST_DO_ACTIONS.some((a) => a.name === "toggle-ghost-vote")).toBe(true);
+    expect(ST_ROOT_ACTIONS.some((a) => a.name === "toggle-ghost-vote")).toBe(true);
+    expect(ST_SLASH_SHORTCUTS.some((a) => a.name === "toggle-ghost-vote")).toBe(false);
+  });
+});
+
 describe("backpacker discoverability", () => {
   it("is a top-level /backpack command, not /st do", () => {
     expect(ST_DO_ACTIONS.some((a) => a.name === "add-backpacker")).toBe(false);

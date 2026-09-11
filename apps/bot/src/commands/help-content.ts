@@ -753,6 +753,7 @@ export function buildStGuideEmbed(topic: StGuideTopic): EmbedBuilder {
             "`/repost-kib-noms` (or panel) — delete+repost open nom embeds at the bottom of kib",
             "If it passed: `/execute` `player:` (or panel)",
             "Other deaths: `/mark-dead` `player:` (`alive:` revive; `banshee:true` Demon-kill Banshee)",
+            "Ghost vote used/available: `/toggle-ghost-vote` `player:`",
             "Fix a ballot: `/set-vote` — or nominate for someone: `/st-nominate`",
             "After admin DB edits: `/refresh-noms` (recreates missing open embeds + updates votes)",
           ]),

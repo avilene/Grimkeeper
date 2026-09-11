@@ -285,6 +285,23 @@ export class StRootCommands {
   }
 
   @Slash({
+    name: "toggle-ghost-vote",
+    description: "Toggle whether a player has used their ghost vote",
+  })
+  async toggleGhostVote(
+    @SlashOption({
+      name: "player",
+      description: "Player whose ghost vote to toggle",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    player: User,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    await runSt(interaction, () => st.toggleGhostVote(player, interaction));
+  }
+
+  @Slash({
     name: "panel",
     description: "Post or refresh the ST control panel (buttons) in kib",
   })

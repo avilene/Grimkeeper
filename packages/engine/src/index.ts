@@ -241,6 +241,13 @@ export interface PlayerHasTwoVotesChangedEvent extends GameEventBase {
   hasTwoVotes: boolean;
 }
 
+/** Storyteller correction: mark a ghost vote used or restore it. */
+export interface PlayerGhostVoteUsedChangedEvent extends GameEventBase {
+  type: typeof GameEventType.PlayerGhostVoteUsedChanged;
+  playerId: string;
+  ghostVoteUsed: boolean;
+}
+
 export interface PlayerDisplayNameChangedEvent extends GameEventBase {
   type: typeof GameEventType.PlayerDisplayNameChanged;
   playerId: string;
@@ -404,6 +411,7 @@ export type GameEvent =
   | TownResetToSetupEvent
   | PlayerAliveChangedEvent
   | PlayerHasTwoVotesChangedEvent
+  | PlayerGhostVoteUsedChangedEvent
   | PlayerDisplayNameChangedEvent
   | PlayerSubstitutedEvent
   | NominationVotesLockedEvent
@@ -740,6 +748,13 @@ export interface SetPlayerHasTwoVotesCommand {
   hasTwoVotes: boolean;
 }
 
+export interface SetPlayerGhostVoteUsedCommand {
+  kind: typeof GameCommandKind.SetPlayerGhostVoteUsed;
+  gameId: string;
+  playerId: string;
+  ghostVoteUsed: boolean;
+}
+
 export interface SetPlayerDisplayNameCommand {
   kind: typeof GameCommandKind.SetPlayerDisplayName;
   gameId: string;
@@ -864,6 +879,7 @@ export type GameCommand =
   | ResetTownToSetupCommand
   | SetPlayerAliveCommand
   | SetPlayerHasTwoVotesCommand
+  | SetPlayerGhostVoteUsedCommand
   | SetPlayerDisplayNameCommand
   | SubstitutePlayerCommand
   | LockNominationVotesCommand
@@ -1611,6 +1627,14 @@ export class GameEngine {
           throw new GameEngineError("Player is not in this game.");
         }
         break;
+      case GameCommandKind.SetPlayerGhostVoteUsed:
+        if (this.state.phase === "ended") {
+          throw new GameEngineError("Game has already ended.");
+        }
+        if (!this.getPlayerById(command.playerId)) {
+          throw new GameEngineError("Player is not in this game.");
+        }
+        break;
       case GameCommandKind.SetPlayerDisplayName:
         if (this.state.phase === "ended") {
           throw new GameEngineError("Game has already ended.");
@@ -2315,6 +2339,21 @@ export class GameEngine {
           },
         ];
       }
+      case GameCommandKind.SetPlayerGhostVoteUsed: {
+        const player = this.getPlayerById(command.playerId)!;
+        if (player.ghostVoteUsed === command.ghostVoteUsed) {
+          return [];
+        }
+        return [
+          {
+            type: GameEventType.PlayerGhostVoteUsedChanged,
+            gameId: command.gameId,
+            playerId: command.playerId,
+            ghostVoteUsed: command.ghostVoteUsed,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      }
       case GameCommandKind.SetPlayerDisplayName: {
         const player = this.getPlayerById(command.playerId)!;
         const displayName = command.displayName.trim();
@@ -2955,6 +2994,13 @@ export class GameEngine {
         const player = this.state.players.find((candidate) => candidate.id === event.playerId);
         if (player) {
           player.hasTwoVotes = event.hasTwoVotes;
+        }
+        break;
+      }
+      case GameEventType.PlayerGhostVoteUsedChanged: {
+        const player = this.state.players.find((candidate) => candidate.id === event.playerId);
+        if (player) {
+          player.ghostVoteUsed = event.ghostVoteUsed;
         }
         break;
       }
