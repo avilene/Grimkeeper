@@ -962,7 +962,19 @@ export async function finalizeMinimalGameEnd(
   await cancelGameReminders(game.id);
   await stripGameRolesFromMembers(guild, game, engine);
   await clearGameChannelPermissions(guild, game.channelId, game);
-  await openStorytellerThread(guild, game.channelId, game.kibThreadId, game.id);
+  // Ping individual players (not the player role) so they become kib thread members
+  // and can see post-game discussion after roles are stripped.
+  const playerDiscordIds = engine
+    .getState()
+    .players.filter((player) => !player.isFake && !isFakePlayer(player.discordUserId))
+    .map((player) => player.discordUserId);
+  await openStorytellerThread(
+    guild,
+    game.channelId,
+    game.kibThreadId,
+    game.id,
+    playerDiscordIds,
+  );
   const winner = engine.getState().winner;
   
   if (winner !== "good" && winner !== "evil") {
@@ -2464,9 +2476,13 @@ export async function openStorytellerThread(
   parentChannelId: string,
   kibThreadId?: string | null,
   gameId?: string,
+  /** Real player Discord IDs to invite + @mention (never the player role). */
+  playerDiscordIds: string[] = [],
 ): Promise<KibVenue | null> {
   const venue = await getStorytellerThread(guild, parentChannelId, { kibThreadId, gameId });
   if (!venue) return null;
+
+  const uniquePlayerIds = [...new Set(playerDiscordIds.filter(Boolean))];
 
   if (venue.isThread()) {
     await venue
@@ -2477,14 +2493,27 @@ export async function openStorytellerThread(
         reason: "Game ended; opening storyteller thread for post-game discussion.",
       })
       .catch(() => undefined);
+
+    for (const userId of uniquePlayerIds) {
+      await venue.members.add(userId).catch(() => undefined);
+    }
   }
 
+  const playerMentions =
+    uniquePlayerIds.length > 0
+      ? ` ${uniquePlayerIds.map((id) => `<@${id}>`).join(" ")}`
+      : "";
+  const base = venue.isThread()
+    ? "Game ended — this thread is now open for post-game discussion."
+    : "Game ended — this channel is open for post-game discussion.";
+
   await venue
-    .send(
-      venue.isThread()
-        ? "Game ended — this thread is now open for post-game discussion."
-        : "Game ended — this channel is open for post-game discussion.",
-    )
+    .send({
+      content: `${base}${playerMentions}`,
+      // Explicit users only — do not mention player/kib roles (role pings add
+      // every role holder to private threads and notify spectators wrongly).
+      allowedMentions: { users: uniquePlayerIds },
+    })
     .catch(() => undefined);
   return venue;
 }
