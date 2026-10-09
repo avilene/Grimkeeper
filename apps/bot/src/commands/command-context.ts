@@ -605,7 +605,7 @@ export async function requireReminderAccess(interaction: CommandInteraction): Pr
   if (!(await canManageChannelReminders(interaction))) {
     await replyOrEditInteraction(interaction, {
       content:
-        "No active game access. Set reminders with the **ST role**, or add your user/role to `ADMIN_IDS` / `ALLOWED_ROLE_IDS`.",
+        "No active game access. Set reminders with the **ST role** for this game.",
       flags: MessageFlags.Ephemeral,
     });
     return null;
@@ -698,15 +698,20 @@ export async function requireActivePlayerGame(interaction: CommandInteraction) {
   return { game, engine, player };
 }
 
-const BOT_ACCESS_DENIED_MESSAGE =
-  "You are not allowed to use this bot. Ask an admin to add your user ID " +
-  "to `ADMIN_IDS` or one of your role IDs to `ALLOWED_ROLE_IDS`.";
+const ST_COMMAND_DENIED_MESSAGE =
+  "You can't use storyteller commands here. You need this server's **ST role** on an active game (or promotion via `/st do add-st`).";
 
-async function replyAccessDenied(interaction: CommandInteraction): Promise<void> {
+const DAY_PLAY_DENIED_MESSAGE =
+  "You can't use day-play commands here. Join the game's lobby or run this from a game channel while you're seated.";
+
+async function replyAccessDenied(
+  interaction: CommandInteraction,
+  content: string,
+): Promise<void> {
   if (interaction.deferred || interaction.replied) {
-    await interaction.followUp({ content: BOT_ACCESS_DENIED_MESSAGE, flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
   } else {
-    await interaction.reply({ content: BOT_ACCESS_DENIED_MESSAGE, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content, flags: MessageFlags.Ephemeral });
   }
 }
 
@@ -770,7 +775,7 @@ export async function requireCommandAccess(
   options?: CommandAccessOptions,
 ): Promise<boolean> {
   if (await userHasCommandAccess(interaction, options)) return true;
-  await replyAccessDenied(interaction);
+  await replyAccessDenied(interaction, ST_COMMAND_DENIED_MESSAGE);
   return false;
 }
 
@@ -781,7 +786,7 @@ export async function requireCommandAccess(
 export async function requireDayPlayAccess(interaction: CommandInteraction): Promise<boolean> {
   if (await canUseBot(interaction)) return true;
   if (await isActiveGamePlayer(interaction)) return true;
-  await replyAccessDenied(interaction);
+  await replyAccessDenied(interaction, DAY_PLAY_DENIED_MESSAGE);
   return false;
 }
 
