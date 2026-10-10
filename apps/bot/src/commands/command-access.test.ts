@@ -88,7 +88,7 @@ describe("requireCommandAccess", () => {
       false,
     );
     expect(ix.reply).toHaveBeenCalledWith({
-      content: expect.stringContaining("ADMIN_IDS"),
+      content: expect.stringContaining("storyteller commands"),
       flags: MessageFlags.Ephemeral,
     });
   });

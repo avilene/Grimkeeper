@@ -605,7 +605,7 @@ export async function requireReminderAccess(interaction: CommandInteraction): Pr
   if (!(await canManageChannelReminders(interaction))) {
     await replyOrEditInteraction(interaction, {
       content:
-        "No active game access. Set reminders with the **ST role**, or add your user/role to `ADMIN_IDS` / `ALLOWED_ROLE_IDS`.",
+        "No active game access. Set reminders with the **ST role** for this game.",
       flags: MessageFlags.Ephemeral,
     });
     return null;
@@ -698,15 +698,20 @@ export async function requireActivePlayerGame(interaction: CommandInteraction) {
   return { game, engine, player };
 }
 
-const BOT_ACCESS_DENIED_MESSAGE =
-  "You are not allowed to use this bot. Ask an admin to add your user ID " +
-  "to `ADMIN_IDS` or one of your role IDs to `ALLOWED_ROLE_IDS`.";
+const ST_COMMAND_DENIED_MESSAGE =
+  "You can't use storyteller commands here. You need this server's **ST role** on an active game (or promotion via `/st do add-st`).";
 
-async function replyAccessDenied(interaction: CommandInteraction): Promise<void> {
+const DAY_PLAY_DENIED_MESSAGE =
+  "You can't use day-play commands here. Join the game's lobby or run this from a game channel while you're seated.";
+
+async function replyAccessDenied(
+  interaction: CommandInteraction,
+  content: string,
+): Promise<void> {
   if (interaction.deferred || interaction.replied) {
-    await interaction.followUp({ content: BOT_ACCESS_DENIED_MESSAGE, flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
   } else {
-    await interaction.reply({ content: BOT_ACCESS_DENIED_MESSAGE, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content, flags: MessageFlags.Ephemeral });
   }
 }
 
@@ -770,7 +775,7 @@ export async function requireCommandAccess(
   options?: CommandAccessOptions,
 ): Promise<boolean> {
   if (await userHasCommandAccess(interaction, options)) return true;
-  await replyAccessDenied(interaction);
+  await replyAccessDenied(interaction, ST_COMMAND_DENIED_MESSAGE);
   return false;
 }
 
@@ -781,7 +786,7 @@ export async function requireCommandAccess(
 export async function requireDayPlayAccess(interaction: CommandInteraction): Promise<boolean> {
   if (await canUseBot(interaction)) return true;
   if (await isActiveGamePlayer(interaction)) return true;
-  await replyAccessDenied(interaction);
+  await replyAccessDenied(interaction, DAY_PLAY_DENIED_MESSAGE);
   return false;
 }
 
@@ -962,7 +967,19 @@ export async function finalizeMinimalGameEnd(
   await cancelGameReminders(game.id);
   await stripGameRolesFromMembers(guild, game, engine);
   await clearGameChannelPermissions(guild, game.channelId, game);
-  await openStorytellerThread(guild, game.channelId, game.kibThreadId, game.id);
+  // Ping individual players (not the player role) so they become kib thread members
+  // and can see post-game discussion after roles are stripped.
+  const playerDiscordIds = engine
+    .getState()
+    .players.filter((player) => !player.isFake && !isFakePlayer(player.discordUserId))
+    .map((player) => player.discordUserId);
+  await openStorytellerThread(
+    guild,
+    game.channelId,
+    game.kibThreadId,
+    game.id,
+    playerDiscordIds,
+  );
   const winner = engine.getState().winner;
   
   if (winner !== "good" && winner !== "evil") {
@@ -2464,9 +2481,13 @@ export async function openStorytellerThread(
   parentChannelId: string,
   kibThreadId?: string | null,
   gameId?: string,
+  /** Real player Discord IDs to invite + @mention (never the player role). */
+  playerDiscordIds: string[] = [],
 ): Promise<KibVenue | null> {
   const venue = await getStorytellerThread(guild, parentChannelId, { kibThreadId, gameId });
   if (!venue) return null;
+
+  const uniquePlayerIds = [...new Set(playerDiscordIds.filter(Boolean))];
 
   if (venue.isThread()) {
     await venue
@@ -2477,14 +2498,27 @@ export async function openStorytellerThread(
         reason: "Game ended; opening storyteller thread for post-game discussion.",
       })
       .catch(() => undefined);
+
+    for (const userId of uniquePlayerIds) {
+      await venue.members.add(userId).catch(() => undefined);
+    }
   }
 
+  const playerMentions =
+    uniquePlayerIds.length > 0
+      ? ` ${uniquePlayerIds.map((id) => `<@${id}>`).join(" ")}`
+      : "";
+  const base = venue.isThread()
+    ? "Game ended — this thread is now open for post-game discussion."
+    : "Game ended — this channel is open for post-game discussion.";
+
   await venue
-    .send(
-      venue.isThread()
-        ? "Game ended — this thread is now open for post-game discussion."
-        : "Game ended — this channel is open for post-game discussion.",
-    )
+    .send({
+      content: `${base}${playerMentions}`,
+      // Explicit users only — do not mention player/kib roles (role pings add
+      // every role holder to private threads and notify spectators wrongly).
+      allowedMentions: { users: uniquePlayerIds },
+    })
     .catch(() => undefined);
   return venue;
 }

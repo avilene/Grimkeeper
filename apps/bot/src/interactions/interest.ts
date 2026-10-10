@@ -109,7 +109,7 @@ async function requireInterestAccess(
   if (!allowed) {
     await safeEdit(
       interaction,
-      "You are not allowed to use this bot. Ask an admin to add you to the allowlist.",
+      "You can't manage interest posts here. You need this server's **ST role** on an active game.",
     );
     return false;
   }

@@ -6,7 +6,6 @@ import {
 } from "discord.js";
 import { Discord, Slash, SlashChoice, SlashGroup, SlashOption } from "discordx";
 
-import { userHasCommandAccess } from "./command-context.js";
 import { reportError } from "../error-reporter.js";
 import {
   isRecoverableInteractionResponseError,
@@ -24,10 +23,6 @@ import {
   type StGuideTopic,
 } from "./help-content.js";
 import { buildHelpPageMessage } from "./help-pagination.js";
-
-const ACCESS_DENIED =
-  "You are not allowed to use this bot. Ask an admin to add your user ID " +
-  "to `ADMIN_IDS` or one of your role IDs to `ALLOWED_ROLE_IDS`.";
 
 function helpReplyContext(interaction: CommandInteraction) {
   return {
@@ -72,19 +67,10 @@ async function ensureHelpDeferred(interaction: CommandInteraction): Promise<void
 async function replyHelpEmbeds(
   interaction: CommandInteraction,
   embeds: EmbedBuilder[],
-  options?: { requireAccess?: boolean; pageScope?: HelpSearchScope },
+  options?: { pageScope?: HelpSearchScope },
 ): Promise<void> {
-  const requireAccess = options?.requireAccess !== false;
   try {
     await ensureHelpDeferred(interaction);
-
-    if (requireAccess) {
-      const allowed = await userHasCommandAccess(interaction);
-      if (!allowed) {
-        await interaction.editReply({ content: ACCESS_DENIED, embeds: [], components: [] });
-        return;
-      }
-    }
 
     if (options?.pageScope) {
       const page = buildHelpPageMessage(options.pageScope, 0);
@@ -130,14 +116,12 @@ async function replyScopedHelp(
   scope: HelpSearchScope,
   search: string | undefined,
   full: () => EmbedBuilder[],
-  options?: { requireAccess?: boolean },
 ): Promise<void> {
   const query = search?.trim();
   await replyHelpEmbeds(
     interaction,
     query ? buildHelpSearchEmbeds(scope, query) : full(),
     {
-      ...options,
       pageScope: query ? undefined : scope,
     },
   );
@@ -187,9 +171,7 @@ export class PlayerHelpCommands {
     search: string | undefined,
     interaction: CommandInteraction,
   ): Promise<void> {
-    await replyScopedHelp(interaction, "player", search, buildPlayerHelpEmbeds, {
-      requireAccess: false,
-    });
+    await replyScopedHelp(interaction, "player", search, buildPlayerHelpEmbeds);
   }
 }
 

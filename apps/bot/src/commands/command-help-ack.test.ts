@@ -16,7 +16,7 @@ import { EmbedBuilder } from "discord.js";
 
 import { canUseBot } from "../access.js";
 import { reportError } from "../error-reporter.js";
-import { PlayerHelpCommands, StGuideCommands } from "./command-help.js";
+import { PlayerHelpCommands, StGuideCommands, StHelpCommands } from "./command-help.js";
 
 describe("StGuideCommands.guide ack handling", () => {
   beforeEach(() => {
@@ -132,13 +132,13 @@ describe("StGuideCommands.guide ack handling", () => {
   });
 });
 
-describe("PlayerHelpCommands access", () => {
+describe("help commands access", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(canUseBot).mockResolvedValue(false);
   });
 
-  it("shows the guide even when the user is not on the bot allowlist", async () => {
-    vi.mocked(canUseBot).mockResolvedValue(false);
+  it("shows /player help without checking the bot allowlist", async () => {
     const cmd = new PlayerHelpCommands();
     const ix = {
       commandName: "player",
@@ -166,6 +166,39 @@ describe("PlayerHelpCommands access", () => {
     };
     expect(payload?.embeds?.length).toBe(1);
     expect(payload?.content).toBeNull();
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it("shows /st help without checking the bot allowlist", async () => {
+    const cmd = new StHelpCommands();
+    const ix = {
+      commandName: "st",
+      deferred: false,
+      replied: false,
+      createdTimestamp: Date.now(),
+      guildId: "g1",
+      channelId: "c1",
+      user: { id: "u1" },
+      isChatInputCommand: () => true,
+      options: {
+        getSubcommandGroup: () => null,
+        getSubcommand: () => "help",
+      },
+      deferReply: vi.fn().mockResolvedValue(undefined),
+      editReply: vi.fn().mockResolvedValue(undefined),
+      reply: vi.fn().mockResolvedValue(undefined),
+    };
+    await cmd.help(undefined, ix as never);
+    expect(canUseBot).not.toHaveBeenCalled();
+    expect(ix.editReply).toHaveBeenCalledOnce();
+    const payload = vi.mocked(ix.editReply).mock.calls[0]?.[0] as {
+      embeds?: EmbedBuilder[];
+      content?: string | null;
+      components?: unknown[];
+    };
+    expect(payload?.embeds?.length).toBe(1);
+    expect(payload?.content).toBeNull();
+    expect(payload?.components?.length).toBeGreaterThan(0);
     expect(reportError).not.toHaveBeenCalled();
   });
 });
