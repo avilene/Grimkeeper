@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
 import { useEffect, useState } from "react";
 import {
   ChevronRight,
@@ -59,7 +60,6 @@ export type AppSidebarProps = {
   image: string | null;
   name: string | null;
   userId: string;
-  signOutAction: () => Promise<void>;
   children: React.ReactNode;
 };
 
@@ -80,7 +80,6 @@ export function AppSidebar({
   image,
   name,
   userId,
-  signOutAction,
   children,
 }: AppSidebarProps) {
   const pathname = usePathname();
@@ -278,7 +277,7 @@ export function AppSidebar({
                   <DropdownMenuItem
                     onSelect={(event) => {
                       event.preventDefault();
-                      void signOutAction();
+                      void signOut({ redirectTo: "/login" });
                     }}
                   >
                     <LogOut />

@@ -1,5 +1,4 @@
 import { getAccessProfile, homePathForAccess } from "@/lib/access";
-import { signOut } from "@/lib/auth";
 import { AppSidebar } from "@/components/app-sidebar";
 
 export async function AppNav({ children }: { children: React.ReactNode }) {
@@ -7,11 +6,6 @@ export async function AppNav({ children }: { children: React.ReactNode }) {
   if (!access) return <>{children}</>;
 
   const home = homePathForAccess(access);
-
-  async function signOutAction() {
-    "use server";
-    await signOut({ redirectTo: "/login" });
-  }
 
   return (
     <AppSidebar
@@ -22,7 +16,6 @@ export async function AppNav({ children }: { children: React.ReactNode }) {
       image={access.image}
       name={access.name}
       userId={access.userId}
-      signOutAction={signOutAction}
     >
       {children}
     </AppSidebar>

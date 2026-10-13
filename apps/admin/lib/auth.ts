@@ -7,19 +7,34 @@ function getDiscordAvatarUrl(discordUserId: string, avatar: string | null): stri
   return `https://cdn.discordapp.com/avatars/${discordUserId}/${avatar}.${ext}?size=128`;
 }
 
+function authSecret(): string | undefined {
+  return (
+    process.env.AUTH_SECRET?.trim() ||
+    process.env.NEXTAUTH_SECRET?.trim() ||
+    process.env.ADMIN_SESSION_SECRET?.trim() ||
+    undefined
+  );
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Discord({
+      // Read at request time via Auth.js env defaults + these fallbacks (Docker runtime env).
       clientId: process.env.DISCORD_CLIENT_ID,
       clientSecret: process.env.DISCORD_CLIENT_SECRET,
       authorization: { params: { scope: "identify" } },
     }),
   ],
-  secret: process.env.AUTH_SECRET?.trim() || process.env.ADMIN_SESSION_SECRET?.trim(),
+  secret: authSecret(),
   trustHost: true,
   pages: {
     signIn: "/login",
     error: "/login",
+  },
+  logger: {
+    error(error) {
+      console.error("[auth]", error);
+    },
   },
   callbacks: {
     async signIn({ profile }) {
