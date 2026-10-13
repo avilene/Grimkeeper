@@ -1,7 +1,6 @@
 import { GalleryVerticalEnd } from "lucide-react";
 
-import { loginWithDiscord } from "@/actions/auth";
-import { Button } from "@/components/ui/button";
+import { DiscordLoginButton } from "@/components/discord-login-button";
 import {
   Card,
   CardContent,
@@ -9,6 +8,21 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+
+function errorMessage(error: string): string {
+  switch (error) {
+    case "Configuration":
+      return "Sign-in failed (server auth configuration). Check ADMIN_SESSION_SECRET / AUTH_SECRET, DISCORD_CLIENT_SECRET, and that Discord OAuth redirects match ADMIN_OAUTH_CALLBACK_URL.";
+    case "AccessDenied":
+      return "Sign-in was denied.";
+    case "OAuthCallbackError":
+      return "Discord returned an error during callback. Check the client secret and redirect URL in the Discord Developer Portal.";
+    case "MissingCSRF":
+      return "Sign-in failed (CSRF). Refresh the page and try again.";
+    default:
+      return `Sign-in failed (${error}). Try again, or check Discord OAuth configuration.`;
+  }
+}
 
 export default async function LoginPage({
   searchParams,
@@ -38,16 +52,9 @@ export default async function LoginPage({
           </CardHeader>
           <CardContent className="space-y-4">
             {error ? (
-              <p className="text-sm text-destructive">
-                Sign-in failed ({error}). Try again, or check Discord OAuth configuration.
-              </p>
+              <p className="text-sm text-destructive">{errorMessage(error)}</p>
             ) : null}
-            <form action={loginWithDiscord}>
-              <input type="hidden" name="callbackUrl" value={callbackUrl} />
-              <Button type="submit" className="w-full">
-                Login with Discord
-              </Button>
-            </form>
+            <DiscordLoginButton callbackUrl={callbackUrl} />
           </CardContent>
         </Card>
       </div>
