@@ -34,8 +34,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   logger: {
     error(error) {
       console.error("[auth]", error);
+      const cause =
+        error && typeof error === "object" && "cause" in error
+          ? (error as { cause: unknown }).cause
+          : undefined;
+      if (cause !== undefined) {
+        console.error("[auth] cause:", cause);
+        if (cause && typeof cause === "object" && "err" in cause) {
+          console.error("[auth] cause.err:", (cause as { err: unknown }).err);
+        }
+      }
     },
   },
+  debug: process.env.AUTH_DEBUG === "1",
   callbacks: {
     async signIn({ profile }) {
       // Anyone with a Discord account can sign in. Visibility is role-gated
