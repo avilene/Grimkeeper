@@ -22,6 +22,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Read at request time via Auth.js env defaults + these fallbacks (Docker runtime env).
       clientId: process.env.DISCORD_CLIENT_ID,
       clientSecret: process.env.DISCORD_CLIENT_SECRET,
+      // Discord now sends RFC 9207 `iss=https://discord.com` on the callback.
+      // Without this, Auth.js compares against the placeholder `https://authjs.dev` and rejects.
+      issuer: "https://discord.com",
       authorization: { params: { scope: "identify" } },
     }),
   ],
