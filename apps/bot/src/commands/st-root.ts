@@ -523,6 +523,14 @@ export class StRootCommands {
   }
 
   @Slash({
+    name: "sync-channel-permissions",
+    description: "Re-apply town/kib Pin Messages and thread overwrites",
+  })
+  async syncChannelPermissions(interaction: CommandInteraction): Promise<void> {
+    await runSt(interaction, () => st.syncChannelPermissions(interaction));
+  }
+
+  @Slash({
     name: "reset-to-setup",
     description: "Wipe day/night back to Setup (ADMIN_IDS only; keeps roster)",
   })

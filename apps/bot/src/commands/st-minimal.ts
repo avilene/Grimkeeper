@@ -82,6 +82,7 @@ import {
   resolveGameRoles,
   resolveVotingChannel,
   setInteractionProgress,
+  syncGameChannelPermissions,
   syncGamePlayerRoles,
   syncGameProjection,
   syncStorytellersToPlayerThreads,
@@ -322,6 +323,9 @@ export class StCommandsMinimal {
         return;
       case "sync-player-roles":
         await this.syncPlayerRoles(interaction);
+        return;
+      case "sync-channel-permissions":
+        await this.syncChannelPermissions(interaction);
         return;
       case "setup-town":
         if (!players?.trim()) {
@@ -1627,6 +1631,25 @@ export class StCommandsMinimal {
           parts.length > 0
             ? `Added ST role holders (and engine storytellers) to ${parts.join(" and ")}.`
             : "No player ST or whisper threads found. Run `/st setup-town` (and open whispers) first.",
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      await replyEngineError(interaction, error);
+    }
+  }
+
+  /** Re-apply town/kib Pin Messages + thread overwrites for this game. */
+  async syncChannelPermissions(interaction: CommandInteraction): Promise<void> {
+    const game = await requireStorytellerGame(interaction);
+    if (!game) return;
+    const guild = interaction.guild;
+    if (!guild) return;
+
+    try {
+      await setInteractionProgress(interaction, "Applying channel pin and thread permissions…");
+      const result = await syncGameChannelPermissions(guild, game);
+      await replyOrEditInteraction(interaction, {
+        content: result.summary,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {

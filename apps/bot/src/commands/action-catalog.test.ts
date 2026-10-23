@@ -143,6 +143,13 @@ describe("sync-player-roles discoverability", () => {
   });
 });
 
+describe("sync-channel-permissions discoverability", () => {
+  it("is in /st do but not a first-class shortcut", () => {
+    expect(ST_DO_ACTIONS.some((a) => a.name === "sync-channel-permissions")).toBe(true);
+    expect(ST_SLASH_SHORTCUTS.some((a) => a.name === "sync-channel-permissions")).toBe(false);
+  });
+});
+
 describe("ST_ROOT_ACTIONS", () => {
   it("flattens every /st do action except say and start", () => {
     const rootNames = new Set(ST_ROOT_ACTIONS.map((action) => action.name));

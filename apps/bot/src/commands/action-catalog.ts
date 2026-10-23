@@ -86,6 +86,10 @@ export const ST_DO_ACTIONS: DoAction[] = [
     name: "sync-player-roles",
     description: "Add the game player role to seated players who are missing it on Discord",
   },
+  {
+    name: "sync-channel-permissions",
+    description: "Re-apply town/kib thread + Pin Messages overwrites (bot needs Pin Messages + Manage Roles)",
+  },
   { name: "start", description: "Legacy start (prefer setup-town)" },
   { name: "buffet-start", description: "Start the Sushi Buffet role draft (requires buffet config in admin)" },
   { name: "buffet-status", description: "Show buffet draft status and recreate the kib draft tracker (picks, declines, current picker)" },

@@ -6,6 +6,7 @@ import {
   Guild,
   ChannelType,
   MessageFlags,
+  PermissionFlagsBits,
   Role,
   ThreadAutoArchiveDuration,
   type GuildTextBasedChannel,
@@ -1769,39 +1770,92 @@ export const PLAYER_THREAD_PERMISSIONS = {
 } as const;
 
 async function allowPinMessages(
-  channel: { id: string; permissionOverwrites: { edit: (id: string, perms: typeof ST_PIN_PERMISSION) => Promise<unknown> } },
+  channel: {
+    id: string;
+    permissionOverwrites: {
+      edit: (id: string, perms: typeof ST_PIN_PERMISSION) => Promise<unknown>;
+    };
+  },
   targetId: string,
-): Promise<void> {
-  await channel.permissionOverwrites.edit(targetId, ST_PIN_PERMISSION).catch((error) => {
+): Promise<boolean> {
+  try {
+    await channel.permissionOverwrites.edit(targetId, ST_PIN_PERMISSION);
+    return true;
+  } catch (error) {
     log("warn", "permissions.pin.failed", {
       channelId: channel.id,
       targetId,
       ...serializeError(error),
     });
-  });
+    return false;
+  }
+}
+
+export type ChannelPinPermissionsResult = {
+  channelId: string | null;
+  skipped: boolean;
+  pinOk: number;
+  pinFailed: number;
+  botMissingPin: boolean;
+  botMissingManageRoles: boolean;
+};
+
+async function inspectBotChannelPerms(
+  guild: Guild,
+  channel: { permissionsFor: (member: NonNullable<Guild["members"]["me"]>) => { has: (bit: bigint) => boolean } | null },
+): Promise<{ botMissingPin: boolean; botMissingManageRoles: boolean }> {
+  const me = guild.members.me ?? (await guild.members.fetchMe().catch(() => null));
+  if (!me) return { botMissingPin: true, botMissingManageRoles: true };
+  const perms = channel.permissionsFor(me);
+  return {
+    botMissingPin: !perms?.has(PermissionFlagsBits.PinMessages),
+    botMissingManageRoles: !perms?.has(PermissionFlagsBits.ManageRoles),
+  };
 }
 
 /**
  * Grant Pin Messages on a guild text/announcement channel (not a thread).
  * Threads inherit this from the parent. Used for ST/admins/bot on town + kib channels,
  * and for the player role on town so native pin works in ST threads and other town threads.
+ *
+ * The bot must already have Pin Messages + Manage Roles here, or Discord rejects the overwrite.
  */
 export async function applyChannelPinPermissions(
   guild: Guild,
   channelId: string,
   roleIds: readonly string[],
-): Promise<void> {
+): Promise<ChannelPinPermissionsResult> {
+  const empty: ChannelPinPermissionsResult = {
+    channelId: null,
+    skipped: true,
+    pinOk: 0,
+    pinFailed: 0,
+    botMissingPin: false,
+    botMissingManageRoles: false,
+  };
   const channel = await guild.channels.fetch(channelId).catch(() => null);
-  if (!channel || channel.isThread() || !("permissionOverwrites" in channel)) return;
+  if (!channel || channel.isThread() || !("permissionOverwrites" in channel)) return empty;
 
-  for (const roleId of roleIds) {
-    if (roleId) await allowPinMessages(channel, roleId);
+  const botPerms = await inspectBotChannelPerms(guild, channel);
+  let pinOk = 0;
+  let pinFailed = 0;
+  const targets = [
+    ...roleIds.filter(Boolean),
+    ...getAdminRoleIds(),
+    ...(guild.client.user?.id ? [guild.client.user.id] : []),
+  ];
+  for (const targetId of new Set(targets)) {
+    if (await allowPinMessages(channel, targetId)) pinOk++;
+    else pinFailed++;
   }
-  for (const adminRoleId of getAdminRoleIds()) {
-    await allowPinMessages(channel, adminRoleId);
-  }
-  const botId = guild.client.user?.id;
-  if (botId) await allowPinMessages(channel, botId);
+
+  return {
+    channelId: channel.id,
+    skipped: false,
+    pinOk,
+    pinFailed,
+    ...botPerms,
+  };
 }
 
 export async function applyGameChannelPermissions(
@@ -1809,9 +1863,18 @@ export async function applyGameChannelPermissions(
   channelId: string,
   stRoleId: string,
   playersRoleId: string,
-): Promise<void> {
+): Promise<ChannelPinPermissionsResult> {
   const channel = await guild.channels.fetch(channelId).catch(() => null);
-  if (!channel || channel.isThread() || !("permissionOverwrites" in channel)) return;
+  if (!channel || channel.isThread() || !("permissionOverwrites" in channel)) {
+    return {
+      channelId: null,
+      skipped: true,
+      pinOk: 0,
+      pinFailed: 0,
+      botMissingPin: false,
+      botMissingManageRoles: false,
+    };
+  }
 
   // ST (+ admins): full thread control so they can join private player threads and invite helpers.
   await channel.permissionOverwrites.edit(stRoleId, ST_THREAD_PERMISSIONS).catch(() => undefined);
@@ -1826,7 +1889,89 @@ export async function applyGameChannelPermissions(
   }
 
   // ST + players: native Discord pin in town and every thread under it (incl. private ST threads).
-  await applyChannelPinPermissions(guild, channelId, [stRoleId, playersRoleId]);
+  return applyChannelPinPermissions(guild, channelId, [stRoleId, playersRoleId]);
+}
+
+export type SyncGameChannelPermissionsResult = {
+  town: ChannelPinPermissionsResult;
+  kib: ChannelPinPermissionsResult | null;
+  summary: string;
+};
+
+/** Re-apply thread + pin overwrites for one active game; returns a user-facing summary. */
+export async function syncGameChannelPermissions(
+  guild: Guild,
+  game: {
+    channelId: string;
+    stRoleId?: string | null;
+    playerRoleId?: string | null;
+    kibThreadId?: string | null;
+  },
+): Promise<SyncGameChannelPermissionsResult> {
+  let town: ChannelPinPermissionsResult;
+  if (game.stRoleId && game.playerRoleId) {
+    town = await applyGameChannelPermissions(
+      guild,
+      game.channelId,
+      game.stRoleId,
+      game.playerRoleId,
+    );
+  } else if (game.stRoleId) {
+    town = await applyChannelPinPermissions(guild, game.channelId, [game.stRoleId]);
+  } else {
+    town = {
+      channelId: null,
+      skipped: true,
+      pinOk: 0,
+      pinFailed: 0,
+      botMissingPin: false,
+      botMissingManageRoles: false,
+    };
+  }
+
+  let kib: ChannelPinPermissionsResult | null = null;
+  if (game.stRoleId && game.kibThreadId && game.kibThreadId !== game.channelId) {
+    kib = await applyChannelPinPermissions(guild, game.kibThreadId, [game.stRoleId]);
+  }
+
+  const parts: string[] = [];
+  if (!game.stRoleId) {
+    parts.push("No ST role linked on this game — run `/game setup` with `st:`.");
+  } else if (town.skipped) {
+    parts.push("Could not update town channel overwrites (missing channel or unsupported type).");
+  } else if (town.botMissingPin || town.botMissingManageRoles) {
+    const missing = [
+      town.botMissingPin ? "**Pin Messages**" : null,
+      town.botMissingManageRoles ? "**Manage Roles**" : null,
+    ].filter(Boolean);
+    parts.push(
+      `Bot is missing ${missing.join(" and ")} in <#${game.channelId}>. ` +
+        `Grant those to the bot role (channel or server), then run this again. ` +
+        `Discord will not show **Pin Message** for players until the overwrite lands.`,
+    );
+  } else if (town.pinFailed > 0) {
+    parts.push(
+      `Town pin overwrites partly failed (${town.pinOk} ok, ${town.pinFailed} failed). ` +
+        `Check the bot role is above the game ST/player roles.`,
+    );
+  } else {
+    parts.push(
+      `Town pin + thread overwrites applied in <#${game.channelId}> ` +
+        `(ST${game.playerRoleId ? " + players" : ""}). Native **Pin Message** should appear after Discord refreshes.`,
+    );
+  }
+
+  if (kib && !kib.skipped) {
+    if (kib.botMissingPin || kib.botMissingManageRoles) {
+      parts.push(`Kib channel: bot still needs Pin Messages / Manage Roles there.`);
+    } else if (kib.pinFailed > 0) {
+      parts.push(`Kib channel pin overwrites partly failed.`);
+    } else {
+      parts.push(`Kib channel pin overwrites applied.`);
+    }
+  }
+
+  return { town, kib, summary: parts.join("\n") };
 }
 
 /** Re-apply channel pin/thread overwrites for games already in progress. */
@@ -1845,19 +1990,17 @@ export async function syncActiveGameChannelPermissions(guilds: Iterable<Guild>):
 
     for (const game of games) {
       if (!game.stRoleId) continue;
-      if (game.playerRoleId) {
-        await applyGameChannelPermissions(
-          guild,
-          game.channelId,
-          game.stRoleId,
-          game.playerRoleId,
-        );
-      } else {
-        await applyChannelPinPermissions(guild, game.channelId, [game.stRoleId]);
-      }
-      // Dedicated kib channel: ST/kib helpers only (players are not in kib).
-      if (game.kibThreadId && game.kibThreadId !== game.channelId) {
-        await applyChannelPinPermissions(guild, game.kibThreadId, [game.stRoleId]);
+      const result = await syncGameChannelPermissions(guild, game);
+      if (result.town.botMissingPin || result.town.pinFailed > 0) {
+        log("warn", "permissions.sync.game_incomplete", {
+          guildId: guild.id,
+          gameId: game.id,
+          channelId: game.channelId,
+          botMissingPin: result.town.botMissingPin,
+          botMissingManageRoles: result.town.botMissingManageRoles,
+          pinOk: result.town.pinOk,
+          pinFailed: result.town.pinFailed,
+        });
       }
     }
   }
