@@ -17,6 +17,9 @@ vi.mock("../error-reporter.js", () => ({
 import {
   ARCHIVE_CHANNEL_READONLY,
   ARCHIVE_ROLE_READONLY,
+  PLAYER_THREAD_PERMISSIONS,
+  ST_PIN_PERMISSION,
+  ST_THREAD_PERMISSIONS,
   applyArchiveChannelPermissions,
   archiveChannelThreadsDirectly,
   archiveGameSurfaces,
@@ -34,7 +37,18 @@ describe("archive channel permissions", () => {
     expect(ARCHIVE_CHANNEL_READONLY.SendMessages).toBe(false);
     expect(ARCHIVE_CHANNEL_READONLY.SendMessagesInThreads).toBe(false);
     expect(ARCHIVE_CHANNEL_READONLY.CreatePublicThreads).toBe(false);
+    expect(ARCHIVE_CHANNEL_READONLY.PinMessages).toBe(false);
     expect(ARCHIVE_ROLE_READONLY.ManageThreads).toBe(false);
+    expect(ARCHIVE_ROLE_READONLY.PinMessages).toBe(false);
+  });
+
+  it("grants pin separately from thread overwrites for ST and players", () => {
+    expect(ST_PIN_PERMISSION.PinMessages).toBe(true);
+    expect(ST_THREAD_PERMISSIONS.ManageThreads).toBe(true);
+    expect(ST_THREAD_PERMISSIONS).not.toHaveProperty("PinMessages");
+    expect(PLAYER_THREAD_PERMISSIONS.ManageThreads).toBe(false);
+    expect(PLAYER_THREAD_PERMISSIONS.SendMessagesInThreads).toBe(true);
+    expect(PLAYER_THREAD_PERMISSIONS).not.toHaveProperty("PinMessages");
   });
 
   it("applies @everyone and game-role overwrites on a text channel", async () => {

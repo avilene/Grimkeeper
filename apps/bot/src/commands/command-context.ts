@@ -1011,9 +1011,10 @@ export const ARCHIVE_CHANNEL_READONLY = {
   CreatePublicThreads: false,
   CreatePrivateThreads: false,
   AddReactions: false,
+  PinMessages: false,
 } as const;
 
-/** Extra denies on game roles so leftover overwrites cannot keep SendMessagesInThreads. */
+/** Extra denies on game roles so leftover overwrites cannot keep SendMessagesInThreads or pins. */
 export const ARCHIVE_ROLE_READONLY = {
   SendMessages: false,
   SendMessagesInThreads: false,
@@ -1021,6 +1022,7 @@ export const ARCHIVE_ROLE_READONLY = {
   CreatePrivateThreads: false,
   ManageThreads: false,
   AddReactions: false,
+  PinMessages: false,
 } as const;
 
 export type ArchiveGameSurfacesResult = {
@@ -1144,6 +1146,13 @@ export async function applyArchiveChannelPermissions(
   for (const roleId of [game.stRoleId, game.playerRoleId, game.kibRoleId]) {
     if (!roleId) continue;
     await channel.permissionOverwrites.edit(roleId, ARCHIVE_ROLE_READONLY).catch(() => undefined);
+  }
+
+  const botId = guild.client?.user?.id;
+  if (botId) {
+    await channel.permissionOverwrites
+      .edit(botId, { PinMessages: false })
+      .catch(() => undefined);
   }
 
   return true;
@@ -1357,7 +1366,7 @@ export async function previewArchiveSurfaces(
     const name = "name" in ch ? String(ch.name) : cid;
     const parts = [
       game
-        ? "@everyone: ViewChannel ✓, SendMessages ✗ — game roles: SendMessages / CreateThreads / ManageThreads ✗"
+        ? "@everyone: ViewChannel ✓, SendMessages ✗ — game roles: SendMessages / CreateThreads / ManageThreads / PinMessages ✗"
         : "threads scanned and locked (no permission overwrites — no game record)",
     ];
     if (archiveCategoryId && !ch.isThread() && "parentId" in ch) {
@@ -1729,6 +1738,72 @@ export async function syncGamePlayerRoles(
   };
 }
 
+/**
+ * Thread control for the storyteller role. Pin is applied separately: Discord rejects the
+ * whole overwrite if the bot cannot grant Pin Messages, and that must not drop thread perms.
+ * Threads inherit these from the parent channel.
+ */
+export const ST_THREAD_PERMISSIONS = {
+  CreatePublicThreads: true,
+  CreatePrivateThreads: true,
+  SendMessagesInThreads: true,
+  ManageThreads: true,
+} as const;
+
+/** Pin Messages (split from Manage Messages). Inherited by every thread under the channel. */
+export const ST_PIN_PERMISSION = {
+  PinMessages: true,
+} as const;
+
+/**
+ * Players must NOT have ManageThreads — with it, Discord lets them invite others into
+ * private threads even when invitable is false.
+ * Pin Messages is applied separately (same as ST) so a missing bot grant cannot wipe
+ * these thread overwrites. Threads inherit Pin Messages from the parent town channel.
+ */
+export const PLAYER_THREAD_PERMISSIONS = {
+  CreatePublicThreads: false,
+  CreatePrivateThreads: false,
+  SendMessagesInThreads: true,
+  ManageThreads: false,
+} as const;
+
+async function allowPinMessages(
+  channel: { id: string; permissionOverwrites: { edit: (id: string, perms: typeof ST_PIN_PERMISSION) => Promise<unknown> } },
+  targetId: string,
+): Promise<void> {
+  await channel.permissionOverwrites.edit(targetId, ST_PIN_PERMISSION).catch((error) => {
+    log("warn", "permissions.pin.failed", {
+      channelId: channel.id,
+      targetId,
+      ...serializeError(error),
+    });
+  });
+}
+
+/**
+ * Grant Pin Messages on a guild text/announcement channel (not a thread).
+ * Threads inherit this from the parent. Used for ST/admins/bot on town + kib channels,
+ * and for the player role on town so native pin works in ST threads and other town threads.
+ */
+export async function applyChannelPinPermissions(
+  guild: Guild,
+  channelId: string,
+  roleIds: readonly string[],
+): Promise<void> {
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel || channel.isThread() || !("permissionOverwrites" in channel)) return;
+
+  for (const roleId of roleIds) {
+    if (roleId) await allowPinMessages(channel, roleId);
+  }
+  for (const adminRoleId of getAdminRoleIds()) {
+    await allowPinMessages(channel, adminRoleId);
+  }
+  const botId = guild.client.user?.id;
+  if (botId) await allowPinMessages(channel, botId);
+}
+
 export async function applyGameChannelPermissions(
   guild: Guild,
   channelId: string,
@@ -1736,31 +1811,55 @@ export async function applyGameChannelPermissions(
   playersRoleId: string,
 ): Promise<void> {
   const channel = await guild.channels.fetch(channelId).catch(() => null);
-  if (!channel || !("permissionOverwrites" in channel)) return;
+  if (!channel || channel.isThread() || !("permissionOverwrites" in channel)) return;
 
   // ST (+ admins): full thread control so they can join private player threads and invite helpers.
-  const stThreadPermissions = {
-    CreatePublicThreads: true,
-    CreatePrivateThreads: true,
-    SendMessagesInThreads: true,
-    ManageThreads: true,
-  };
-  // Players must NOT have ManageThreads — with it, Discord lets them invite others into
-  // private threads even when invitable is false.
-  const playerThreadPermissions = {
-    CreatePublicThreads: false,
-    CreatePrivateThreads: false,
-    SendMessagesInThreads: true,
-    ManageThreads: false,
-  };
-
-  await channel.permissionOverwrites.edit(stRoleId, stThreadPermissions).catch(() => undefined);
-  await channel.permissionOverwrites.edit(playersRoleId, playerThreadPermissions).catch(() => undefined);
+  await channel.permissionOverwrites.edit(stRoleId, ST_THREAD_PERMISSIONS).catch(() => undefined);
+  await channel.permissionOverwrites
+    .edit(playersRoleId, PLAYER_THREAD_PERMISSIONS)
+    .catch(() => undefined);
 
   for (const adminRoleId of getAdminRoleIds()) {
     await channel.permissionOverwrites
-      .edit(adminRoleId, stThreadPermissions)
+      .edit(adminRoleId, ST_THREAD_PERMISSIONS)
       .catch(() => undefined);
+  }
+
+  // ST + players: native Discord pin in town and every thread under it (incl. private ST threads).
+  await applyChannelPinPermissions(guild, channelId, [stRoleId, playersRoleId]);
+}
+
+/** Re-apply channel pin/thread overwrites for games already in progress. */
+export async function syncActiveGameChannelPermissions(guilds: Iterable<Guild>): Promise<void> {
+  for (const guild of guilds) {
+    let games: Awaited<ReturnType<typeof listActiveGamesForGuild>> = [];
+    try {
+      games = await listActiveGamesForGuild(guild.id);
+    } catch (error) {
+      log("warn", "permissions.sync.guild_failed", {
+        guildId: guild.id,
+        ...serializeError(error),
+      });
+      continue;
+    }
+
+    for (const game of games) {
+      if (!game.stRoleId) continue;
+      if (game.playerRoleId) {
+        await applyGameChannelPermissions(
+          guild,
+          game.channelId,
+          game.stRoleId,
+          game.playerRoleId,
+        );
+      } else {
+        await applyChannelPinPermissions(guild, game.channelId, [game.stRoleId]);
+      }
+      // Dedicated kib channel: ST/kib helpers only (players are not in kib).
+      if (game.kibThreadId && game.kibThreadId !== game.channelId) {
+        await applyChannelPinPermissions(guild, game.kibThreadId, [game.stRoleId]);
+      }
+    }
   }
 }
 

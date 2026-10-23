@@ -34,7 +34,7 @@ import { tryMarkInteractionOnce } from "./interactions/interaction-dedup.js";
 import { logCommandInvoked } from "./action-log.js";
 import { startReminderScheduler } from "./reminder-scheduler.js";
 import { tryStCommandFallback } from "./st-command-fallback.js";
-import { replyOrEditInteraction } from "./commands/command-context.js";
+import { replyOrEditInteraction, syncActiveGameChannelPermissions } from "./commands/command-context.js";
 
 await loadCommandModules();
 
@@ -85,6 +85,13 @@ client.once(Events.ClientReady, async () => {
     log("info", "stQueue.panel.refresh.ok", { guildCount: guildIds.size });
   } catch (error) {
     void reportError("stQueue.panel.refresh.failed", error);
+  }
+
+  try {
+    await syncActiveGameChannelPermissions(client.guilds.cache.values());
+    log("info", "permissions.sync.ok", { guilds: client.guilds.cache.size });
+  } catch (error) {
+    await reportError("permissions.sync.failed", error);
   }
 
   await notifyLifecycle(

@@ -16,6 +16,7 @@ import { isDevMode } from "../dev.js";
 import { ensureLogThread, postGameLog, postGameLogRoleChange } from "../game-log-thread.js";
 import {
   addRoleToUser,
+  applyChannelPinPermissions,
   applyGameChannelPermissions,
   createKibThread,
   deferInteractionReply,
@@ -222,6 +223,7 @@ export class GameCommandsMinimal {
         where: { id: gameId },
         data: { kibThreadId: kibResult.threadId },
       });
+      await applyChannelPinPermissions(interaction.guild!, kibResult.threadId, [stRole.id]);
     }
 
     await setInteractionProgress(interaction, logThread ? "Attaching log thread…" : "Creating log thread…");

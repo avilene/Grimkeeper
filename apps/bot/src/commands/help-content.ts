@@ -536,6 +536,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
       "4. `/reminder` / `/st reminder batch` / `/st reminder schedule` for scheduled pings (ST role or allowlist)",
       "5. `/end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
       "6. `/archive` — locks town/kib read-only, strips ST/player/kib roles from members, and moves town (and kib channel) to Archives",
+      "ST and player roles get Discord **Pin Messages** on town (and its threads, including private ST threads). ST also gets pin on a dedicated kib channel.",
       "",
       "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/log` to recreate it mid-game.",
       "ST commands are top-level (`/broadcast`, `/next-phase`, `/resolve-next`, `/execute`, `/add-kib`, …). `/st do` remains an autocomplete fallback. Nested `/st …` shortcuts still work. Mid-game buttons: **`/panel`**.",
