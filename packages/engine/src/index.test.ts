@@ -1973,15 +1973,16 @@ describe("GameEngine", () => {
     expect(roll).toMatch(/^👉 \d+\./m);
     expect(roll).not.toMatch(/👉 \*\*/);
 
-    expect(() =>
-      engine.handle({
-        kind: GameCommandKind.CastVote,
-        gameId,
-        nominationId: nomination.id,
-        voterId: players[0]!.id,
-        choice: "yes",
-      }),
-    ).toThrow("vote count is in progress");
+    // Later voters may still change until the hand reaches them.
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: players[0]!.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
 
     const eligible = engine.getCountEligiblePlayers(nomination.id);
     for (const [index, player] of eligible.entries()) {
@@ -2001,6 +2002,96 @@ describe("GameEngine", () => {
     expect(engine.getNominationById(nomination.id)?.countHandIndex).toBeNull();
     expect(engine.getCountHandPlayer(nomination.id)).toBeNull();
     expect(engine.formatNominationTally(nomination.id, { revealSecret: true })).toContain("Yes: 2");
+  });
+
+  it("allows vote changes during count until the hand locks the voter in", () => {
+    const engine = setupTownEngine(4);
+    const players = engine.getState().players;
+    // nominee seat 2 → count order: seat3, seat4, seat1, seat2 (players[2],[3],[0],[1])
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Mid-count changes.",
+    })) {
+      engine.apply(event);
+    }
+    const nomination = engine.getState().day!.nominations[0]!;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: players[2]!.id,
+      choice: "no",
+    })) {
+      engine.apply(event);
+    }
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: players[3]!.id,
+      choice: "no",
+    })) {
+      engine.apply(event);
+    }
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.StartNominationCount,
+      gameId,
+      nominationId: nomination.id,
+    })) {
+      engine.apply(event);
+    }
+    expect(engine.getCountHandPlayer(nomination.id)?.id).toBe(players[2]!.id);
+    expect(engine.isVoterLockedIn(nomination.id, players[2]!.id)).toBe(false);
+    expect(engine.isVoterLockedIn(nomination.id, players[3]!.id)).toBe(false);
+
+    // Voter under the hand can still flip before CountHandVote.
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: players[2]!.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CountHandVote,
+      gameId,
+      nominationId: nomination.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
+    expect(engine.getCountHandPlayer(nomination.id)?.id).toBe(players[3]!.id);
+    expect(engine.isVoterLockedIn(nomination.id, players[2]!.id)).toBe(true);
+    expect(engine.isVoterLockedIn(nomination.id, players[3]!.id)).toBe(false);
+
+    expect(() =>
+      engine.handle({
+        kind: GameCommandKind.CastVote,
+        gameId,
+        nominationId: nomination.id,
+        voterId: players[2]!.id,
+        choice: "no",
+      }),
+    ).toThrow("already been locked in");
+
+    // Next voter can still change until the hand reaches them.
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: players[3]!.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
   });
 
   it("does not skip the next player after a ghost votes yes during the count", () => {

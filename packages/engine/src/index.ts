@@ -1461,8 +1461,10 @@ export class GameEngine {
         if (nomination.votesLocked) {
           throw new GameEngineError("Votes are locked on this nomination. Ask the storyteller to unlock.");
         }
-        if (nomination.countHandIndex != null) {
-          throw new GameEngineError("A vote count is in progress. Wait for the storyteller.");
+        if (this.isVoterLockedIn(command.nominationId, command.voterId)) {
+          throw new GameEngineError(
+            "Your vote has already been locked in on this nomination.",
+          );
         }
         // Ghosts may vote yes / no / conditional; only a yes spends the ghost vote.
         // Activated Banshee (hasTwoVotes) votes without spending a ghost vote.
@@ -3379,6 +3381,21 @@ export class GameEngine {
     if (!nomination || nomination.countHandIndex == null) return null;
     const order = this.getVoteLockInOrder(nomination.nomineeId);
     return order[nomination.countHandIndex] ?? null;
+  }
+
+  /**
+   * True once the count hand has passed this voter (or the nomination is fully locked).
+   * The voter currently under the hand can still change until CountHandVote records them.
+   */
+  isVoterLockedIn(nominationId: string, voterId: string): boolean {
+    const nomination = this.getNominationById(nominationId);
+    if (!nomination) return false;
+    if (nomination.votesLocked) return true;
+    if (nomination.countHandIndex == null) return false;
+    const order = this.getVoteLockInOrder(nomination.nomineeId);
+    const voterIndex = order.findIndex((player) => player.id === voterId);
+    if (voterIndex < 0) return false;
+    return voterIndex < nomination.countHandIndex;
   }
 
   getPlayersMissingVotes(nominationId: string): PlayerState[] {
