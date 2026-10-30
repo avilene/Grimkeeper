@@ -11,7 +11,7 @@ const SUPPRESSED_DISCORD_CHANNEL_URL = new RegExp(
   "gi",
 );
 
-/** Make text safe as a Discord `[label](url)` label. */
+/** Make text safe as a Discord `[label](url)` label (strips nested brackets/parens). */
 export function sanitizeDiscordLinkLabel(text: string): string {
   const cleaned = text
     .replace(/\s*\[[^\]]*\]/g, "")
@@ -22,9 +22,23 @@ export function sanitizeDiscordLinkLabel(text: string): string {
   return cleaned || "link";
 }
 
+/**
+ * Discord often fails to resolve masked links when the label contains emoji
+ * (shows raw `[label](url)` instead of a hyperlink).
+ */
+export function stripDiscordLinkLabelEmoji(text: string): string {
+  return text
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/\uFE0F|\u200D/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Masked markdown jump link for plain bot message content. */
 export function formatMaskedDiscordLink(label: string, url: string): string {
-  return `[${sanitizeDiscordLinkLabel(label)}](${url.trim()})`;
+  const safeLabel =
+    stripDiscordLinkLabelEmoji(sanitizeDiscordLinkLabel(label)) || "link";
+  return `[${safeLabel}](${url.trim()})`;
 }
 
 /**

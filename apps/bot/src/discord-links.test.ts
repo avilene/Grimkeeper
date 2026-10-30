@@ -23,6 +23,16 @@ describe("formatMaskedDiscordLink", () => {
       `[nomination of Moss on Moss](${url})`,
     );
   });
+
+  it("strips emoji from the label so Discord renders the hyperlink", () => {
+    const url = "https://discord.com/channels/1/2/3";
+    expect(formatMaskedDiscordLink("nomination of Missouri on Kiwi 🥝", url)).toBe(
+      `[nomination of Missouri on Kiwi](${url})`,
+    );
+    expect(formatMaskedDiscordLink("nomination of arlie on sharii🦀 [craboots!]", url)).toBe(
+      `[nomination of arlie on sharii](${url})`,
+    );
+  });
 });
 
 describe("unwrapSuppressedDiscordChannelLinks", () => {
