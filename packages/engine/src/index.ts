@@ -1132,6 +1132,55 @@ export function getEffectiveYesVotes(state: GameState, nominationId: string): nu
   return yes;
 }
 
+/** Drop a voter's private ballot so a locked-in public choice is definitive. */
+function clearPrivateBallot(
+  day: DayPhaseState,
+  nominationId: string,
+  voterId: string,
+): void {
+  day.votes = day.votes.filter(
+    (vote) =>
+      !(
+        vote.nominationId === nominationId &&
+        vote.voterId === voterId &&
+        vote.isPrivate
+      ),
+  );
+}
+
+/**
+ * When votes lock, private ballots become the public final result so Town Voting
+ * tallies/rolls match the effective count the block uses.
+ */
+function promotePrivateBallotsToPublic(day: DayPhaseState, nominationId: string): void {
+  const privates = day.votes.filter(
+    (vote) => vote.nominationId === nominationId && vote.isPrivate,
+  );
+  for (const privateVote of privates) {
+    const publicIndex = day.votes.findIndex(
+      (vote) =>
+        vote.nominationId === nominationId &&
+        vote.voterId === privateVote.voterId &&
+        !vote.isPrivate,
+    );
+    const promoted: VoteRecord = {
+      nominationId,
+      voterId: privateVote.voterId,
+      choice: privateVote.choice,
+      reason: privateVote.reason,
+      isPrivate: false,
+    };
+    if (publicIndex >= 0) {
+      day.votes[publicIndex] = promoted;
+    } else {
+      day.votes.push(promoted);
+    }
+  }
+  day.votes = day.votes.filter(
+    (vote) => !(vote.nominationId === nominationId && vote.isPrivate),
+  );
+}
+
 /** Ghost already spent their daily yes on a different nomination. */
 export function hasGhostYesOnOtherNomination(
   state: GameState,
@@ -3028,6 +3077,9 @@ export class GameEngine {
           nomination.votesLocked = true;
           nomination.countHandIndex = null;
         }
+        if (this.state.day) {
+          promotePrivateBallotsToPublic(this.state.day, event.nominationId);
+        }
         break;
       }
       case GameEventType.NominationVotesUnlocked: {
@@ -3047,7 +3099,7 @@ export class GameEngine {
       }
       case GameEventType.NominationCountHandAdvanced: {
         if (!this.state.day) break;
-        // Count votes are always public ballots.
+        // Counted choice is the locked-in public ballot; drop any private override.
         const existingIndex = this.state.day.votes.findIndex(
           (vote) =>
             vote.nominationId === event.nominationId &&
@@ -3066,6 +3118,7 @@ export class GameEngine {
         } else {
           this.state.day.votes.push(voteRecord);
         }
+        clearPrivateBallot(this.state.day, event.nominationId, event.voterId);
         const voter = this.getPlayerById(event.voterId);
         if (voter && !voter.alive && event.choice === "yes" && !voter.hasTwoVotes) {
           voter.ghostVoteUsed = true;

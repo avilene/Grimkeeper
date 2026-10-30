@@ -181,13 +181,21 @@ export async function syncGameProjectionFromEngine(
     select: { id: true, nominationId: true, voterId: true, isPrivate: true },
   });
 
+  const lockedOrClosedNominationIds = new Set(
+    day.nominations
+      .filter((nomination) => nomination.votesLocked || nomination.status !== "open")
+      .map((nomination) => nomination.id),
+  );
+
   for (const dbVote of dbVotes) {
-    // Private votes may be set directly via the admin UI and won't appear in the engine
-    // event log — never delete them here so admin-set private ballots are preserved.
-    if (dbVote.isPrivate) continue;
     const key = `${dbVote.nominationId}:${dbVote.voterId}:${dbVote.isPrivate}`;
-    if (!voteKeys.has(key)) {
-      await prisma.vote.delete({ where: { id: dbVote.id } });
+    if (voteKeys.has(key)) continue;
+    // Admin can set private ballots without engine events — keep those while the
+    // nomination is still open/unlocked. Once locked (or resolved), engine state wins
+    // so promoted/cleared private ballots disappear from the projection.
+    if (dbVote.isPrivate && !lockedOrClosedNominationIds.has(dbVote.nominationId)) {
+      continue;
     }
+    await prisma.vote.delete({ where: { id: dbVote.id } });
   }
 }

@@ -2387,6 +2387,126 @@ describe("GameEngine", () => {
     expect(stRoll).toContain("(public: yes)");
   });
 
+  it("promotes private ballots to the public final result when votes lock", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Lock private as final.",
+    })) {
+      engine.apply(event);
+    }
+    const nomination = engine.getState().day!.nominations[0]!;
+    const voter = players[2]!;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: voter.id,
+      choice: "no",
+    })) {
+      engine.apply(event);
+    }
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: voter.id,
+      choice: "yes",
+      privateBallot: true,
+    })) {
+      engine.apply(event);
+    }
+
+    expect(engine.getEffectiveYesVotes(nomination.id)).toBe(1);
+    expect(engine.formatNominationTally(nomination.id, { ballot: "public" })).toContain("Yes: 0");
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.LockNominationVotes,
+      gameId,
+      nominationId: nomination.id,
+    })) {
+      engine.apply(event);
+    }
+
+    expect(engine.formatNominationTally(nomination.id, { ballot: "public" })).toContain("Yes: 1");
+    expect(engine.formatNominationTally(nomination.id, { ballot: "private" })).toContain("Yes: 0");
+    expect(engine.getEffectiveYesVotes(nomination.id)).toBe(1);
+    expect(engine.formatNominationVoteRoll(nomination.id, { audience: "public" })).toContain(
+      "**yes**",
+    );
+    expect(
+      engine.formatNominationVoteRoll(nomination.id, { audience: "storyteller" }),
+    ).not.toContain("(public:");
+  });
+
+  it("clears private ballots when a hand is counted so the locked-in choice wins", () => {
+    const engine = setupTownEngine(3);
+    const players = engine.getState().players;
+    for (const event of engine.handle({
+      kind: GameCommandKind.MakeNomination,
+      gameId,
+      nominatorId: players[0]!.id,
+      nomineeId: players[1]!.id,
+      accusation: "Count clears private.",
+    })) {
+      engine.apply(event);
+    }
+    const nomination = engine.getState().day!.nominations[0]!;
+    // Count order after nominee seat 2: seat3 (players[2]), seat1, seat2
+    const firstHand = players[2]!;
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: firstHand.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
+    for (const event of engine.handle({
+      kind: GameCommandKind.CastVote,
+      gameId,
+      nominationId: nomination.id,
+      voterId: firstHand.id,
+      choice: "no",
+      privateBallot: true,
+    })) {
+      engine.apply(event);
+    }
+    expect(engine.getEffectiveYesVotes(nomination.id)).toBe(0);
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.StartNominationCount,
+      gameId,
+      nominationId: nomination.id,
+    })) {
+      engine.apply(event);
+    }
+    expect(engine.getCountHandPlayer(nomination.id)?.id).toBe(firstHand.id);
+
+    for (const event of engine.handle({
+      kind: GameCommandKind.CountHandVote,
+      gameId,
+      nominationId: nomination.id,
+      choice: "yes",
+    })) {
+      engine.apply(event);
+    }
+
+    const dayVotes = engine.getState().day!.votes.filter(
+      (vote) => vote.nominationId === nomination.id && vote.voterId === firstHand.id,
+    );
+    expect(dayVotes).toHaveLength(1);
+    expect(dayVotes[0]).toMatchObject({ choice: "yes", isPrivate: false });
+    expect(engine.getEffectiveYesVotes(nomination.id)).toBe(1);
+  });
+
   it("does not show a public-only reason on a private ballot without its own reason", () => {
     const engine = setupTownEngine(3);
     const players = engine.getState().players;
