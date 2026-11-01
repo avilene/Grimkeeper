@@ -26,10 +26,63 @@ import {
   formatArchiveDryRunContent,
   lockThreadReadOnly,
   moveChannelToArchiveCategory,
+  normalizeGuildChannelName,
+  renameChannelForArchive,
   replyOrEditInteraction,
   stripGameRolesFromMembers,
 } from "./command-context.js";
 import { DISCORD_CONTENT_LIMIT, splitDiscordContent } from "../interactions/interaction-response.js";
+
+describe("normalizeGuildChannelName", () => {
+  it("lowercases, hyphenates spaces, and strips invalid characters", () => {
+    expect(normalizeGuildChannelName("  Trouble Brewing!!  ")).toBe("trouble-brewing");
+    expect(normalizeGuildChannelName("TB_Day_1")).toBe("tb-day-1");
+    expect(normalizeGuildChannelName("---")).toBeNull();
+    expect(normalizeGuildChannelName("!!!")).toBeNull();
+  });
+});
+
+describe("renameChannelForArchive", () => {
+  it("renames when the normalized name differs", async () => {
+    const setName = vi.fn(async () => undefined);
+    const guild = {
+      channels: {
+        fetch: vi.fn(async () => ({
+          isDMBased: () => false,
+          isThread: () => false,
+          type: ChannelType.GuildText,
+          name: "trouble-brewing-day3",
+          setName,
+        })),
+      },
+    };
+
+    await expect(
+      renameChannelForArchive(guild as never, "town-1", "Trouble Brewing"),
+    ).resolves.toBe("trouble-brewing");
+    expect(setName).toHaveBeenCalledWith("trouble-brewing", "Game archived — rename channel.");
+  });
+
+  it("skips when name is already the same", async () => {
+    const setName = vi.fn();
+    const guild = {
+      channels: {
+        fetch: vi.fn(async () => ({
+          isDMBased: () => false,
+          isThread: () => false,
+          type: ChannelType.GuildText,
+          name: "trouble-brewing",
+          setName,
+        })),
+      },
+    };
+
+    await expect(
+      renameChannelForArchive(guild as never, "town-1", "trouble-brewing"),
+    ).resolves.toBeNull();
+    expect(setName).not.toHaveBeenCalled();
+  });
+});
 
 describe("archive channel permissions", () => {
   it("exports readonly overwrite shapes for @everyone and game roles", () => {
@@ -306,6 +359,7 @@ describe("archiveGameSurfaces", () => {
       type: ChannelType.GuildText,
       permissionOverwrites: { edit: townEdit },
       send: vi.fn(async () => undefined),
+      setName: vi.fn(async () => undefined),
       threads: {
         fetchArchived: vi.fn(async () => ({ threads: { values: () => [] } })),
       },
@@ -353,11 +407,61 @@ describe("archiveGameSurfaces", () => {
 
     expect(result.channels).toBe(2);
     expect(result.rolesStripped).toBe(0);
+    expect(result.renamedTo).toBeNull();
     expect(townEdit).toHaveBeenCalledWith("guild-1", ARCHIVE_CHANNEL_READONLY);
     expect(kibEdit).toHaveBeenCalledWith("guild-1", ARCHIVE_CHANNEL_READONLY);
     expect(town.send).toHaveBeenCalled();
     expect(kib.send).toHaveBeenCalled();
+    expect(town.setName).not.toHaveBeenCalled();
     expect(removeRole).not.toHaveBeenCalled();
+  });
+
+  it("renames the town channel when channelName is provided", async () => {
+    const setName = vi.fn(async () => undefined);
+    const town = {
+      id: "town-1",
+      name: "trouble-brewing-day2",
+      isTextBased: () => true,
+      isDMBased: () => false,
+      isThread: () => false,
+      type: ChannelType.GuildText,
+      permissionOverwrites: { edit: vi.fn(async () => undefined) },
+      send: vi.fn(async () => undefined),
+      setName,
+      threads: {
+        fetchArchived: vi.fn(async () => ({
+          threads: { values: () => [], find: () => undefined },
+        })),
+      },
+    };
+    const guild = {
+      id: "guild-1",
+      channels: {
+        fetch: vi.fn(async (id: string) => (id === "town-1" ? town : null)),
+        fetchActiveThreads: vi.fn(async () => ({
+          threads: { values: () => [], find: () => undefined },
+        })),
+      },
+      members: {
+        cache: { values: () => [] },
+        removeRole: vi.fn(async () => undefined),
+      },
+    };
+    const game = {
+      id: "game-1",
+      channelId: "town-1",
+      kibThreadId: null,
+      stRoleId: null,
+      playerRoleId: null,
+      kibRoleId: null,
+    };
+
+    const result = await archiveGameSurfaces(guild as never, game, null, {
+      channelName: "Trouble Brewing",
+    });
+
+    expect(result.renamedTo).toBe("trouble-brewing");
+    expect(setName).toHaveBeenCalledWith("trouble-brewing", "Game archived — rename channel.");
   });
 });
 
@@ -437,6 +541,22 @@ describe("formatArchiveDryRunContent", () => {
     expect(text).not.toContain("lock (public)");
     expect(text).not.toContain("`town`");
     expect(text.length).toBeLessThanOrEqual(DISCORD_CONTENT_LIMIT);
+  });
+
+  it("shows a rename arrow when the town channel would be renamed", () => {
+    const text = formatArchiveDryRunContent({
+      channelLines: [
+        {
+          name: "trouble-brewing-day2",
+          mention: "<#town-1>",
+          action:
+            "@everyone: ViewChannel ✓, SendMessages ✗ — rename to `trouble-brewing` — move to Archives",
+        },
+      ],
+      threadLines: [],
+    });
+    expect(text).toContain("• <#town-1> → `trouble-brewing`");
+    expect(text).not.toContain("ViewChannel");
   });
 
   it("lists ST/player/kib roles that would be stripped from members", () => {

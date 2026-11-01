@@ -58,7 +58,9 @@ import {
   archiveGameSurfaces,
   formatArchiveDryRunContent,
   moveChannelToArchiveCategory,
+  normalizeGuildChannelName,
   previewArchiveSurfaces,
+  renameChannelForArchive,
   broadcastToPlayerThreads,
   createPlayerStThreads,
   createTownVoteThread,
@@ -256,6 +258,14 @@ export class StCommandsMinimal {
     })
     winner: "good" | "evil" | "cancel" | undefined,
     @SlashOption({
+      name: "channel_name",
+      description: "For archive: optional new town channel name",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+      maxLength: 100,
+    })
+    channel_name: string | undefined,
+    @SlashOption({
       name: "dry_run",
       description: "For archive: preview changes without applying them",
       type: ApplicationCommandOptionType.Boolean,
@@ -288,7 +298,7 @@ export class StCommandsMinimal {
         await this.end(winner, interaction);
         return;
       case "archive":
-        await this.archive(interaction, dry_run ?? false);
+        await this.archive(interaction, dry_run ?? false, channel_name);
         return;
       case "add-spectator":
         if (!user) {
@@ -974,11 +984,25 @@ export class StCommandsMinimal {
     }
   }
 
-  async archive(interaction: CommandInteraction, dryRun = false): Promise<void> {
+  async archive(
+    interaction: CommandInteraction,
+    dryRun = false,
+    channelName?: string | null,
+  ): Promise<void> {
     const resolved = await requireArchivableGame(interaction);
     if (!resolved) return;
     const guild = interaction.guild;
     if (!guild) return;
+
+    const requestedName = channelName?.trim() ? channelName : null;
+    if (requestedName && !normalizeGuildChannelName(requestedName)) {
+      await replyOrEditInteraction(interaction, {
+        content:
+          "Invalid `channel_name` — use letters, numbers, and hyphens (Discord channel name rules).",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
     try {
       await setInteractionProgress(
@@ -988,7 +1012,9 @@ export class StCommandsMinimal {
 
       if (dryRun) {
         const game = resolved.noDbRow ? null : resolved.game;
-        const preview = await previewArchiveSurfaces(guild, resolved.channelId, game);
+        const preview = await previewArchiveSurfaces(guild, resolved.channelId, game, {
+          channelName: requestedName,
+        });
         await replyOrEditInteraction(interaction, {
           content: formatArchiveDryRunContent(preview),
           flags: MessageFlags.Ephemeral,
@@ -997,6 +1023,9 @@ export class StCommandsMinimal {
       }
 
       if (resolved.noDbRow) {
+        const renamedTo = requestedName
+          ? await renameChannelForArchive(guild, resolved.channelId, requestedName)
+          : null;
         const channelResult = await archiveChannelThreadsDirectly(guild, resolved.channelId);
         const archiveCategoryId = await resolveArchiveCategoryId(guild.id);
         let movedChannels = 0;
@@ -1007,6 +1036,7 @@ export class StCommandsMinimal {
             movedChannels++;
           }
         }
+        const renamedHint = renamedTo ? ` Renamed town to \`${renamedTo}\`.` : "";
         const movedHint =
           movedChannels > 0 ? ` ${movedChannels} channel(s) moved to Archives.` : "";
         const categoryHint = archiveCategoryId
@@ -1014,13 +1044,16 @@ export class StCommandsMinimal {
           : " No Archives category configured.";
         await replyOrEditInteraction(interaction, {
           content:
-            `Archived unrecognised channel — ${channelResult.threads} thread(s) locked read-only.${movedHint} No game record found, so channel permission overwrites were not applied.${categoryHint}`,
+            `Archived unrecognised channel — ${channelResult.threads} thread(s) locked read-only.${renamedHint}${movedHint} No game record found, so channel permission overwrites were not applied.${categoryHint}`,
         });
         return;
       }
 
       const { game } = resolved;
-      const result = await archiveGameSurfaces(guild, game, resolved.engine);
+      const result = await archiveGameSurfaces(guild, game, resolved.engine, {
+        channelName: requestedName,
+      });
+      const renamedHint = result.renamedTo ? ` Renamed town to \`${result.renamedTo}\`.` : "";
       const movedHint =
         result.movedChannels > 0
           ? ` ${result.movedChannels} channel(s) moved to Archives.`
@@ -1032,13 +1065,13 @@ export class StCommandsMinimal {
       await postGameLog(
         guild,
         game,
-        `Game archived — town/kib opened for reading; ${result.channels} channel(s) and ${result.threads} thread(s) set read-only.${movedHint}${rolesHint}` +
+        `Game archived — town/kib opened for reading; ${result.channels} channel(s) and ${result.threads} thread(s) set read-only.${renamedHint}${movedHint}${rolesHint}` +
           (interaction.user.id ? ` By <@${interaction.user.id}>.` : ""),
       );
 
       await replyOrEditInteraction(interaction, {
         content:
-          `Archived — town and kib (if a channel) are open to read; ${result.channels} channel(s) and ${result.threads} thread(s) locked read-only.${movedHint}${rolesHint} Private ST/whisper threads stay private but locked.`,
+          `Archived — town and kib (if a channel) are open to read; ${result.channels} channel(s) and ${result.threads} thread(s) locked read-only.${renamedHint}${movedHint}${rolesHint} Private ST/whisper threads stay private but locked.`,
       });
     } catch (error) {
       await replyEngineError(interaction, error);

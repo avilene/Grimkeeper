@@ -535,7 +535,7 @@ export function buildStHelpEmbeds(): EmbedBuilder[] {
       "3. `/broadcast` from kib to send the same message to all player threads",
       "4. `/reminder` / `/st reminder batch` / `/st reminder schedule` for scheduled pings (ST role or allowlist)",
       "5. `/end` with `winner: good` or `evil` — strips game roles, cancels reminders, opens kib for post-game chat",
-      "6. `/archive` — locks town/kib read-only, strips ST/player/kib roles from members, and moves town (and kib channel) to Archives",
+      "6. `/archive` — locks town/kib read-only, strips ST/player/kib roles from members, moves town (and kib channel) to Archives; optional `channel_name` renames town",
       "ST and player roles get Discord **Pin Messages** on town (and its threads, including private ST threads). ST also gets pin on a dedicated kib channel. The bot role needs **Pin Messages** + **Manage Roles** to apply that — then `/sync-channel-permissions`.",
       "",
       "An **ST-only log thread** is created on setup (or pick `log_thread:`). Use `/log` to recreate it mid-game.",

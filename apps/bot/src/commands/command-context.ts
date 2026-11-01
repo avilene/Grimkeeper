@@ -1031,7 +1031,52 @@ export type ArchiveGameSurfacesResult = {
   threads: number;
   movedChannels: number;
   rolesStripped: number;
+  /** Final town channel name after a successful optional rename; null if unchanged/skipped. */
+  renamedTo: string | null;
 };
+
+/**
+ * Normalize a Discord guild channel name: lowercase, spaces→hyphens, strip invalid
+ * characters, collapse hyphens, max 100. Returns null when nothing usable remains.
+ */
+export function normalizeGuildChannelName(input: string): string | null {
+  const normalized = input
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 100);
+  return normalized.length > 0 ? normalized : null;
+}
+
+/**
+ * Rename a guild text/announcement channel. No-op when the name is unchanged
+ * or the channel cannot be renamed.
+ */
+export async function renameChannelForArchive(
+  guild: Guild,
+  channelId: string,
+  rawName: string,
+  reason = "Game archived — rename channel.",
+): Promise<string | null> {
+  const name = normalizeGuildChannelName(rawName);
+  if (!name) return null;
+
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel || channel.isDMBased() || channel.isThread()) return null;
+  if (!isGameTextChannel(channel)) return null;
+  if (!("setName" in channel) || typeof channel.setName !== "function") return null;
+  if (channel.name === name) return null;
+
+  try {
+    await channel.setName(name, reason);
+    return name;
+  } catch {
+    return null;
+  }
+}
 
 export type ArchivableGame = NonNullable<Awaited<ReturnType<typeof getGameForChannelIncludingEnded>>>;
 
@@ -1220,10 +1265,12 @@ export async function archiveGameSurfaces(
     kibThreadId?: string | null;
   },
   engine?: Pick<GameEngine, "getState" | "getStorytellerDiscordIds"> | null,
+  options?: { channelName?: string | null },
 ): Promise<ArchiveGameSurfacesResult> {
   let channels = 0;
   let threads = 0;
   let movedChannels = 0;
+  let renamedTo: string | null = null;
 
   const kib = await getKibThreadForGame(guild, game);
   const archiveCategoryId = await resolveArchiveCategoryId(guild.id);
@@ -1236,6 +1283,10 @@ export async function archiveGameSurfaces(
   }
   if (kib && kib.isTextBased()) {
     await kib.send({ content: notice }).catch(() => undefined);
+  }
+
+  if (options?.channelName) {
+    renamedTo = await renameChannelForArchive(guild, game.channelId, options.channelName);
   }
 
   if (await applyArchiveChannelPermissions(guild, game.channelId, game)) {
@@ -1279,7 +1330,7 @@ export async function archiveGameSurfaces(
   }
 
   const stripped = await stripGameRolesFromMembers(guild, game, engine, kibUserIds);
-  return { channels, threads, movedChannels, rolesStripped: stripped.users };
+  return { channels, threads, movedChannels, rolesStripped: stripped.users, renamedTo };
 }
 
 export type ArchivePreviewLine = {
@@ -1304,7 +1355,9 @@ export function formatArchiveDryRunContent(preview: ArchivePreviewResult): strin
   if (preview.channelLines.length > 0) {
     lines.push(`**Channels (${preview.channelLines.length})**`);
     for (const channel of preview.channelLines) {
-      lines.push(`• ${channel.mention}`);
+      const renameMatch = channel.action.match(/rename to `([^`]+)`/);
+      const renameNote = renameMatch ? ` → \`${renameMatch[1]}\`` : "";
+      lines.push(`• ${channel.mention}${renameNote}`);
     }
   }
   if (preview.threadLines.length > 0) {
@@ -1341,6 +1394,7 @@ export async function previewArchiveSurfaces(
   guild: Guild,
   channelId: string,
   game?: GameRoleIds & { id: string; kibThreadId?: string | null } | null,
+  options?: { channelName?: string | null },
 ): Promise<ArchivePreviewResult> {
   const channelLines: ArchivePreviewLine[] = [];
   const threadLines: ArchivePreviewLine[] = [];
@@ -1354,6 +1408,9 @@ export async function previewArchiveSurfaces(
     archiveCategoryLabel =
       category && "name" in category ? String(category.name) : archiveCategoryId;
   }
+  const renameTo = options?.channelName
+    ? normalizeGuildChannelName(options.channelName)
+    : null;
 
   // Channels that would get permission overwrites
   const channelIds = [channelId];
@@ -1370,6 +1427,9 @@ export async function previewArchiveSurfaces(
         ? "@everyone: ViewChannel ✓, SendMessages ✗ — game roles: SendMessages / CreateThreads / ManageThreads / PinMessages ✗"
         : "threads scanned and locked (no permission overwrites — no game record)",
     ];
+    if (cid === channelId && renameTo && name !== renameTo) {
+      parts.push(`rename to \`${renameTo}\``);
+    }
     if (archiveCategoryId && !ch.isThread() && "parentId" in ch) {
       if (ch.parentId === archiveCategoryId) {
         parts.push(`already in Archives category "${archiveCategoryLabel}"`);

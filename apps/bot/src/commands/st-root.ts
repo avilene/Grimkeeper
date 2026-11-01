@@ -370,6 +370,14 @@ export class StRootCommands {
   })
   async archive(
     @SlashOption({
+      name: "channel_name",
+      description: "Optional new town channel name (e.g. strip -dayN)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+      maxLength: 100,
+    })
+    channel_name: string | undefined,
+    @SlashOption({
       name: "dry_run",
       description: "Preview changes without applying them",
       type: ApplicationCommandOptionType.Boolean,
@@ -379,7 +387,9 @@ export class StRootCommands {
     interaction?: CommandInteraction,
   ): Promise<void> {
     if (!interaction) return;
-    await runSt(interaction, () => st.archive(interaction, dry_run ?? false));
+    await runSt(interaction, () =>
+      st.archive(interaction, dry_run ?? false, channel_name),
+    );
   }
 
   @Slash({

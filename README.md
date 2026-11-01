@@ -62,7 +62,7 @@ Player day play uses top-level slash commands. Storytellers also use top-level c
 | `/setup-town` | Set roster + seats from ordered @mentions |
 | `/broadcast` | Send the same message to every player ST thread (from kib) |
 | `/end` | End the game (strip roles, open kib for post-game chat) |
-| `/archive` | Open town/kib for reading and lock all channels/threads read-only |
+| `/archive` | Open town/kib for reading and lock all channels/threads read-only (`channel_name:` optional rename) |
 | `/st do` | Autocomplete ST actions (fallback for the full catalog) |
 | `/panel` | Pin/refresh kib control panel |
 | `/add-kib` | Assign kib role (+ thread access when kib is a thread) |
