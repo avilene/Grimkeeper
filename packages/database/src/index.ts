@@ -117,8 +117,13 @@ export {
 export {
   getGuildSettings,
   listGuildSettings,
+  ensureGuildSettings,
   upsertGuildSettings,
+  addGuildSettingRoleIds,
+  parseIdList,
+  serializeIdList,
   resolveArchiveCategoryId,
+  type GuildSettingsRoleFields,
 } from "./guild-settings.js";
 export {
   isInterestSignupState,

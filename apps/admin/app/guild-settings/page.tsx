@@ -26,9 +26,9 @@ export default async function GuildSettingsPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Guild settings</h1>
       <WarnBanner>
-        Per-guild Discord configuration. Used by <code>/st do archive</code> to move town channels
-        into the Archives category. Without a row here, the bot falls back to{" "}
-        <code>ARCHIVE_CATEGORY_ID</code> in the environment.
+        Per-guild Discord configuration (command allowlist, admin/reminder roles, archive category).
+        Prefer <code>/setup</code> in Discord after inviting the bot. Without a row, the bot falls
+        back to env role lists and <code>ARCHIVE_CATEGORY_ID</code>.
       </WarnBanner>
 
       <section className="space-y-3">
@@ -45,6 +45,7 @@ export default async function GuildSettingsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Guild</TableHead>
+                <TableHead>Allowed roles</TableHead>
                 <TableHead>Archives category</TableHead>
                 <TableHead>Updated</TableHead>
               </TableRow>
@@ -59,6 +60,15 @@ export default async function GuildSettingsPage() {
                     >
                       {row.guildId}
                     </Link>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {row.allowedRoleIds != null && row.allowedRoleIds !== "" ? (
+                      row.allowedRoleIds
+                    ) : row.allowedRoleIds === "" ? (
+                      <span className="text-muted-foreground">open</span>
+                    ) : (
+                      <span className="text-muted-foreground">env</span>
+                    )}
                   </TableCell>
                   <TableCell className="font-mono text-xs">
                     {row.archiveCategoryId ? (

@@ -8,7 +8,7 @@ Discord bot for Grimkeeper. Uses **discordx** (decorator-based command framework
 src/
   index.ts                 Entry point — Discord client setup, interaction router
   bot-mode.ts              Feature flag: MINIMAL_MIN_PLAYERS constant
-  access.ts                Permission checks (ADMIN_IDS, ALLOWED_ROLE_IDS, etc.)
+  access.ts                Permission checks (ADMIN_IDS + per-guild GuildSettings / env)
   discord-client.ts        Singleton bot client reference
   error-reporter.ts        Sentry + Discord error channel reporting
   logger.ts                Pino structured logging
@@ -98,8 +98,9 @@ await syncGameProjectionFromEngine(game.id, engine);
 
 ### Modifying access control
 
-`src/access.ts` — reads `ADMIN_IDS`, `ALLOWED_ROLE_IDS`, `ADMIN_ROLE_IDS`, `REMINDER_ROLE_IDS` from env.  
-`canUseBot()` is the top-level gate. Most commands call it early.
+`src/access.ts` — `resolveGuildAccessConfig(guildId)` loads role lists from `GuildSettings` when set, else env (`ALLOWED_ROLE_IDS`, `ADMIN_ROLE_IDS`, `REMINDER_ROLE_IDS`, `REMINDER_PING_ROLE_ID`). Global `ADMIN_IDS` always apply.  
+`canUseBot()` is the top-level gate. Most commands call it early.  
+New servers: `/setup show` · `/setup configure` (Manage Server or `ADMIN_IDS`).
 
 ## Key dependencies
 
@@ -119,11 +120,11 @@ await syncGameProjectionFromEngine(game.id, engine);
 | `DISCORD_TOKEN` | ✅ | Bot token |
 | `DISCORD_CLIENT_ID` | ✅ | Application ID |
 | `DATABASE_URL` | ✅ | SQLite path (`file:./…`) |
-| `ADMIN_IDS` | optional | Comma-separated Discord user IDs with full access |
-| `ALLOWED_ROLE_IDS` | optional | Comma-separated role IDs; if both empty, everyone can use bot |
-| `ADMIN_ROLE_IDS` | optional | Role IDs that can view private ST threads |
-| `REMINDER_ROLE_IDS` | optional | Role IDs that can manage channel reminders |
-| `REMINDER_PING_ROLE_ID` | optional | Role pinged when channel reminders fire |
+| `ADMIN_IDS` | optional | Comma-separated Discord user IDs with full access (all guilds) |
+| `ALLOWED_ROLE_IDS` | optional | Fallback role IDs when guild has no `/setup` allowlist |
+| `ADMIN_ROLE_IDS` | optional | Fallback helper role IDs (overridden by `/setup`) |
+| `REMINDER_ROLE_IDS` | optional | Fallback reminder-manager roles |
+| `REMINDER_PING_ROLE_ID` | optional | Fallback channel-reminder ping role |
 | `ST_QUEUE_THREAD_ID` | optional | Legacy default thread ID for the live ST queue panel (prefer `/st queue set`) |
 | `ARCHIVE_CATEGORY_ID` | optional | Category for archived town channels |
 | `ERROR_CHANNEL_ID` | optional | Discord channel for error notifications |

@@ -42,6 +42,10 @@ export default async function GuildSettingsDetailPage({
         row={{
           guildId: row.guildId,
           archiveCategoryId: row.archiveCategoryId,
+          allowedRoleIds: row.allowedRoleIds,
+          adminRoleIds: row.adminRoleIds,
+          reminderRoleIds: row.reminderRoleIds,
+          reminderPingRoleId: row.reminderPingRoleId,
         }}
       />
     </div>

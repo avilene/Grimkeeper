@@ -39,8 +39,8 @@ import {
   canUseBot,
   canManageChannelReminders,
   fetchGuildMemberWithTimeout,
-  getAdminRoleIds,
-  getReminderPingRoleId,
+  getAdminRoleIdsForGuild,
+  getReminderPingRoleIdForGuild,
   isInExplicitAllowlist,
   memberHasAnyRole,
   type AccessInteraction,
@@ -639,7 +639,7 @@ export async function buildReminderPingMention(
     return buildPlayerPingMention(reminder.gameId, reminder.guildId);
   }
 
-  const pingRoleId = getReminderPingRoleId();
+  const pingRoleId = await getReminderPingRoleIdForGuild(reminder.guildId);
   return pingRoleId ? `<@&${pingRoleId}>` : null;
 }
 
@@ -1899,9 +1899,10 @@ export async function applyChannelPinPermissions(
   const botPerms = await inspectBotChannelPerms(guild, channel);
   let pinOk = 0;
   let pinFailed = 0;
+  const adminRoleIds = await getAdminRoleIdsForGuild(guild.id);
   const targets = [
     ...roleIds.filter(Boolean),
-    ...getAdminRoleIds(),
+    ...adminRoleIds,
     ...(guild.client.user?.id ? [guild.client.user.id] : []),
   ];
   for (const targetId of new Set(targets)) {
@@ -1942,7 +1943,7 @@ export async function applyGameChannelPermissions(
     .edit(playersRoleId, PLAYER_THREAD_PERMISSIONS)
     .catch(() => undefined);
 
-  for (const adminRoleId of getAdminRoleIds()) {
+  for (const adminRoleId of await getAdminRoleIdsForGuild(guild.id)) {
     await channel.permissionOverwrites
       .edit(adminRoleId, ST_THREAD_PERMISSIONS)
       .catch(() => undefined);

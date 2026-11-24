@@ -183,6 +183,18 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
     description: "Cancel pending reminders for your game/channel.",
   },
   { command: "/st help", description: "Storyteller command guide (optional `search:`)." },
+  {
+    command: "/setup show",
+    description: "Show this server’s Grimkeeper settings (Manage Server / ADMIN_IDS).",
+  },
+  {
+    command: "/setup configure",
+    description: "Set allowed/admin/reminder roles and archive category for this server.",
+  },
+  {
+    command: "/setup clear",
+    description: "Clear one guild settings field (falls back to env).",
+  },
 ];
 
 export const DEV_HELP_ENTRIES: HelpEntry[] = [

@@ -18,7 +18,7 @@ import {
   batchReminderSourceKey,
 } from "@grimkeeper/database";
 
-import { getReminderPingRoleId } from "../access.js";
+import { getReminderPingRoleIdForGuild } from "../access.js";
 import { logReminderAction } from "../action-log.js";
 import { formatReminderDuration, formatHourOffsetCompact, parseReminderDuration, parseReminderHours, MAX_REMINDER_HOURS } from "../reminder-duration.js";
 import {
@@ -72,11 +72,16 @@ async function scheduleReminderFromInteraction(
   }
 
   const fireAt = new Date(Date.now() + minutes * 60_000);
-  const pingRoleId = pingRole?.id ?? (scope.kind === "channel" ? getReminderPingRoleId() : null);
+  const defaultPingRoleId =
+    scope.kind === "channel"
+      ? await getReminderPingRoleIdForGuild(interaction.guildId)
+      : null;
+  const pingRoleId = pingRole?.id ?? defaultPingRoleId;
 
   if (scope.kind === "channel" && !pingRoleId) {
     await replyOrEditInteraction(interaction, {
-      content: "Provide a `ping_role` or set `REMINDER_PING_ROLE_ID` for channel reminders.",
+      content:
+        "Provide a `ping_role` or set the ping role via `/setup configure` (or `REMINDER_PING_ROLE_ID`).",
       ...EPHEMERAL,
     });
     return;
@@ -156,14 +161,15 @@ async function batchRemindersFromInteraction(
     return;
   }
 
-  const pingRoleIds = resolvePingRoleIds(
-    pingRolesInput,
-    scope.kind === "channel" ? getReminderPingRoleId() : null,
-  );
+  const defaultPingRoleId =
+    scope.kind === "channel"
+      ? await getReminderPingRoleIdForGuild(interaction.guildId)
+      : null;
+  const pingRoleIds = resolvePingRoleIds(pingRolesInput, defaultPingRoleId);
   if (scope.kind === "channel" && pingRoleIds.length === 0) {
     await replyOrEditInteraction(interaction, {
       content:
-        "Provide `ping_roles` or set `REMINDER_PING_ROLE_ID` for channel reminders.",
+        "Provide `ping_roles` or set the ping role via `/setup configure` (or `REMINDER_PING_ROLE_ID`).",
       ...EPHEMERAL,
     });
     return;

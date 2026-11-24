@@ -15,6 +15,10 @@ import { Label } from "@/components/ui/label";
 export type GuildSettingsFields = {
   guildId: string;
   archiveCategoryId: string | null;
+  allowedRoleIds: string | null;
+  adminRoleIds: string | null;
+  reminderRoleIds: string | null;
+  reminderPingRoleId: string | null;
 };
 
 export function GuildSettingsForm({ row }: { row?: GuildSettingsFields }) {
@@ -33,7 +37,7 @@ export function GuildSettingsForm({ row }: { row?: GuildSettingsFields }) {
         action={action}
         className="grid gap-3 rounded-md border border-border bg-card p-4 sm:grid-cols-2"
       >
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="guildId">Guild ID</Label>
           <Input
             id="guildId"
@@ -45,6 +49,59 @@ export function GuildSettingsForm({ row }: { row?: GuildSettingsFields }) {
           />
         </div>
         <div className="space-y-1.5">
+          <Label htmlFor="allowedRoleIds">Allowed role IDs</Label>
+          <Input
+            id="allowedRoleIds"
+            name="allowedRoleIds"
+            className="font-mono"
+            placeholder="comma-separated role snowflakes"
+            defaultValue={row?.allowedRoleIds ?? ""}
+          />
+          <p className="text-xs text-muted-foreground">
+            Who may use bot commands. Empty = fall back to env <code>ALLOWED_ROLE_IDS</code>. Prefer{" "}
+            <code>/setup configure</code> in Discord.
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="adminRoleIds">Admin helper role IDs</Label>
+          <Input
+            id="adminRoleIds"
+            name="adminRoleIds"
+            className="font-mono"
+            placeholder="comma-separated role snowflakes"
+            defaultValue={row?.adminRoleIds ?? ""}
+          />
+          <p className="text-xs text-muted-foreground">
+            Private ST threads / pins. Empty → env <code>ADMIN_ROLE_IDS</code>.
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="reminderRoleIds">Reminder manager role IDs</Label>
+          <Input
+            id="reminderRoleIds"
+            name="reminderRoleIds"
+            className="font-mono"
+            placeholder="comma-separated role snowflakes"
+            defaultValue={row?.reminderRoleIds ?? ""}
+          />
+          <p className="text-xs text-muted-foreground">
+            Channel reminders without an active game. Empty → env <code>REMINDER_ROLE_IDS</code>.
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="reminderPingRoleId">Reminder ping role ID</Label>
+          <Input
+            id="reminderPingRoleId"
+            name="reminderPingRoleId"
+            className="font-mono"
+            placeholder="Discord role snowflake"
+            defaultValue={row?.reminderPingRoleId ?? ""}
+          />
+          <p className="text-xs text-muted-foreground">
+            Default ping for channel reminders. Empty → env <code>REMINDER_PING_ROLE_ID</code>.
+          </p>
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="archiveCategoryId">Archives category ID</Label>
           <Input
             id="archiveCategoryId"

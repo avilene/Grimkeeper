@@ -18,7 +18,7 @@ import {
 
 import {
   fetchGuildMemberWithTimeout,
-  getAdminRoleIds,
+  getAdminRoleIdsForGuild,
   isAllowedUserId,
   type AccessInteraction,
 } from "../access.js";
@@ -125,7 +125,7 @@ export async function canManageInterestPost(
   if (userId === ownerId) return true;
   if (isAllowedUserId(userId)) return true;
 
-  const adminRoleIds = getAdminRoleIds();
+  const adminRoleIds = await getAdminRoleIdsForGuild(interaction.guildId);
   if (adminRoleIds.size === 0 || !interaction.guild) return false;
 
   const member = await fetchGuildMemberWithTimeout(interaction.guild, userId, undefined, {

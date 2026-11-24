@@ -25,6 +25,7 @@ describe("loadCommandModules", () => {
     expect(source).toContain('./commands/role.js');
     expect(source).toContain('./commands/command-help.js');
     expect(source).toContain('./commands/st-queue.js');
+    expect(source).toContain('./commands/setup.js');
     expect(source).not.toContain('./commands/game.js');
     expect(source).not.toContain('./commands/st.js');
     expect(source).not.toContain('./commands/dev.js');

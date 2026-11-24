@@ -1,4 +1,6 @@
 import type { CommandInteraction, Guild, GuildMember } from "discord.js";
+import { PermissionFlagsBits } from "discord.js";
+import { getGuildSettings } from "@grimkeeper/database";
 
 /** Minimal interaction shape for allowlist / role checks (slash, buttons, selects). */
 export type AccessInteraction = {
@@ -6,12 +8,29 @@ export type AccessInteraction = {
   guildId?: string | null;
   guild?: Guild | null;
   member?: CommandInteraction["member"];
+  memberPermissions?: CommandInteraction["memberPermissions"];
 };
 
 /** Default budget for guild member REST/gateway lookups that can stall without GuildMembers intent. */
 export const MEMBER_FETCH_TIMEOUT_MS = 2_000;
 
-export function parseList(value: string | undefined): Set<string> {
+export type GuildAccessConfig = {
+  /** Role IDs that may use bot commands (plus global ADMIN_IDS). */
+  allowedRoleIds: Set<string>;
+  /** Role IDs granted private-thread / pin helper access. */
+  adminRoleIds: Set<string>;
+  /** Role IDs that may manage channel reminders without an active game. */
+  reminderRoleIds: Set<string>;
+  /** Default ping role for channel reminders. */
+  reminderPingRoleId: string | null;
+  /**
+   * True when this guild has an explicit allowedRoleIds value in GuildSettings
+   * (including empty string = open). False means env ALLOWED_ROLE_IDS still applies.
+   */
+  allowedRolesFromDb: boolean;
+};
+
+export function parseList(value: string | null | undefined): Set<string> {
   if (!value) return new Set();
   return new Set(
     value
@@ -25,6 +44,49 @@ export function parseList(value: string | undefined): Set<string> {
 export function isAllowedUserId(userId: string | null | undefined): boolean {
   if (!userId) return false;
   return parseList(process.env.ADMIN_IDS).has(userId);
+}
+
+/**
+ * Per-guild access config: GuildSettings columns when set, else env fallbacks.
+ * `allowedRoleIds` null in DB → env; empty string in DB → open for this guild.
+ */
+export async function resolveGuildAccessConfig(
+  guildId: string | null | undefined,
+): Promise<GuildAccessConfig> {
+  const envAllowed = parseList(process.env.ALLOWED_ROLE_IDS);
+  const envAdmin = parseList(process.env.ADMIN_ROLE_IDS);
+  const envReminder = parseList(process.env.REMINDER_ROLE_IDS);
+  const envPing = process.env.REMINDER_PING_ROLE_ID?.trim() || null;
+
+  if (!guildId) {
+    return {
+      allowedRoleIds: envAllowed,
+      adminRoleIds: envAdmin,
+      reminderRoleIds: envReminder,
+      reminderPingRoleId: envPing,
+      allowedRolesFromDb: false,
+    };
+  }
+
+  const settings = await getGuildSettings(guildId);
+  const allowedRolesFromDb = settings != null && settings.allowedRoleIds != null;
+
+  return {
+    allowedRoleIds: allowedRolesFromDb
+      ? parseList(settings.allowedRoleIds)
+      : envAllowed,
+    adminRoleIds:
+      settings?.adminRoleIds != null ? parseList(settings.adminRoleIds) : envAdmin,
+    reminderRoleIds:
+      settings?.reminderRoleIds != null
+        ? parseList(settings.reminderRoleIds)
+        : envReminder,
+    reminderPingRoleId:
+      settings?.reminderPingRoleId != null
+        ? settings.reminderPingRoleId.trim() || null
+        : envPing,
+    allowedRolesFromDb,
+  };
 }
 
 /**
@@ -124,9 +186,11 @@ export async function memberHasAnyRole(
   return false;
 }
 
-async function userMatchesAllowlist(interaction: AccessInteraction): Promise<boolean> {
+async function userMatchesAllowlist(
+  interaction: AccessInteraction,
+  allowedRoleIds: Set<string>,
+): Promise<boolean> {
   const allowedUserIds = parseList(process.env.ADMIN_IDS);
-  const allowedRoleIds = parseList(process.env.ALLOWED_ROLE_IDS);
   const userId = interaction?.user?.id;
   if (!userId) return false;
   if (allowedUserIds.has(userId)) return true;
@@ -136,31 +200,31 @@ async function userMatchesAllowlist(interaction: AccessInteraction): Promise<boo
 
 export async function canUseBot(interaction: AccessInteraction): Promise<boolean> {
   const allowedUserIds = parseList(process.env.ADMIN_IDS);
-  const allowedRoleIds = parseList(process.env.ALLOWED_ROLE_IDS);
+  const config = await resolveGuildAccessConfig(interaction.guildId);
 
   // No restrictions configured: allow everyone.
-  if (allowedUserIds.size === 0 && allowedRoleIds.size === 0) {
+  if (allowedUserIds.size === 0 && config.allowedRoleIds.size === 0) {
     return true;
   }
 
-  return userMatchesAllowlist(interaction);
+  return userMatchesAllowlist(interaction, config.allowedRoleIds);
 }
 
 export async function isInExplicitAllowlist(interaction: AccessInteraction): Promise<boolean> {
   const allowedUserIds = parseList(process.env.ADMIN_IDS);
-  const allowedRoleIds = parseList(process.env.ALLOWED_ROLE_IDS);
-  if (allowedUserIds.size === 0 && allowedRoleIds.size === 0) {
+  const config = await resolveGuildAccessConfig(interaction.guildId);
+  if (allowedUserIds.size === 0 && config.allowedRoleIds.size === 0) {
     return false;
   }
 
-  return userMatchesAllowlist(interaction);
+  return userMatchesAllowlist(interaction, config.allowedRoleIds);
 }
 
 export async function hasReminderManagerRole(interaction: AccessInteraction): Promise<boolean> {
-  const reminderRoleIds = parseList(process.env.REMINDER_ROLE_IDS);
-  if (reminderRoleIds.size === 0) return false;
+  const config = await resolveGuildAccessConfig(interaction.guildId);
+  if (config.reminderRoleIds.size === 0) return false;
   if (!interaction.user?.id || !interaction.guildId) return false;
-  return memberHasAnyRole(interaction, reminderRoleIds);
+  return memberHasAnyRole(interaction, config.reminderRoleIds);
 }
 
 export async function canManageChannelReminders(interaction: AccessInteraction): Promise<boolean> {
@@ -168,19 +232,51 @@ export async function canManageChannelReminders(interaction: AccessInteraction):
   return hasReminderManagerRole(interaction);
 }
 
+/** @deprecated Prefer getReminderPingRoleIdForGuild — env-only fallback. */
 export function getReminderPingRoleId(): string | null {
   const roleId = process.env.REMINDER_PING_ROLE_ID?.trim();
   return roleId || null;
 }
 
-/** Role IDs that can help in private ST/player threads (Manage Threads on game channels). */
+export async function getReminderPingRoleIdForGuild(
+  guildId: string | null | undefined,
+): Promise<string | null> {
+  const config = await resolveGuildAccessConfig(guildId);
+  return config.reminderPingRoleId;
+}
+
+/** @deprecated Prefer getAdminRoleIdsForGuild — env-only fallback. */
 export function getAdminRoleIds(): Set<string> {
   return parseList(process.env.ADMIN_ROLE_IDS);
 }
 
+export async function getAdminRoleIdsForGuild(
+  guildId: string | null | undefined,
+): Promise<Set<string>> {
+  const config = await resolveGuildAccessConfig(guildId);
+  return config.adminRoleIds;
+}
+
 export async function hasAdminRole(interaction: AccessInteraction): Promise<boolean> {
-  const adminRoleIds = getAdminRoleIds();
+  const adminRoleIds = await getAdminRoleIdsForGuild(interaction.guildId);
   if (adminRoleIds.size === 0) return false;
   if (!interaction.user?.id || !interaction.guildId) return false;
   return memberHasAnyRole(interaction, adminRoleIds);
+}
+
+/** Manage Server / Administrator, or global ADMIN_IDS, or configured admin roles. */
+export async function canConfigureGuild(interaction: AccessInteraction): Promise<boolean> {
+  const userId = interaction.user?.id;
+  if (!userId) return false;
+  if (isAllowedUserId(userId)) return true;
+
+  const perms = interaction.memberPermissions;
+  if (
+    perms?.has(PermissionFlagsBits.Administrator) ||
+    perms?.has(PermissionFlagsBits.ManageGuild)
+  ) {
+    return true;
+  }
+
+  return hasAdminRole(interaction);
 }
