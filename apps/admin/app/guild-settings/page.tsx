@@ -26,9 +26,9 @@ export default async function GuildSettingsPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Guild settings</h1>
       <WarnBanner>
-        Per-guild Discord configuration (command allowlist, admin/reminder roles, archive category).
-        Prefer <code>/setup</code> in Discord after inviting the bot. Without a row, the bot falls
-        back to env role lists and <code>ARCHIVE_CATEGORY_ID</code>.
+        Settings for each Discord server: who can use commands, helper roles, reminder roles, and the
+        archive category. Prefer <code>/setup</code> in Discord after inviting the bot. Servers
+        without a row here use the shared bot defaults.
       </WarnBanner>
 
       <section className="space-y-3">

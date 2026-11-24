@@ -58,7 +58,7 @@ export function GuildSettingsForm({ row }: { row?: GuildSettingsFields }) {
             defaultValue={row?.allowedRoleIds ?? ""}
           />
           <p className="text-xs text-muted-foreground">
-            Who may use bot commands. Empty = fall back to env <code>ALLOWED_ROLE_IDS</code>. Prefer{" "}
+            Who can use bot commands. Leave empty to use the shared bot default. Prefer{" "}
             <code>/setup configure</code> in Discord.
           </p>
         </div>
@@ -72,7 +72,7 @@ export function GuildSettingsForm({ row }: { row?: GuildSettingsFields }) {
             defaultValue={row?.adminRoleIds ?? ""}
           />
           <p className="text-xs text-muted-foreground">
-            Private ST threads / pins. Empty → env <code>ADMIN_ROLE_IDS</code>.
+            Helper roles for private ST threads and pins. Leave empty for the shared bot default.
           </p>
         </div>
         <div className="space-y-1.5">
@@ -85,7 +85,8 @@ export function GuildSettingsForm({ row }: { row?: GuildSettingsFields }) {
             defaultValue={row?.reminderRoleIds ?? ""}
           />
           <p className="text-xs text-muted-foreground">
-            Channel reminders without an active game. Empty → env <code>REMINDER_ROLE_IDS</code>.
+            Who can manage channel reminders when there is no active game. Leave empty for the shared
+            bot default.
           </p>
         </div>
         <div className="space-y-1.5">
@@ -98,7 +99,7 @@ export function GuildSettingsForm({ row }: { row?: GuildSettingsFields }) {
             defaultValue={row?.reminderPingRoleId ?? ""}
           />
           <p className="text-xs text-muted-foreground">
-            Default ping for channel reminders. Empty → env <code>REMINDER_PING_ROLE_ID</code>.
+            Default ping for channel reminders. Leave empty for the shared bot default.
           </p>
         </div>
         <div className="space-y-1.5 sm:col-span-2">

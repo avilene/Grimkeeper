@@ -2,6 +2,10 @@
 
 > Quick orientation for AI agents working in this repository.
 
+## Communication
+
+Use normal English. Prefer clear, everyday wording in commit messages, PR descriptions, comments, Discord copy, and replies — not dense jargon, telegram-style shorthand, or unexplained acronyms. Technical terms are fine when they name real code or Discord concepts; still explain them in plain language when someone reading the text might not know them.
+
 ## Monorepo structure
 
 ```

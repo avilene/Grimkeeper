@@ -35,7 +35,7 @@ type ClearField =
 
 function formatRoleList(ids: Set<string> | Iterable<string>): string {
   const list = [...ids].filter(Boolean);
-  if (list.length === 0) return "_(none — open / unset)_";
+  if (list.length === 0) return "_(none)_";
   return list.map((id) => `<@&${id}> (\`${id}\`)`).join("\n");
 }
 
@@ -59,7 +59,7 @@ async function requireSetupAccess(interaction: CommandInteraction): Promise<bool
   if (!(await canConfigureGuild(interaction))) {
     await replyOrEditInteraction(interaction, {
       content:
-        "Only server managers (**Manage Server**), global `ADMIN_IDS`, or configured admin roles can run `/setup`.",
+        "Only people with **Manage Server**, a bot admin account, or a helper role set in `/setup` can run this.",
       ...EPHEMERAL,
     });
     return false;
@@ -74,45 +74,43 @@ async function buildSetupEmbed(guildId: string, guildName: string): Promise<Embe
   const queueBoard = await getQueueBoardByGuild(guildId);
 
   const allowedSource = effective.allowedRolesFromDb
-    ? "this server (`/setup`)"
-    : "env `ALLOWED_ROLE_IDS` (fallback)";
+    ? "set for this server"
+    : "using shared bot defaults";
   const adminSource =
-    settings.adminRoleIds != null ? "this server" : "env `ADMIN_ROLE_IDS` (fallback)";
+    settings.adminRoleIds != null ? "set for this server" : "using shared bot defaults";
   const reminderSource =
-    settings.reminderRoleIds != null ? "this server" : "env `REMINDER_ROLE_IDS` (fallback)";
+    settings.reminderRoleIds != null ? "set for this server" : "using shared bot defaults";
   const pingSource =
-    settings.reminderPingRoleId != null
-      ? "this server"
-      : "env `REMINDER_PING_ROLE_ID` (fallback)";
+    settings.reminderPingRoleId != null ? "set for this server" : "using shared bot defaults";
   const archiveSource = settings.archiveCategoryId?.trim()
-    ? "this server"
-    : "env `ARCHIVE_CATEGORY_ID` (fallback)";
+    ? "set for this server"
+    : "using shared bot defaults";
 
   return new EmbedBuilder()
     .setTitle(`Grimkeeper setup — ${guildName}`)
     .setDescription(
       [
-        `Guild id: \`${guildId}\``,
+        `Server id: \`${guildId}\``,
         "",
-        "Configure this server so role IDs from another guild’s env do not apply here.",
-        "Next: `/st queue set` in a thread · `/game setup` to start a town.",
+        "Set roles here so this server does not reuse another server’s role list from the bot’s shared defaults.",
+        "Next steps: `/st queue set` in a thread, then `/game setup` to start a town.",
       ].join("\n"),
     )
     .addFields(
       {
-        name: `Allowed roles (${allowedSource})`,
+        name: `Who can use bot commands (${allowedSource})`,
         value: formatRoleList(effective.allowedRoleIds),
       },
       {
-        name: `Admin helper roles (${adminSource})`,
+        name: `Helper roles for private ST threads (${adminSource})`,
         value: formatRoleList(effective.adminRoleIds),
       },
       {
-        name: `Reminder manager roles (${reminderSource})`,
+        name: `Who can manage channel reminders (${reminderSource})`,
         value: formatRoleList(effective.reminderRoleIds),
       },
       {
-        name: `Reminder ping role (${pingSource})`,
+        name: `Default reminder ping role (${pingSource})`,
         value: formatSnowflake(effective.reminderPingRoleId, "role"),
       },
       {
@@ -127,7 +125,7 @@ async function buildSetupEmbed(guildId: string, guildName: string): Promise<Embe
       },
     )
     .setFooter({
-      text: "/setup configure · /setup clear · Manage Server required",
+      text: "Need Manage Server (or be a bot admin) · /setup configure · /setup clear",
     });
 }
 
@@ -153,40 +151,40 @@ export class SetupCommands {
 
   @Slash({
     name: "configure",
-    description: "Set roles / archive category for this server (adds to role lists)",
+    description: "Set roles and archive category for this server",
   })
   async configure(
     @SlashOption({
       name: "allowed_role",
-      description: "Add a role that may use bot commands",
+      description: "Add a role that can use bot commands",
       type: ApplicationCommandOptionType.Role,
       required: false,
     })
     allowedRole: Role | undefined,
     @SlashOption({
       name: "admin_role",
-      description: "Add a helper role for private ST threads / pins",
+      description: "Add a helper role for private ST threads and pins",
       type: ApplicationCommandOptionType.Role,
       required: false,
     })
     adminRole: Role | undefined,
     @SlashOption({
       name: "reminder_role",
-      description: "Add a role that may manage channel reminders",
+      description: "Add a role that can manage channel reminders",
       type: ApplicationCommandOptionType.Role,
       required: false,
     })
     reminderRole: Role | undefined,
     @SlashOption({
       name: "ping_role",
-      description: "Default role pinged by channel reminders",
+      description: "Role to ping by default for channel reminders",
       type: ApplicationCommandOptionType.Role,
       required: false,
     })
     pingRole: Role | undefined,
     @SlashOption({
       name: "archive_category",
-      description: "Category for archived town channels",
+      description: "Category where archived town channels go",
       type: ApplicationCommandOptionType.Channel,
       required: false,
       channelTypes: [ChannelType.GuildCategory],
@@ -194,7 +192,7 @@ export class SetupCommands {
     archiveCategory: GuildBasedChannel | undefined,
     @SlashOption({
       name: "open_commands",
-      description: "Allow everyone to use bot commands in this server (clears allowed roles)",
+      description: "Let everyone in this server use bot commands",
       type: ApplicationCommandOptionType.Boolean,
       required: false,
     })
@@ -209,43 +207,43 @@ export class SetupCommands {
 
     if (openCommands === true) {
       await upsertGuildSettings(guildId, { allowedRoleIds: "" });
-      changes.push("Allowed roles → open to everyone in this server");
+      changes.push("Bot commands are open to everyone in this server");
     } else if (allowedRole) {
       await addGuildSettingRoleIds(guildId, "allowedRoleIds", [allowedRole.id]);
-      changes.push(`Allowed role + <@&${allowedRole.id}>`);
+      changes.push(`Added <@&${allowedRole.id}> as a command role`);
     }
 
     if (adminRole) {
       await addGuildSettingRoleIds(guildId, "adminRoleIds", [adminRole.id]);
-      changes.push(`Admin helper role + <@&${adminRole.id}>`);
+      changes.push(`Added <@&${adminRole.id}> as a helper role`);
     }
 
     if (reminderRole) {
       await addGuildSettingRoleIds(guildId, "reminderRoleIds", [reminderRole.id]);
-      changes.push(`Reminder manager role + <@&${reminderRole.id}>`);
+      changes.push(`Added <@&${reminderRole.id}> as a reminder manager role`);
     }
 
     if (pingRole) {
       await upsertGuildSettings(guildId, { reminderPingRoleId: pingRole.id });
-      changes.push(`Reminder ping role → <@&${pingRole.id}>`);
+      changes.push(`Reminder ping role is now <@&${pingRole.id}>`);
     }
 
     if (archiveCategory) {
       if (!isCategoryChannel(archiveCategory)) {
         await replyOrEditInteraction(interaction, {
-          content: "`archive_category` must be a category channel.",
+          content: "Pick a category channel for `archive_category`.",
           ...EPHEMERAL,
         });
         return;
       }
       await upsertGuildSettings(guildId, { archiveCategoryId: archiveCategory.id });
-      changes.push(`Archive category → <#${archiveCategory.id}>`);
+      changes.push(`Archive category is now <#${archiveCategory.id}>`);
     }
 
     if (changes.length === 0) {
       await replyOrEditInteraction(interaction, {
         content:
-          "Pass at least one option (`allowed_role`, `admin_role`, `reminder_role`, `ping_role`, `archive_category`, or `open_commands:true`). Or use `/setup show`.",
+          "Choose at least one option to change, or run `/setup show` to see the current settings.",
         ...EPHEMERAL,
       });
       return;
@@ -261,17 +259,17 @@ export class SetupCommands {
 
   @Slash({
     name: "clear",
-    description: "Clear one settings field (falls back to env, or unsets)",
+    description: "Clear one setting and go back to the shared bot defaults",
   })
   async clear(
-    @SlashChoice({ name: "Allowed roles (back to env)", value: "allowed_roles" })
-    @SlashChoice({ name: "Admin helper roles (back to env)", value: "admin_roles" })
-    @SlashChoice({ name: "Reminder manager roles (back to env)", value: "reminder_roles" })
-    @SlashChoice({ name: "Reminder ping role (back to env)", value: "ping_role" })
-    @SlashChoice({ name: "Archive category (back to env)", value: "archive" })
+    @SlashChoice({ name: "Who can use bot commands", value: "allowed_roles" })
+    @SlashChoice({ name: "Helper roles for private ST threads", value: "admin_roles" })
+    @SlashChoice({ name: "Who can manage channel reminders", value: "reminder_roles" })
+    @SlashChoice({ name: "Default reminder ping role", value: "ping_role" })
+    @SlashChoice({ name: "Archive category", value: "archive" })
     @SlashOption({
       name: "field",
-      description: "Which field to clear",
+      description: "Which setting to clear",
       type: ApplicationCommandOptionType.String,
       required: true,
     })
@@ -308,9 +306,17 @@ export class SetupCommands {
       }
     }
 
+    const labels: Record<ClearField, string> = {
+      allowed_roles: "who can use bot commands",
+      admin_roles: "helper roles for private ST threads",
+      reminder_roles: "who can manage channel reminders",
+      ping_role: "the default reminder ping role",
+      archive: "the archive category",
+    };
+
     const embed = await buildSetupEmbed(guildId, interaction.guild!.name);
     await replyOrEditInteraction(interaction, {
-      content: `Cleared **${field}** for this server.`,
+      content: `Cleared ${labels[field]} for this server. It will use the shared bot defaults again.`,
       embeds: [embed],
       ...EPHEMERAL,
     });

@@ -185,15 +185,15 @@ export const ST_HELP_ENTRIES: HelpEntry[] = [
   { command: "/st help", description: "Storyteller command guide (optional `search:`)." },
   {
     command: "/setup show",
-    description: "Show this server’s Grimkeeper settings (Manage Server / ADMIN_IDS).",
+    description: "Show this server’s Grimkeeper settings (needs Manage Server).",
   },
   {
     command: "/setup configure",
-    description: "Set allowed/admin/reminder roles and archive category for this server.",
+    description: "Set command roles, helper roles, reminder roles, and archive category.",
   },
   {
     command: "/setup clear",
-    description: "Clear one guild settings field (falls back to env).",
+    description: "Clear one setting and go back to the shared bot defaults.",
   },
 ];
 
