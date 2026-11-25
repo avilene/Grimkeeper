@@ -249,11 +249,28 @@ model StQueueMember {
   @@index([discordUserId])
 }
 
-/** Per-guild Discord configuration (archive category, etc.). */
+/** Per-guild Discord configuration (roles, archive category, etc.). */
 model GuildSettings {
   guildId           String   @id
   /** Discord category ID for archived game town channels. */
   archiveCategoryId String?
+  /**
+   * Comma-separated Discord role IDs allowed to use bot commands in this guild.
+   * null = fall back to ALLOWED_ROLE_IDS env; empty string = open to everyone here.
+   */
+  allowedRoleIds    String?
+  /**
+   * Comma-separated role IDs that can help in private ST/player threads
+   * (pin overwrites, log thread membership). null = ADMIN_ROLE_IDS env.
+   */
+  adminRoleIds      String?
+  /**
+   * Comma-separated role IDs that can manage channel reminders without an active game.
+   * null = REMINDER_ROLE_IDS env.
+   */
+  reminderRoleIds   String?
+  /** Default role pinged by channel reminders. null = REMINDER_PING_ROLE_ID env. */
+  reminderPingRoleId String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }

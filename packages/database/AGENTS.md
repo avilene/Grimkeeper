@@ -21,7 +21,7 @@ src/
   whispers.ts         Game whisper thread tracking
   st-queue.ts         ST queue boards, entries, and members
   interest.ts         Interest-check posts and signups (playing/kib/backup)
-  guild-settings.ts   Per-guild config (archive category, etc.)
+  guild-settings.ts   Per-guild config (roles, archive category, `/setup`)
   discord-noms-refresh.ts  Async flag table: request Discord nomination refresh from bot
   logging.ts          Prisma query logging adapter
   backfill-winners.ts One-time backfill script helper

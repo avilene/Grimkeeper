@@ -12,6 +12,7 @@ vi.mock("@grimkeeper/database", () => ({
   getActiveGameForVenue: vi.fn(),
   getGameForChannelIncludingEnded: vi.fn(),
   getGameEvents: vi.fn(),
+  getGuildSettings: vi.fn(async () => null),
   listActiveGamesForGuild,
   listEngineStorytellerGameIds,
   listGameWhispers: vi.fn(),

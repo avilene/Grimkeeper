@@ -5,7 +5,7 @@ import {
 } from "discord.js";
 import type { GameEngine } from "@grimkeeper/engine";
 
-import { fetchGuildMemberWithTimeout, getAdminRoleIds } from "./access.js";
+import { fetchGuildMemberWithTimeout, getAdminRoleIdsForGuild } from "./access.js";
 import {
   addRoleMembersToThread,
   DEFAULT_THREAD_AUTO_ARCHIVE,
@@ -157,7 +157,7 @@ async function addStOnlyMembersToThread(
   for (const stId of storytellerIds) {
     await thread.members.add(stId).catch(() => undefined);
   }
-  for (const adminRoleId of getAdminRoleIds()) {
+  for (const adminRoleId of await getAdminRoleIdsForGuild(guild.id)) {
     await addRoleMembersToThread(guild, thread, adminRoleId);
   }
 }

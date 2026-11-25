@@ -29,8 +29,9 @@ Discord -> Adapter -> Engine -> Events -> Projections -> Persistence
    - `DISCORD_TOKEN` — bot token
    - `DISCORD_CLIENT_ID` — application ID
    - optional access control:
-     - `ADMIN_IDS` — comma-separated Discord user IDs allowed to use commands
-     - `ALLOWED_ROLE_IDS` — comma-separated Discord role IDs allowed to use commands
+     - `ADMIN_IDS` — comma-separated Discord user IDs allowed to use commands (all guilds)
+     - `ALLOWED_ROLE_IDS` — fallback role IDs when a guild has no `/setup` allowlist yet
+     - After inviting the bot, run `/setup configure` in that server (Manage Server)
 
 4. Push the database schema:
    ```bash
@@ -52,6 +53,7 @@ Player day play uses top-level slash commands. Storytellers also use top-level c
 
 | Command | Description |
 |---------|-------------|
+| `/setup show` / `configure` / `clear` | Per-server roles + archive category (Manage Server) |
 | `/game setup` | Create a game with existing ST / player / kib roles |
 | `/game help` | Player command guide (`search:` filters by name/description) |
 | `/nominate` | Nominate a player |
